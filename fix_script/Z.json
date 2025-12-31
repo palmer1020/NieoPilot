@@ -1,0 +1,13 @@
+{
+    "name": "z",
+    "create_time": "2025-12-17 19:23:44",
+    "steps": [
+        {
+            "action": "click",
+            "x": 1,
+            "y": 1,
+            "delay": 1.0,
+            "desc": "Step 1"
+        }
+    ]
+}

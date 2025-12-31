@@ -1,0 +1,7 @@
+PyQt6
+opencv-python
+paddleocr
+numpy
+pywin32
+pynput
+schedule

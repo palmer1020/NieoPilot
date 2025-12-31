@@ -1,0 +1,1595 @@
+{
+    "name": "E",
+    "create_time": "2025-12-24 21:07:27",
+    "steps": [
+        {
+            "action": "click",
+            "x": 994,
+            "y": 654,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 688,
+            "y": 445,
+            "delay": 6.57,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 1052,
+            "y": 662,
+            "delay": 2.28,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 398,
+            "y": 515,
+            "delay": 2.09,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 1061,
+            "y": 659,
+            "delay": 2.57,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 215,
+            "y": 392,
+            "delay": 1.57,
+            "desc": "Step 6"
+        },
+        {
+            "action": "click",
+            "x": 619,
+            "y": 455,
+            "delay": 1.07,
+            "desc": "Step 7"
+        },
+        {
+            "action": "click",
+            "x": 451,
+            "y": 507,
+            "delay": 1.2,
+            "desc": "Step 8"
+        },
+        {
+            "action": "click",
+            "x": 510,
+            "y": 408,
+            "delay": 1.02,
+            "desc": "Step 9"
+        },
+        {
+            "action": "click",
+            "x": 874,
+            "y": 368,
+            "delay": 2.28,
+            "desc": "Step 10"
+        },
+        {
+            "action": "click",
+            "x": 328,
+            "y": 177,
+            "delay": 1.32,
+            "desc": "Step 11"
+        },
+        {
+            "action": "click",
+            "x": 818,
+            "y": 485,
+            "delay": 1.22,
+            "desc": "Step 12"
+        },
+        {
+            "action": "click",
+            "x": 894,
+            "y": 104,
+            "delay": 2.77,
+            "desc": "Step 13"
+        },
+        {
+            "action": "click",
+            "x": 606,
+            "y": 273,
+            "delay": 2.25,
+            "desc": "Step 14"
+        },
+        {
+            "action": "click",
+            "x": 973,
+            "y": 542,
+            "delay": 2.76,
+            "desc": "Step 15"
+        },
+        {
+            "action": "click",
+            "x": 505,
+            "y": 431,
+            "delay": 2.72,
+            "desc": "Step 16"
+        },
+        {
+            "action": "click",
+            "x": 616,
+            "y": 444,
+            "delay": 4.17,
+            "desc": "Step 17"
+        },
+        {
+            "action": "click",
+            "x": 1009,
+            "y": 544,
+            "delay": 1.02,
+            "desc": "Step 18"
+        },
+        {
+            "action": "click",
+            "x": 519,
+            "y": 430,
+            "delay": 1.08,
+            "desc": "Step 19"
+        },
+        {
+            "action": "click",
+            "x": 591,
+            "y": 427,
+            "delay": 4.34,
+            "desc": "Step 20"
+        },
+        {
+            "action": "click",
+            "x": 976,
+            "y": 656,
+            "delay": 3.25,
+            "desc": "Step 21"
+        },
+        {
+            "action": "click",
+            "x": 676,
+            "y": 442,
+            "delay": 5.88,
+            "desc": "Step 22"
+        },
+        {
+            "action": "click",
+            "x": 221,
+            "y": 393,
+            "delay": 1.7,
+            "desc": "Step 23"
+        },
+        {
+            "action": "click",
+            "x": 587,
+            "y": 447,
+            "delay": 1.25,
+            "desc": "Step 24"
+        },
+        {
+            "action": "click",
+            "x": 446,
+            "y": 515,
+            "delay": 1.19,
+            "desc": "Step 25"
+        },
+        {
+            "action": "click",
+            "x": 561,
+            "y": 393,
+            "delay": 0.99,
+            "desc": "Step 26"
+        },
+        {
+            "action": "click",
+            "x": 870,
+            "y": 433,
+            "delay": 1.36,
+            "desc": "Step 27"
+        },
+        {
+            "action": "click",
+            "x": 547,
+            "y": 184,
+            "delay": 1.09,
+            "desc": "Step 28"
+        },
+        {
+            "action": "click",
+            "x": 817,
+            "y": 479,
+            "delay": 1.4,
+            "desc": "Step 29"
+        },
+        {
+            "action": "click",
+            "x": 444,
+            "y": 200,
+            "delay": 2.97,
+            "desc": "Step 30"
+        },
+        {
+            "action": "click",
+            "x": 630,
+            "y": 433,
+            "delay": 2.77,
+            "desc": "Step 31"
+        },
+        {
+            "action": "click",
+            "x": 526,
+            "y": 428,
+            "delay": 0.92,
+            "desc": "Step 32"
+        },
+        {
+            "action": "click",
+            "x": 596,
+            "y": 439,
+            "delay": 4.03,
+            "desc": "Step 33"
+        },
+        {
+            "action": "click",
+            "x": 981,
+            "y": 667,
+            "delay": 1.53,
+            "desc": "Step 34"
+        },
+        {
+            "action": "click",
+            "x": 704,
+            "y": 479,
+            "delay": 6.2,
+            "desc": "Step 35"
+        },
+        {
+            "action": "click",
+            "x": 207,
+            "y": 385,
+            "delay": 3.28,
+            "desc": "Step 36"
+        },
+        {
+            "action": "click",
+            "x": 584,
+            "y": 445,
+            "delay": 1.27,
+            "desc": "Step 37"
+        },
+        {
+            "action": "click",
+            "x": 439,
+            "y": 502,
+            "delay": 0.9,
+            "desc": "Step 38"
+        },
+        {
+            "action": "click",
+            "x": 503,
+            "y": 410,
+            "delay": 0.92,
+            "desc": "Step 39"
+        },
+        {
+            "action": "click",
+            "x": 1020,
+            "y": 456,
+            "delay": 1.53,
+            "desc": "Step 40"
+        },
+        {
+            "action": "click",
+            "x": 1020,
+            "y": 456,
+            "delay": 0.17,
+            "desc": "Step 41"
+        },
+        {
+            "action": "click",
+            "x": 1020,
+            "y": 456,
+            "delay": 0.18,
+            "desc": "Step 42"
+        },
+        {
+            "action": "click",
+            "x": 1020,
+            "y": 456,
+            "delay": 0.17,
+            "desc": "Step 43"
+        },
+        {
+            "action": "click",
+            "x": 1019,
+            "y": 456,
+            "delay": 0.15,
+            "desc": "Step 44"
+        },
+        {
+            "action": "click",
+            "x": 1019,
+            "y": 456,
+            "delay": 0.17,
+            "desc": "Step 45"
+        },
+        {
+            "action": "click",
+            "x": 1019,
+            "y": 456,
+            "delay": 0.15,
+            "desc": "Step 46"
+        },
+        {
+            "action": "click",
+            "x": 1019,
+            "y": 456,
+            "delay": 0.15,
+            "desc": "Step 47"
+        },
+        {
+            "action": "click",
+            "x": 1019,
+            "y": 456,
+            "delay": 0.17,
+            "desc": "Step 48"
+        },
+        {
+            "action": "click",
+            "x": 1019,
+            "y": 456,
+            "delay": 0.15,
+            "desc": "Step 49"
+        },
+        {
+            "action": "click",
+            "x": 1018,
+            "y": 455,
+            "delay": 0.21,
+            "desc": "Step 50"
+        },
+        {
+            "action": "click",
+            "x": 1017,
+            "y": 455,
+            "delay": 0.4,
+            "desc": "Step 51"
+        },
+        {
+            "action": "click",
+            "x": 1016,
+            "y": 454,
+            "delay": 0.21,
+            "desc": "Step 52"
+        },
+        {
+            "action": "click",
+            "x": 1015,
+            "y": 454,
+            "delay": 0.18,
+            "desc": "Step 53"
+        },
+        {
+            "action": "click",
+            "x": 1015,
+            "y": 453,
+            "delay": 0.17,
+            "desc": "Step 54"
+        },
+        {
+            "action": "click",
+            "x": 1015,
+            "y": 453,
+            "delay": 0.17,
+            "desc": "Step 55"
+        },
+        {
+            "action": "click",
+            "x": 1015,
+            "y": 453,
+            "delay": 0.15,
+            "desc": "Step 56"
+        },
+        {
+            "action": "click",
+            "x": 1015,
+            "y": 453,
+            "delay": 0.17,
+            "desc": "Step 57"
+        },
+        {
+            "action": "click",
+            "x": 1015,
+            "y": 453,
+            "delay": 0.18,
+            "desc": "Step 58"
+        },
+        {
+            "action": "click",
+            "x": 1015,
+            "y": 453,
+            "delay": 0.32,
+            "desc": "Step 59"
+        },
+        {
+            "action": "click",
+            "x": 1015,
+            "y": 452,
+            "delay": 0.17,
+            "desc": "Step 60"
+        },
+        {
+            "action": "click",
+            "x": 1015,
+            "y": 452,
+            "delay": 0.18,
+            "desc": "Step 61"
+        },
+        {
+            "action": "click",
+            "x": 1015,
+            "y": 451,
+            "delay": 0.16,
+            "desc": "Step 62"
+        },
+        {
+            "action": "click",
+            "x": 1015,
+            "y": 451,
+            "delay": 0.19,
+            "desc": "Step 63"
+        },
+        {
+            "action": "click",
+            "x": 1015,
+            "y": 452,
+            "delay": 0.17,
+            "desc": "Step 64"
+        },
+        {
+            "action": "click",
+            "x": 1015,
+            "y": 451,
+            "delay": 0.18,
+            "desc": "Step 65"
+        },
+        {
+            "action": "click",
+            "x": 1013,
+            "y": 450,
+            "delay": 0.16,
+            "desc": "Step 66"
+        },
+        {
+            "action": "click",
+            "x": 1013,
+            "y": 450,
+            "delay": 0.15,
+            "desc": "Step 67"
+        },
+        {
+            "action": "click",
+            "x": 1013,
+            "y": 460,
+            "delay": 1.3,
+            "desc": "Step 68"
+        },
+        {
+            "action": "click",
+            "x": 1013,
+            "y": 460,
+            "delay": 0.15,
+            "desc": "Step 69"
+        },
+        {
+            "action": "click",
+            "x": 881,
+            "y": 257,
+            "delay": 0.74,
+            "desc": "Step 70"
+        },
+        {
+            "action": "click",
+            "x": 315,
+            "y": 189,
+            "delay": 1.13,
+            "desc": "Step 71"
+        },
+        {
+            "action": "click",
+            "x": 771,
+            "y": 514,
+            "delay": 0.82,
+            "desc": "Step 72"
+        },
+        {
+            "action": "click",
+            "x": 1073,
+            "y": 499,
+            "delay": 2.52,
+            "desc": "Step 73"
+        },
+        {
+            "action": "click",
+            "x": 493,
+            "y": 417,
+            "delay": 1.77,
+            "desc": "Step 74"
+        },
+        {
+            "action": "click",
+            "x": 609,
+            "y": 433,
+            "delay": 4.01,
+            "desc": "Step 75"
+        },
+        {
+            "action": "click",
+            "x": 1059,
+            "y": 504,
+            "delay": 1.09,
+            "desc": "Step 76"
+        },
+        {
+            "action": "click",
+            "x": 532,
+            "y": 429,
+            "delay": 1.15,
+            "desc": "Step 77"
+        },
+        {
+            "action": "click",
+            "x": 606,
+            "y": 447,
+            "delay": 3.82,
+            "desc": "Step 78"
+        },
+        {
+            "action": "click",
+            "x": 1070,
+            "y": 492,
+            "delay": 1.0,
+            "desc": "Step 79"
+        },
+        {
+            "action": "click",
+            "x": 535,
+            "y": 430,
+            "delay": 1.38,
+            "desc": "Step 80"
+        },
+        {
+            "action": "click",
+            "x": 636,
+            "y": 435,
+            "delay": 4.08,
+            "desc": "Step 81"
+        },
+        {
+            "action": "click",
+            "x": 404,
+            "y": 92,
+            "delay": 1.23,
+            "desc": "Step 82"
+        },
+        {
+            "action": "click",
+            "x": 822,
+            "y": 598,
+            "delay": 5.83,
+            "desc": "Step 83"
+        },
+        {
+            "action": "click",
+            "x": 540,
+            "y": 438,
+            "delay": 2.02,
+            "desc": "Step 84"
+        },
+        {
+            "action": "click",
+            "x": 616,
+            "y": 438,
+            "delay": 4.16,
+            "desc": "Step 85"
+        },
+        {
+            "action": "click",
+            "x": 1129,
+            "y": 122,
+            "delay": 1.96,
+            "desc": "Step 86"
+        },
+        {
+            "action": "click",
+            "x": 495,
+            "y": 429,
+            "delay": 3.88,
+            "desc": "Step 87"
+        },
+        {
+            "action": "click",
+            "x": 598,
+            "y": 425,
+            "delay": 4.1,
+            "desc": "Step 88"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 184,
+            "delay": 0.91,
+            "desc": "Step 89"
+        },
+        {
+            "action": "click",
+            "x": 1089,
+            "y": 161,
+            "delay": 4.71,
+            "desc": "Step 90"
+        },
+        {
+            "action": "click",
+            "x": 801,
+            "y": 587,
+            "delay": 6.96,
+            "desc": "Step 91"
+        },
+        {
+            "action": "click",
+            "x": 527,
+            "y": 429,
+            "delay": 3.34,
+            "desc": "Step 92"
+        },
+        {
+            "action": "click",
+            "x": 623,
+            "y": 437,
+            "delay": 4.1,
+            "desc": "Step 93"
+        },
+        {
+            "action": "click",
+            "x": 784,
+            "y": 580,
+            "delay": 0.97,
+            "desc": "Step 94"
+        },
+        {
+            "action": "click",
+            "x": 538,
+            "y": 440,
+            "delay": 1.02,
+            "desc": "Step 95"
+        },
+        {
+            "action": "click",
+            "x": 572,
+            "y": 443,
+            "delay": 4.42,
+            "desc": "Step 96"
+        },
+        {
+            "action": "click",
+            "x": 965,
+            "y": 661,
+            "delay": 1.57,
+            "desc": "Step 97"
+        },
+        {
+            "action": "click",
+            "x": 691,
+            "y": 463,
+            "delay": 5.12,
+            "desc": "Step 98"
+        },
+        {
+            "action": "click",
+            "x": 214,
+            "y": 383,
+            "delay": 2.23,
+            "desc": "Step 99"
+        },
+        {
+            "action": "click",
+            "x": 610,
+            "y": 456,
+            "delay": 1.34,
+            "desc": "Step 100"
+        },
+        {
+            "action": "click",
+            "x": 467,
+            "y": 499,
+            "delay": 1.58,
+            "desc": "Step 101"
+        },
+        {
+            "action": "click",
+            "x": 470,
+            "y": 443,
+            "delay": 1.06,
+            "desc": "Step 102"
+        },
+        {
+            "action": "click",
+            "x": 943,
+            "y": 445,
+            "delay": 2.03,
+            "desc": "Step 103"
+        },
+        {
+            "action": "click",
+            "x": 332,
+            "y": 193,
+            "delay": 1.38,
+            "desc": "Step 104"
+        },
+        {
+            "action": "click",
+            "x": 793,
+            "y": 492,
+            "delay": 1.23,
+            "desc": "Step 105"
+        },
+        {
+            "action": "click",
+            "x": 720,
+            "y": 571,
+            "delay": 3.74,
+            "desc": "Step 106"
+        },
+        {
+            "action": "click",
+            "x": 676,
+            "y": 367,
+            "delay": 2.68,
+            "desc": "Step 107"
+        },
+        {
+            "action": "click",
+            "x": 509,
+            "y": 419,
+            "delay": 2.64,
+            "desc": "Step 108"
+        },
+        {
+            "action": "click",
+            "x": 631,
+            "y": 440,
+            "delay": 3.96,
+            "desc": "Step 109"
+        },
+        {
+            "action": "click",
+            "x": 542,
+            "y": 571,
+            "delay": 0.78,
+            "desc": "Step 110"
+        },
+        {
+            "action": "click",
+            "x": 546,
+            "y": 440,
+            "delay": 2.16,
+            "desc": "Step 111"
+        },
+        {
+            "action": "click",
+            "x": 591,
+            "y": 445,
+            "delay": 3.99,
+            "desc": "Step 112"
+        },
+        {
+            "action": "click",
+            "x": 1075,
+            "y": 352,
+            "delay": 0.7,
+            "desc": "Step 113"
+        },
+        {
+            "action": "click",
+            "x": 497,
+            "y": 444,
+            "delay": 3.6,
+            "desc": "Step 114"
+        },
+        {
+            "action": "click",
+            "x": 622,
+            "y": 438,
+            "delay": 4.39,
+            "desc": "Step 115"
+        },
+        {
+            "action": "click",
+            "x": 850,
+            "y": 92,
+            "delay": 1.22,
+            "desc": "Step 116"
+        },
+        {
+            "action": "click",
+            "x": 119,
+            "y": 590,
+            "delay": 3.88,
+            "desc": "Step 117"
+        },
+        {
+            "action": "click",
+            "x": 540,
+            "y": 437,
+            "delay": 3.22,
+            "desc": "Step 118"
+        },
+        {
+            "action": "click",
+            "x": 583,
+            "y": 429,
+            "delay": 0.67,
+            "desc": "Step 119"
+        },
+        {
+            "action": "click",
+            "x": 584,
+            "y": 429,
+            "delay": 0.52,
+            "desc": "Step 120"
+        },
+        {
+            "action": "click",
+            "x": 968,
+            "y": 241,
+            "delay": 2.53,
+            "desc": "Step 121"
+        },
+        {
+            "action": "click",
+            "x": 619,
+            "y": 431,
+            "delay": 1.42,
+            "desc": "Step 122"
+        },
+        {
+            "action": "click",
+            "x": 558,
+            "y": 426,
+            "delay": 9.58,
+            "desc": "Step 123"
+        },
+        {
+            "action": "click",
+            "x": 583,
+            "y": 430,
+            "delay": 0.62,
+            "desc": "Step 124"
+        },
+        {
+            "action": "click",
+            "x": 65,
+            "y": 640,
+            "delay": 0.91,
+            "desc": "Step 125"
+        },
+        {
+            "action": "click",
+            "x": 978,
+            "y": 195,
+            "delay": 1.51,
+            "desc": "Step 126"
+        },
+        {
+            "action": "click",
+            "x": 520,
+            "y": 364,
+            "delay": 2.02,
+            "desc": "Step 127"
+        },
+        {
+            "action": "click",
+            "x": 811,
+            "y": 275,
+            "delay": 2.56,
+            "desc": "Step 128"
+        },
+        {
+            "action": "click",
+            "x": 535,
+            "y": 477,
+            "delay": 2.13,
+            "desc": "Step 129"
+        },
+        {
+            "action": "click",
+            "x": 85,
+            "y": 102,
+            "delay": 4.05,
+            "desc": "Step 130"
+        },
+        {
+            "action": "click",
+            "x": 84,
+            "y": 102,
+            "delay": 0.18,
+            "desc": "Step 131"
+        },
+        {
+            "action": "click",
+            "x": 78,
+            "y": 112,
+            "delay": 0.17,
+            "desc": "Step 132"
+        },
+        {
+            "action": "click",
+            "x": 79,
+            "y": 112,
+            "delay": 0.18,
+            "desc": "Step 133"
+        },
+        {
+            "action": "click",
+            "x": 79,
+            "y": 113,
+            "delay": 0.17,
+            "desc": "Step 134"
+        },
+        {
+            "action": "click",
+            "x": 79,
+            "y": 115,
+            "delay": 0.15,
+            "desc": "Step 135"
+        },
+        {
+            "action": "click",
+            "x": 79,
+            "y": 115,
+            "delay": 0.14,
+            "desc": "Step 136"
+        },
+        {
+            "action": "click",
+            "x": 80,
+            "y": 117,
+            "delay": 0.19,
+            "desc": "Step 137"
+        },
+        {
+            "action": "click",
+            "x": 80,
+            "y": 118,
+            "delay": 0.17,
+            "desc": "Step 138"
+        },
+        {
+            "action": "click",
+            "x": 79,
+            "y": 119,
+            "delay": 0.17,
+            "desc": "Step 139"
+        },
+        {
+            "action": "click",
+            "x": 616,
+            "y": 441,
+            "delay": 0.91,
+            "desc": "Step 140"
+        },
+        {
+            "action": "click",
+            "x": 615,
+            "y": 440,
+            "delay": 0.17,
+            "desc": "Step 141"
+        },
+        {
+            "action": "click",
+            "x": 613,
+            "y": 439,
+            "delay": 0.17,
+            "desc": "Step 142"
+        },
+        {
+            "action": "click",
+            "x": 611,
+            "y": 440,
+            "delay": 0.16,
+            "desc": "Step 143"
+        },
+        {
+            "action": "click",
+            "x": 609,
+            "y": 440,
+            "delay": 0.17,
+            "desc": "Step 144"
+        },
+        {
+            "action": "click",
+            "x": 618,
+            "y": 435,
+            "delay": 0.18,
+            "desc": "Step 145"
+        },
+        {
+            "action": "click",
+            "x": 616,
+            "y": 437,
+            "delay": 0.17,
+            "desc": "Step 146"
+        },
+        {
+            "action": "click",
+            "x": 618,
+            "y": 434,
+            "delay": 0.17,
+            "desc": "Step 147"
+        },
+        {
+            "action": "click",
+            "x": 617,
+            "y": 436,
+            "delay": 0.18,
+            "desc": "Step 148"
+        },
+        {
+            "action": "click",
+            "x": 616,
+            "y": 438,
+            "delay": 0.15,
+            "desc": "Step 149"
+        },
+        {
+            "action": "click",
+            "x": 616,
+            "y": 438,
+            "delay": 0.17,
+            "desc": "Step 150"
+        },
+        {
+            "action": "click",
+            "x": 332,
+            "y": 80,
+            "delay": 0.85,
+            "desc": "Step 151"
+        },
+        {
+            "action": "click",
+            "x": 333,
+            "y": 81,
+            "delay": 0.17,
+            "desc": "Step 152"
+        },
+        {
+            "action": "click",
+            "x": 333,
+            "y": 83,
+            "delay": 0.17,
+            "desc": "Step 153"
+        },
+        {
+            "action": "click",
+            "x": 333,
+            "y": 83,
+            "delay": 0.17,
+            "desc": "Step 154"
+        },
+        {
+            "action": "click",
+            "x": 332,
+            "y": 84,
+            "delay": 0.17,
+            "desc": "Step 155"
+        },
+        {
+            "action": "click",
+            "x": 331,
+            "y": 84,
+            "delay": 0.16,
+            "desc": "Step 156"
+        },
+        {
+            "action": "click",
+            "x": 331,
+            "y": 86,
+            "delay": 0.17,
+            "desc": "Step 157"
+        },
+        {
+            "action": "click",
+            "x": 331,
+            "y": 87,
+            "delay": 0.17,
+            "desc": "Step 158"
+        },
+        {
+            "action": "click",
+            "x": 331,
+            "y": 89,
+            "delay": 0.15,
+            "desc": "Step 159"
+        },
+        {
+            "action": "click",
+            "x": 623,
+            "y": 459,
+            "delay": 0.83,
+            "desc": "Step 160"
+        },
+        {
+            "action": "click",
+            "x": 622,
+            "y": 457,
+            "delay": 0.17,
+            "desc": "Step 161"
+        },
+        {
+            "action": "click",
+            "x": 621,
+            "y": 453,
+            "delay": 0.18,
+            "desc": "Step 162"
+        },
+        {
+            "action": "click",
+            "x": 621,
+            "y": 452,
+            "delay": 0.16,
+            "desc": "Step 163"
+        },
+        {
+            "action": "click",
+            "x": 620,
+            "y": 455,
+            "delay": 0.18,
+            "desc": "Step 164"
+        },
+        {
+            "action": "click",
+            "x": 619,
+            "y": 455,
+            "delay": 0.17,
+            "desc": "Step 165"
+        },
+        {
+            "action": "click",
+            "x": 619,
+            "y": 454,
+            "delay": 0.17,
+            "desc": "Step 166"
+        },
+        {
+            "action": "click",
+            "x": 620,
+            "y": 449,
+            "delay": 0.18,
+            "desc": "Step 167"
+        },
+        {
+            "action": "click",
+            "x": 620,
+            "y": 447,
+            "delay": 0.16,
+            "desc": "Step 168"
+        },
+        {
+            "action": "click",
+            "x": 617,
+            "y": 447,
+            "delay": 0.17,
+            "desc": "Step 169"
+        },
+        {
+            "action": "click",
+            "x": 617,
+            "y": 447,
+            "delay": 0.17,
+            "desc": "Step 170"
+        },
+        {
+            "action": "click",
+            "x": 616,
+            "y": 447,
+            "delay": 0.18,
+            "desc": "Step 171"
+        },
+        {
+            "action": "click",
+            "x": 616,
+            "y": 448,
+            "delay": 0.17,
+            "desc": "Step 172"
+        },
+        {
+            "action": "click",
+            "x": 616,
+            "y": 450,
+            "delay": 0.18,
+            "desc": "Step 173"
+        },
+        {
+            "action": "click",
+            "x": 616,
+            "y": 450,
+            "delay": 0.17,
+            "desc": "Step 174"
+        },
+        {
+            "action": "click",
+            "x": 615,
+            "y": 450,
+            "delay": 0.17,
+            "desc": "Step 175"
+        },
+        {
+            "action": "click",
+            "x": 615,
+            "y": 450,
+            "delay": 0.17,
+            "desc": "Step 176"
+        },
+        {
+            "action": "click",
+            "x": 615,
+            "y": 450,
+            "delay": 0.18,
+            "desc": "Step 177"
+        },
+        {
+            "action": "click",
+            "x": 88,
+            "y": 644,
+            "delay": 3.31,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 491,
+            "y": 253,
+            "delay": 2.68,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 457,
+            "y": 297,
+            "delay": 3.32,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 519,
+            "y": 436,
+            "delay": 2.39,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 603,
+            "y": 415,
+            "delay": 4.02,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 456,
+            "y": 304,
+            "delay": 1.17,
+            "desc": "Step 6"
+        },
+        {
+            "action": "click",
+            "x": 536,
+            "y": 436,
+            "delay": 1.3,
+            "desc": "Step 7"
+        },
+        {
+            "action": "click",
+            "x": 592,
+            "y": 444,
+            "delay": 4.0,
+            "desc": "Step 8"
+        },
+        {
+            "action": "click",
+            "x": 451,
+            "y": 304,
+            "delay": 1.06,
+            "desc": "Step 9"
+        },
+        {
+            "action": "click",
+            "x": 543,
+            "y": 429,
+            "delay": 1.04,
+            "desc": "Step 10"
+        },
+        {
+            "action": "click",
+            "x": 578,
+            "y": 440,
+            "delay": 3.78,
+            "desc": "Step 11"
+        },
+        {
+            "action": "click",
+            "x": 453,
+            "y": 301,
+            "delay": 1.18,
+            "desc": "Step 12"
+        },
+        {
+            "action": "click",
+            "x": 552,
+            "y": 429,
+            "delay": 1.09,
+            "desc": "Step 13"
+        },
+        {
+            "action": "click",
+            "x": 583,
+            "y": 434,
+            "delay": 3.96,
+            "desc": "Step 14"
+        },
+        {
+            "action": "click",
+            "x": 448,
+            "y": 301,
+            "delay": 1.08,
+            "desc": "Step 15"
+        },
+        {
+            "action": "click",
+            "x": 527,
+            "y": 441,
+            "delay": 1.23,
+            "desc": "Step 16"
+        },
+        {
+            "action": "click",
+            "x": 569,
+            "y": 441,
+            "delay": 4.39,
+            "desc": "Step 17"
+        },
+        {
+            "action": "click",
+            "x": 82,
+            "y": 627,
+            "delay": 0.74,
+            "desc": "Step 18"
+        },
+        {
+            "action": "click",
+            "x": 670,
+            "y": 260,
+            "delay": 1.89,
+            "desc": "Step 19"
+        },
+        {
+            "action": "click",
+            "x": 125,
+            "y": 463,
+            "delay": 4.21,
+            "desc": "Step 20"
+        },
+        {
+            "action": "click",
+            "x": 518,
+            "y": 446,
+            "delay": 1.95,
+            "desc": "Step 21"
+        },
+        {
+            "action": "click",
+            "x": 583,
+            "y": 433,
+            "delay": 4.2,
+            "desc": "Step 22"
+        },
+        {
+            "action": "click",
+            "x": 29,
+            "y": 447,
+            "delay": 0.95,
+            "desc": "Step 23"
+        },
+        {
+            "action": "click",
+            "x": 510,
+            "y": 430,
+            "delay": 1.19,
+            "desc": "Step 24"
+        },
+        {
+            "action": "click",
+            "x": 612,
+            "y": 433,
+            "delay": 4.19,
+            "desc": "Step 25"
+        },
+        {
+            "action": "click",
+            "x": 44,
+            "y": 652,
+            "delay": 2.35,
+            "desc": "Step 178"
+        },
+        {
+            "action": "click",
+            "x": 419,
+            "y": 520,
+            "delay": 1.98,
+            "desc": "Step 179"
+        },
+        {
+            "action": "click",
+            "x": 961,
+            "y": 566,
+            "delay": 1.69,
+            "desc": "Step 180"
+        },
+        {
+            "action": "click",
+            "x": 569,
+            "y": 429,
+            "delay": 1.79,
+            "desc": "Step 181"
+        },
+        {
+            "action": "click",
+            "x": 604,
+            "y": 438,
+            "delay": 0.7,
+            "desc": "Step 182"
+        },
+        {
+            "action": "click",
+            "x": 599,
+            "y": 442,
+            "delay": 0.39,
+            "desc": "Step 183"
+        },
+        {
+            "action": "click",
+            "x": 599,
+            "y": 440,
+            "delay": 0.21,
+            "desc": "Step 184"
+        },
+        {
+            "action": "click",
+            "x": 599,
+            "y": 440,
+            "delay": 0.18,
+            "desc": "Step 185"
+        },
+        {
+            "action": "click",
+            "x": 599,
+            "y": 440,
+            "delay": 0.2,
+            "desc": "Step 186"
+        },
+        {
+            "action": "click",
+            "x": 599,
+            "y": 440,
+            "delay": 0.32,
+            "desc": "Step 187"
+        },
+        {
+            "action": "click",
+            "x": 76,
+            "y": 648,
+            "delay": 1.32,
+            "desc": "Step 188"
+        },
+        {
+            "action": "click",
+            "x": 356,
+            "y": 466,
+            "delay": 1.24,
+            "desc": "Step 189"
+        },
+        {
+            "action": "click",
+            "x": 1034,
+            "y": 479,
+            "delay": 2.03,
+            "desc": "Step 190"
+        },
+        {
+            "action": "click",
+            "x": 609,
+            "y": 445,
+            "delay": 4.88,
+            "desc": "Step 191"
+        },
+        {
+            "action": "click",
+            "x": 84,
+            "y": 654,
+            "delay": 1.16,
+            "desc": "Step 192"
+        },
+        {
+            "action": "click",
+            "x": 248,
+            "y": 415,
+            "delay": 1.19,
+            "desc": "Step 193"
+        },
+        {
+            "action": "click",
+            "x": 273,
+            "y": 550,
+            "delay": 2.25,
+            "desc": "Step 194"
+        },
+        {
+            "action": "click",
+            "x": 623,
+            "y": 442,
+            "delay": 1.61,
+            "desc": "Step 195"
+        },
+        {
+            "action": "click",
+            "x": 103,
+            "y": 640,
+            "delay": 1.12,
+            "desc": "Step 196"
+        },
+        {
+            "action": "click",
+            "x": 557,
+            "y": 489,
+            "delay": 1.46,
+            "desc": "Step 197"
+        },
+        {
+            "action": "click",
+            "x": 218,
+            "y": 467,
+            "delay": 4.49,
+            "desc": "Step 198"
+        },
+        {
+            "action": "click",
+            "x": 552,
+            "y": 118,
+            "delay": 6.12,
+            "desc": "Step 199"
+        },
+        {
+            "action": "click",
+            "x": 559,
+            "y": 134,
+            "delay": 3.12,
+            "desc": "Step 199"
+        },
+        {
+            "action": "click",
+            "x": 756,
+            "y": 375,
+            "delay": 3.46,
+            "desc": "Step 200"
+        },
+        {
+            "action": "click",
+            "x": 997,
+            "y": 327,
+            "delay": 1.78,
+            "desc": "Step 201"
+        }
+    ]
+}

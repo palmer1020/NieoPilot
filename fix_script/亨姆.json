@@ -1,0 +1,41 @@
+{
+    "name": "亨姆",
+    "create_time": "2025-12-28 16:27:31",
+    "steps": [
+        {
+            "action": "click",
+            "x": 1050,
+            "y": 679,
+            "delay": 2.53,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 286,
+            "y": 519,
+            "delay": 2.49,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 1055,
+            "y": 669,
+            "delay": 1.4,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 408,
+            "y": 516,
+            "delay": 1.98,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 1055,
+            "y": 674,
+            "delay": 1.93,
+            "desc": "Step 5"
+        }
+    ]
+}

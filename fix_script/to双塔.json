@@ -1,0 +1,118 @@
+{
+    "name": "to双塔",
+    "create_time": "2025-12-26 21:18:47",
+    "steps": [
+        {
+            "action": "click",
+            "x": 52,
+            "y": 353,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 603,
+            "y": 213,
+            "delay": 5.07,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 591,
+            "y": 531,
+            "delay": 1.96,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 591,
+            "y": 531,
+            "delay": 0.84,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 591,
+            "y": 531,
+            "delay": 0.86,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 591,
+            "y": 531,
+            "delay": 0.76,
+            "desc": "Step 6"
+        },
+        {
+            "action": "click",
+            "x": 591,
+            "y": 531,
+            "delay": 0.71,
+            "desc": "Step 7"
+        },
+        {
+            "action": "click",
+            "x": 591,
+            "y": 531,
+            "delay": 0.76,
+            "desc": "Step 8"
+        },
+        {
+            "action": "click",
+            "x": 591,
+            "y": 531,
+            "delay": 0.71,
+            "desc": "Step 9"
+        },
+        {
+            "action": "click",
+            "x": 591,
+            "y": 531,
+            "delay": 0.67,
+            "desc": "Step 10"
+        },
+        {
+            "action": "click",
+            "x": 839,
+            "y": 535,
+            "delay": 2.9,
+            "desc": "Step 11"
+        },
+        {
+            "action": "click",
+            "x": 531,
+            "y": 436,
+            "delay": 1.44,
+            "desc": "Step 12"
+        },
+        {
+            "action": "click",
+            "x": 1003,
+            "y": 373,
+            "delay": 7.66,
+            "desc": "Step 13"
+        },
+        {
+            "action": "click",
+            "x": 962,
+            "y": 370,
+            "delay": 4.62,
+            "desc": "Step 14"
+        },
+        {
+            "action": "click",
+            "x": 374,
+            "y": 603,
+            "delay": 5.24,
+            "desc": "Step 15"
+        },
+        {
+            "action": "click",
+            "x": 611,
+            "y": 453,
+            "delay": 2.49,
+            "desc": "Step 16"
+        }
+    ]
+}

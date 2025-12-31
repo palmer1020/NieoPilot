@@ -1,0 +1,97 @@
+{
+    "name": "nd",
+    "create_time": "2025-12-11 22:49:00",
+    "steps": [
+        {
+            "action": "click",
+            "x": 954,
+            "y": 352,
+            "delay": 0.3,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 818,
+            "y": 433,
+            "delay": 0.4,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 418,
+            "y": 565,
+            "delay": 0.5,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 605,
+            "y": 457,
+            "delay": 5.9,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 603,
+            "y": 455,
+            "delay": 0.1,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 602,
+            "y": 454,
+            "delay": 0.1,
+            "desc": "Step 6"
+        },
+        {
+            "action": "click",
+            "x": 602,
+            "y": 454,
+            "delay": 0.1,
+            "desc": "Step 7"
+        },
+        {
+            "action": "click",
+            "x": 602,
+            "y": 454,
+            "delay": 0.1,
+            "desc": "Step 8"
+        },
+        {
+            "action": "click",
+            "x": 602,
+            "y": 454,
+            "delay": 0.1,
+            "desc": "Step 9"
+        },
+        {
+            "action": "click",
+            "x": 602,
+            "y": 454,
+            "delay": 0.1,
+            "desc": "Step 10"
+        },
+        {
+            "action": "click",
+            "x": 602,
+            "y": 454,
+            "delay": 0.1,
+            "desc": "Step 11"
+        },
+        {
+            "action": "click",
+            "x": 602,
+            "y": 454,
+            "delay": 0.1,
+            "desc": "Step 12"
+        },
+        {
+            "action": "click",
+            "x": 602,
+            "y": 454,
+            "delay": 0.1,
+            "desc": "Step 13"
+        }
+    ]
+}

@@ -1,0 +1,62 @@
+{
+    "name": "to小豆芽",
+    "create_time": "2025-12-24 23:36:33",
+    "steps": [
+        {
+            "action": "click",
+            "x": 214,
+            "y": 386,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 612,
+            "y": 452,
+            "delay": 1.29,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 440,
+            "y": 511,
+            "delay": 1.23,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 540,
+            "y": 396,
+            "delay": 1.15,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 924,
+            "y": 197,
+            "delay": 1.38,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 323,
+            "y": 191,
+            "delay": 1.36,
+            "desc": "Step 6"
+        },
+        {
+            "action": "click",
+            "x": 813,
+            "y": 498,
+            "delay": 1.32,
+            "desc": "Step 7"
+        },
+        {
+            "action": "click",
+            "x": 917,
+            "y": 224,
+            "delay": 7.49,
+            "desc": "Step 8"
+        }
+    ]
+}

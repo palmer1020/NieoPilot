@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+log/
+log*.txt
+advanced_log.txt
+*log.txt
+20251227log.txt
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Project specific - 不需要上传的文件
+debug_ocr/
+human_verify_samples/
+hv_samples/未处理/
+baseline_data/*.pkl
+_restore_backup/
+
+# 临时和生成的文件
+*.tmp
+*.bak
+*.cache
+project_context*.txt
+project_context(1).txt
+project_context————*.txt
+regions_structure.json
+regions_structure.txt
+core/test
+
+# Config (如果需要保留模板，可以注释掉这一行)
+# config.py

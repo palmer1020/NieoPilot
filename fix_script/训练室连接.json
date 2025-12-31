@@ -1,0 +1,27 @@
+{
+    "name": "训练室连接",
+    "create_time": "2025-12-16 21:51:37",
+    "steps": [
+        {
+            "action": "click",
+            "x": 610,
+            "y": 432,
+            "delay": 1.44,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 515,
+            "y": 259,
+            "delay": 2.24,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 902,
+            "y": 503,
+            "delay": 2.69,
+            "desc": "Step 3"
+        }
+    ]
+}
