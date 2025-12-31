@@ -3099,7 +3099,7 @@ class DarRouteRunner:
                         abort_check=lambda: stop_event.is_set() or getattr(self.bot, "stop_current", False),
                     )
                     # 使用统一框架的1AND1确认方法
-                    self._unified_framework._wait_for_confirm_probes(temp_config, timeout_s=10.0)
+                    self._unified_framework._wait_for_confirm_probes(temp_config, timeout_s=2.0)
                 
                 # 5.5 在1AND1消失后，如果背包未关闭，直接扫描探针（避免被污染）
                 # 注意：1AND1不会关闭背包，所以背包应该还是打开的

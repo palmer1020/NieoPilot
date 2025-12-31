@@ -357,15 +357,37 @@ class FixedModeAdapter:
                 window_manager.click_background(cx, cy)
             time.sleep(0.5)
             
-            # 确认
-            r = self.regions.get(actual_keys["confirm"])
-            x1, y1, x2, y2 = r.inner_bbox()
-            cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-            if use_foreground:
-                window_manager.click(cx, cy)
+            # 确认：使用1AND1探针等待（与1v1和大乱斗保持一致）
+            if hasattr(self, 'framework') and self.framework:
+                try:
+                    config = BattleConfig(
+                        mode=BattleMode.FIXED,
+                        use_foreground=use_foreground,
+                        abort_check=lambda: getattr(self.bot, "stop_current", False)
+                    )
+                    self._emit("⏳ 等待1AND1探针确认（2秒超时）...", "INFO")
+                    self.framework._wait_for_confirm_probes(config, timeout_s=2.0)
+                except Exception as e:
+                    self._emit(f"⚠️ 1AND1探针等待失败，回退到普通确认: {e}", "WARN")
+                    # 回退到旧逻辑
+                    r = self.regions.get(actual_keys["confirm"])
+                    x1, y1, x2, y2 = r.inner_bbox()
+                    cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+                    if use_foreground:
+                        window_manager.click(cx, cy)
+                    else:
+                        window_manager.click_background(cx, cy)
+                    time.sleep(0.2)
             else:
-                window_manager.click_background(cx, cy)
-            time.sleep(0.2)
+                # 如果没有统一框架，使用旧逻辑
+                r = self.regions.get(actual_keys["confirm"])
+                x1, y1, x2, y2 = r.inner_bbox()
+                cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+                if use_foreground:
+                    window_manager.click(cx, cy)
+                else:
+                    window_manager.click_background(cx, cy)
+                time.sleep(0.2)
             
             # 关闭背包
             r = self.regions.get(actual_keys["close_bag"])

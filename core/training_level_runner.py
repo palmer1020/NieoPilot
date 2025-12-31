@@ -222,8 +222,25 @@ class TrainingLevelRunner:
         self._click(self.KEY_RECOVER, use_foreground)
         time.sleep(0.5)
 
-        self._click(self.KEY_NORMAL_CONFIRM, use_foreground)
-        time.sleep(0.5)
+        # 使用1AND1探针等待确认（与1v1和大乱斗保持一致）
+        if hasattr(self, 'unified_framework') and self.unified_framework:
+            try:
+                config = BattleConfig(
+                    mode=BattleMode.FIXED,
+                    use_foreground=use_foreground,
+                    abort_check=lambda: getattr(self.bot, "stop_current", False)
+                )
+                self.bot.emit_and_log("⏳ 等待1AND1探针确认（2秒超时）...", "INFO")
+                self.unified_framework._wait_for_confirm_probes(config, timeout_s=2.0)
+            except Exception as e:
+                self.bot.emit_and_log(f"⚠️ 1AND1探针等待失败，回退到普通确认: {e}", "WARN")
+                # 回退到旧逻辑
+                self._click(self.KEY_NORMAL_CONFIRM, use_foreground)
+                time.sleep(0.5)
+        else:
+            # 如果没有统一框架，使用旧逻辑
+            self._click(self.KEY_NORMAL_CONFIRM, use_foreground)
+            time.sleep(0.5)
 
         self._click(close_key, use_foreground)
         time.sleep(0.5)
