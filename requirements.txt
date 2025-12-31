@@ -1,7 +1,8 @@
 PyQt6
 opencv-python
 paddleocr
-numpy
+numpy>=1.24.0,<2.0.0
 pywin32
-pynput
+pynput>=1.7.0
 schedule
+pytesseract

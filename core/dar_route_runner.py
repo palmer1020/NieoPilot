@@ -1914,7 +1914,7 @@ class DarRouteRunner:
                 self._emit("💊 执行恢复流程（进入地图前）", "SYSTEM")
                 self._recover_pets(use_foreground, stop_event, skip_return_storage=True)
                 
-                # 2) 执行地图进入脚本（从 地图\{map_swf_id}.json 读取）
+                # 2) 执行地图进入脚本（从 地图\\{map_swf_id}.json 读取）
                 self._emit(f"🗺️ 执行地图进入脚本：地图\\{profile.map_swf_id}.json", "SYSTEM")
                 if not self._execute_map_entry_script(profile.map_swf_id, use_foreground, stop_event):
                     self._emit("⚠️ 地图进入脚本执行失败，尝试继续", "WARN")
@@ -3134,7 +3134,7 @@ class DarRouteRunner:
     # ---------------------------
     def _execute_map_entry_script(self, map_swf_id: int, use_foreground: bool, stop_event: threading.Event) -> bool:
         """
-        执行地图进入脚本（从 地图\{map_swf_id}.json 读取并执行）
+        执行地图进入脚本（从 地图\\{map_swf_id}.json 读取并执行）
         
         Args:
             map_swf_id: 地图ID

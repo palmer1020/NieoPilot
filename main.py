@@ -2,14 +2,20 @@ def _set_dpi_awareness():
     try:
         import ctypes
         # Per-monitor DPI aware (Windows 8.1+)
-        ctypes.windll.shcore.SetProcessDpiAwareness(2)
-    except Exception:
+        # 尝试使用更新的 API
+        try:
+            # Windows 10 1703+ 推荐方式
+            ctypes.windll.user32.SetProcessDpiAwarenessContext(-2)  # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+        except (AttributeError, OSError):
+            # 回退到旧 API
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except (Exception, OSError):
         try:
             import ctypes
             # System DPI aware fallback
             ctypes.windll.user32.SetProcessDPIAware()
         except Exception:
-            pass
+            pass  # 忽略 DPI 设置失败，不影响功能
 
 _set_dpi_awareness()
 

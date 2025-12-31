@@ -54,3 +54,9 @@ core/test
 
 #Config (如果需要保留模板，可以注释掉这一行)
 config.py
+
+# Batch files (用户本地启动脚本)
+*.bat
+
+# Markdown documentation files
+*.md
