@@ -31,8 +31,9 @@ def measure_image_rgb(image_path: str) -> tuple:
 
 if __name__ == "__main__":
     # 图片路径
-    img1_path = r"C:\Users\dayuz\OneDrive\Desktop\nieo\NieoPilot\assets\templates\对战\切换精灵\切换探针\01_154137_a.png"
-    img2_path = r"C:\Users\dayuz\OneDrive\Desktop\nieo\NieoPilot\assets\templates\对战\切换精灵\切换探针\01_154155_b.png"
+    from config import TEMPLATES_PATH
+    img1_path = os.path.join(TEMPLATES_PATH, "对战", "切换精灵", "切换探针", "01_154137_a.png")
+    img2_path = os.path.join(TEMPLATES_PATH, "对战", "切换精灵", "切换探针", "01_154155_b.png")
     
     import sys
     if sys.platform == 'win32':

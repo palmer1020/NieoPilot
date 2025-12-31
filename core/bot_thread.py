@@ -43,8 +43,9 @@ class BotWorker(QThread):
         self._stop_event = threading.Event()
 
         # ---- 路径 ----
-        region_root = os.path.join(self.project_root, "assets", "regions")
-        template_root = os.path.join(self.project_root, "assets", "templates")
+        from config import REGIONS_PATH, TEMPLATES_PATH
+        region_root = REGIONS_PATH
+        template_root = TEMPLATES_PATH
 
         # ✅ 兼容不同 RegionStore 构造签名
         self.regions = self._init_region_store(region_root)
@@ -736,8 +737,8 @@ class BotWorker(QThread):
                     # ---- 🔧 校准测试（纯屏幕检测） ----
                     if tasks.get("calibration_test") and (not self.stop_current):
                         from core.unified_battle_framework import UnifiedBattleFramework
-                        template_root = os.path.join(self.project_root, "assets", "templates")
-                        framework = UnifiedBattleFramework(self, self.regions, template_root)
+                        from config import TEMPLATES_PATH
+                        framework = UnifiedBattleFramework(self, self.regions, TEMPLATES_PATH)
                         self.emit_and_log("🔧 启动校准测试（纯屏幕检测）", "SYSTEM")
                         success = framework.run_calibration_test(use_foreground=use_foreground)
                         if success:

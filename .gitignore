@@ -52,5 +52,5 @@ regions_structure.json
 regions_structure.txt
 core/test
 
-# Config (如果需要保留模板，可以注释掉这一行)
-# config.py
+#Config (如果需要保留模板，可以注释掉这一行)
+config.py

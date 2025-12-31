@@ -1,9 +1,10 @@
 import os
 import shutil
 from pathlib import Path
+from config import GAME_SWF_OG_FOLDER, GAME_SWF_FOLDER
 
-SRC_DIR = Path(r"C:\Users\dayuz\AppData\Local\Programs\nieoasset\resource\pet\swf_og")
-DST_DIR = Path(r"C:\Users\dayuz\AppData\Local\Programs\nieoasset\resource\pet\swf")
+SRC_DIR = Path(GAME_SWF_OG_FOLDER)
+DST_DIR = Path(GAME_SWF_FOLDER)
 
 def parse_excludes(s: str) -> set[str]:
     """

@@ -262,8 +262,8 @@ class DarRouteRunner:
             from core.unified_battle_framework import UnifiedBattleFramework
             from core.wild_mode_adapter import WildModeAdapter
             
-            template_root = os.path.join(getattr(self.bot, "project_root", os.getcwd()), "assets", "templates")
-            self._unified_framework = UnifiedBattleFramework(self.bot, self.regions, template_root)
+            from config import TEMPLATES_PATH
+            self._unified_framework = UnifiedBattleFramework(self.bot, self.regions, TEMPLATES_PATH)
             self._wild_adapter = WildModeAdapter(self._unified_framework)
             self._emit("✅ 统一框架已初始化（野外模式）", "DEBUG")
         except Exception as e:
@@ -875,10 +875,8 @@ class DarRouteRunner:
             # 5. 初始化统一框架（如果还没有初始化）
             if not self._unified_framework:
                 from core.unified_battle_framework import UnifiedBattleFramework
-                import os
-                project_root = getattr(self.bot, "project_root", os.getcwd())
-                template_root = os.path.join(project_root, "assets", "templates")
-                self._unified_framework = UnifiedBattleFramework(self.bot, self.regions, template_root)
+                from config import TEMPLATES_PATH
+                self._unified_framework = UnifiedBattleFramework(self.bot, self.regions, TEMPLATES_PATH)
             
             if not self._wild_adapter:
                 from core.wild_mode_adapter import WildModeAdapter
@@ -2687,7 +2685,8 @@ class DarRouteRunner:
         - 尼奥：检查并恢复所有野外稀有精灵要删除的序号的并集（10, 16, 27, 104, 144, 252）
         """
         try:
-            swf_folder = r"C:\Users\dayuz\AppData\Local\Programs\nieoasset\resource\pet\swf"
+            from config import GAME_SWF_FOLDER
+            swf_folder = GAME_SWF_FOLDER
             
             # 检查目标文件夹是否存在
             if not os.path.exists(swf_folder):
@@ -2744,8 +2743,9 @@ class DarRouteRunner:
         - 如果缺少 possible_missing_swf_list 中的任何文件，从 swf_og/254.swf 复制并重命名
         """
         try:
-            swf_og_path = r"C:\Users\dayuz\AppData\Local\Programs\nieoasset\resource\pet\swf_og\254.swf"
-            swf_folder = r"C:\Users\dayuz\AppData\Local\Programs\nieoasset\resource\pet\swf"
+            from config import GAME_SWF_OG_TEMPLATE, GAME_SWF_FOLDER
+            swf_og_path = GAME_SWF_OG_TEMPLATE
+            swf_folder = GAME_SWF_FOLDER
             # ✅ 尼奥模式：所有野外稀有精灵要删除的swf的并集 {10, 16, 27, 104, 144, 252}
             possible_missing_swf_list = {10, 16, 27, 104, 144, 252}
             
@@ -3149,8 +3149,8 @@ class DarRouteRunner:
             from core.utils import window_manager
             
             # 构建脚本路径：assets/regions/地图/{map_swf_id}.json
-            project_root = getattr(self.bot, "project_root", os.getcwd())
-            script_path = os.path.join(project_root, "assets", "regions", "地图", f"{map_swf_id}.json")
+            from config import REGIONS_PATH
+            script_path = os.path.join(REGIONS_PATH, "地图", f"{map_swf_id}.json")
             
             if not os.path.exists(script_path):
                 self._emit(f"⚠️ 地图进入脚本不存在: {script_path}，跳过", "WARN")

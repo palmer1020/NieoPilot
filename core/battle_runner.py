@@ -108,8 +108,8 @@ class BattleRunner:
         self.template_root = template_root
 
         self._kernel_q = deque(maxlen=6000)
-        save_root = os.path.join(getattr(self.bot, "project_root", os.getcwd()), "hv_samples")
-        self.hv_watcher = HumanVerifyWatcher(self.bot, self.regions, save_root=save_root)
+        from config import HV_SAMPLES_PATH
+        self.hv_watcher = HumanVerifyWatcher(self.bot, self.regions, save_root=HV_SAMPLES_PATH)
         self._hv_prebattle = True  # 用于限制只在“入战前”判定 burst
         self._kernel_cb = None
 
@@ -122,8 +122,8 @@ class BattleRunner:
 
         # 统计：用于“每5场恢复一次”
         self._battle_count = 0
-        save_root = os.path.join(getattr(self.bot, "project_root", os.getcwd()), "hv_samples")
-        self.hv_watcher = HumanVerifyWatcher(self.bot, self.regions, save_root=save_root)
+        from config import HV_SAMPLES_PATH
+        self.hv_watcher = HumanVerifyWatcher(self.bot, self.regions, save_root=HV_SAMPLES_PATH)
         self._click_log_throttle: Dict[str, float] = {}  # 点击日志节流
 
 
@@ -503,9 +503,9 @@ class BattleRunner:
     # Stage1.5 人机验证：截图入库 + 自动暂停
     # -------------------------
     def _ensure_hv_dirs(self) -> Tuple[str, str]:
-        root = os.path.join(self.bot.project_root, self.HV_SAVE_ROOT_REL)
-        unlab = os.path.join(root, self.HV_UNLABELED)
-        lab = os.path.join(root, self.HV_LABELED)
+        from config import HV_SAMPLES_PATH
+        unlab = os.path.join(HV_SAMPLES_PATH, self.HV_UNLABELED)
+        lab = os.path.join(HV_SAMPLES_PATH, self.HV_LABELED)
         os.makedirs(unlab, exist_ok=True)
         os.makedirs(lab, exist_ok=True)
         return unlab, lab

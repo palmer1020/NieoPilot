@@ -99,6 +99,10 @@ git push -u origin main
 git clone https://github.com/YOUR_USERNAME/NieoPilot.git
 cd NieoPilot
 
+# 复制配置文件模板并修改
+copy config.py.template config.py
+# 然后编辑 config.py，修改其中的路径配置（游戏路径、Tesseract 路径等）
+
 # 创建虚拟环境并安装依赖
 python -m venv venv
 .\venv\Scripts\activate
@@ -155,9 +159,10 @@ git push
 
 ## ⚠️ 注意事项
 
-1. **不要上传敏感信息**：
-   - `config.py` 中的游戏路径是个人配置，可以考虑添加到 `.gitignore`
-   - 如果包含敏感信息，使用环境变量或配置文件模板
+1. **配置文件说明**：
+   - `config.py`：个人配置文件，包含你的路径设置（已在 `.gitignore` 中，不会被上传）
+   - `config.py.template`：配置文件模板，供其他用户参考（会被上传到 GitHub）
+   - 新用户需要复制 `config.py.template` 为 `config.py` 并修改其中的路径配置
 
 2. **提交前检查**：
    ```powershell

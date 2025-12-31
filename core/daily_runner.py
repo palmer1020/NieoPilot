@@ -143,7 +143,8 @@ class DailyRunner:
             return False
 
         use_foreground = (not background_mode)
-        template_root = os.path.join(BASE_PATH, "assets", "templates")
+        from config import TEMPLATES_PATH
+        template_root = TEMPLATES_PATH
 
         # 触发对战的 region（对应：assets/regions/勇者之塔/点击对战.json）
         battle_key = "勇者之塔.点击对战"
@@ -215,8 +216,8 @@ class DailyRunner:
             self._emit("❌ DailyRunner 缺少 bot.regions，无法执行大乱斗x2", "ERROR")
             return False
         
-        template_root = os.path.join(BASE_PATH, "assets", "templates")
-        cleaner = PostBattleCleaner(self.bot, regions, template_root)
+        from config import TEMPLATES_PATH
+        cleaner = PostBattleCleaner(self.bot, regions, TEMPLATES_PATH)
         
         # 初始化统一框架（用于探针检测和战斗逻辑）
         if self._unified_framework is None:
@@ -747,8 +748,8 @@ class DailyRunner:
             self._emit("❌ DailyRunner 缺少 bot.regions，无法执行1v1x2", "ERROR")
             return False
         
-        template_root = os.path.join(BASE_PATH, "assets", "templates")
-        cleaner = PostBattleCleaner(self.bot, regions, template_root)
+        from config import TEMPLATES_PATH
+        cleaner = PostBattleCleaner(self.bot, regions, TEMPLATES_PATH)
         
         # 初始化统一框架（用于探针检测和战斗逻辑）
         if self._unified_framework is None:

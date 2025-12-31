@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import os
 
 # ==========================================
 # 1. 模拟神经网络分类器部分
@@ -178,7 +179,8 @@ class PetQuizSolver:
 # ==========================================
 if __name__ == "__main__":
     # 输入图片路径（你提供的包含整个桌面的截图）
-    image_path = r"C:\Users\dayuz\OneDrive\Desktop\nieo\NieoPilot\hv_samples\未处理\20251217_155947_hv_78a28517_panel.png" 
+    from config import HV_SAMPLES_PATH
+    image_path = os.path.join(HV_SAMPLES_PATH, "未处理", "20251217_155947_hv_78a28517_panel.png") 
 
     # 1. 实例化模拟的 CNN 模型
     cnn_model = SimplePetOrientationCNN()

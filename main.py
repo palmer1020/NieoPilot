@@ -15,9 +15,10 @@ _set_dpi_awareness()
 
 import os
 import pytesseract
+from config import TESSERACT_CMD, TESSDATA_PREFIX
 
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-os.environ["TESSDATA_PREFIX"] = r"C:\Program Files\Tesseract-OCR\tessdata"
+pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
+os.environ["TESSDATA_PREFIX"] = TESSDATA_PREFIX
 
 import sys
 from PyQt6.QtWidgets import QApplication
