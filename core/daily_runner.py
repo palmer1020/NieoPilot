@@ -221,7 +221,7 @@ class DailyRunner:
         
         # 初始化统一框架（用于探针检测和战斗逻辑）
         if self._unified_framework is None:
-            self._unified_framework = UnifiedBattleFramework(self.bot, regions, template_root)
+            self._unified_framework = UnifiedBattleFramework(self.bot, regions, TEMPLATES_PATH)
         
         # 执行两次战斗
         for battle_num in range(2):
@@ -753,7 +753,7 @@ class DailyRunner:
         
         # 初始化统一框架（用于探针检测和战斗逻辑）
         if self._unified_framework is None:
-            self._unified_framework = UnifiedBattleFramework(self.bot, regions, template_root)
+            self._unified_framework = UnifiedBattleFramework(self.bot, regions, TEMPLATES_PATH)
         
         # 执行两次战斗
         for battle_num in range(2):
