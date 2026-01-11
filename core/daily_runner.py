@@ -3,7 +3,7 @@ import json
 import os
 import random
 import time
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
 from core.logger import logger
 from core.utils import window_manager
@@ -975,10 +975,24 @@ class DailyRunner:
                     bg = bool(bg_override)
 
                 mode_text = "后台" if bg else "前台"
-                self._emit(
-                    f"✅ [步骤 {idx}] 点击: ({int(gx)}, {int(gy)}) | 延迟 {delay:.2f}s | 模式: {mode_text}",
-                    "DEBUG",
-                )
+                
+                # 构建日志信息，显示区域名称（如果有）
+                log_info = f"✅ [步骤 {idx}] 点击: ({int(gx)}, {int(gy)})"
+                
+                # 如果使用了区域名称，在日志中显示
+                if "x" in step and "y" in step:
+                    x_val = step["x"]
+                    y_val = step["y"]
+                    region_info = []
+                    if isinstance(x_val, str):
+                        region_info.append(f"x={x_val}")
+                    if isinstance(y_val, str):
+                        region_info.append(f"y={y_val}")
+                    if region_info:
+                        log_info += f" | 区域: {', '.join(region_info)}"
+                
+                log_info += f" | 延迟 {delay:.2f}s | 模式: {mode_text}"
+                self._emit(log_info, "DEBUG")
 
                 time.sleep(delay)
 
@@ -1018,21 +1032,117 @@ class DailyRunner:
         return None
 
     def _parse_step_xy(self, step: Dict[str, Any]):
-        if "x" in step and "y" in step:
+        """解析步骤坐标，支持：
+        1. 数字坐标：{"x": 100, "y": 200}
+        2. 区域名称：{"x": "对战.胜利探针", "y": "对战.胜利探针"} 或 {"x": "对战.胜利探针", "y": 200}
+        3. 数组格式：{"pos": [100, 200]}
+        4. gx/gy格式：{"gx": 100, "gy": 200}
+        """
+        # 辅助函数：获取区域的中心点坐标
+        def _get_region_center(region_name: str) -> Optional[Tuple[float, float]]:
+            """从区域名称获取中心点坐标"""
+            regions = getattr(self.bot, "regions", None)
+            if not regions:
+                return None
+            region = regions.get(region_name)
+            if not region:
+                return None
             try:
-                return float(step["x"]), float(step["y"])
+                x1, y1, x2, y2 = region.outer_bbox()
+                return (x1 + x2) / 2.0, (y1 + y2) / 2.0
             except Exception:
-                return None, None
+                return None
 
+        # 1. 解析 x, y 格式
+        if "x" in step and "y" in step:
+            x_val = step["x"]
+            y_val = step["y"]
+            
+            # 如果 x 是字符串（区域名称）
+            if isinstance(x_val, str):
+                center = _get_region_center(x_val)
+                if center is None:
+                    self._emit(f"⚠️ 找不到区域：{x_val}", "WARN")
+                    return None, None
+                gx = center[0]
+            else:
+                # x 是数字
+                try:
+                    gx = float(x_val)
+                except (ValueError, TypeError):
+                    return None, None
+            
+            # 如果 y 是字符串（区域名称）
+            if isinstance(y_val, str):
+                center = _get_region_center(y_val)
+                if center is None:
+                    self._emit(f"⚠️ 找不到区域：{y_val}", "WARN")
+                    return None, None
+                gy = center[1]
+            else:
+                # y 是数字
+                try:
+                    gy = float(y_val)
+                except (ValueError, TypeError):
+                    return None, None
+            
+            return gx, gy
+
+        # 2. 解析 pos 数组格式（兼容旧格式）
         if "pos" in step and isinstance(step["pos"], (list, tuple)) and len(step["pos"]) >= 2:
             try:
-                return float(step["pos"][0]), float(step["pos"][1])
+                pos_x = step["pos"][0]
+                pos_y = step["pos"][1]
+                
+                # 支持 pos 中也可以是区域名称
+                if isinstance(pos_x, str):
+                    center = _get_region_center(pos_x)
+                    if center is None:
+                        self._emit(f"⚠️ 找不到区域：{pos_x}", "WARN")
+                        return None, None
+                    gx = center[0]
+                else:
+                    gx = float(pos_x)
+                
+                if isinstance(pos_y, str):
+                    center = _get_region_center(pos_y)
+                    if center is None:
+                        self._emit(f"⚠️ 找不到区域：{pos_y}", "WARN")
+                        return None, None
+                    gy = center[1]
+                else:
+                    gy = float(pos_y)
+                
+                return gx, gy
             except Exception:
                 return None, None
 
+        # 3. 解析 gx, gy 格式（兼容旧格式）
         if "gx" in step and "gy" in step:
             try:
-                return float(step["gx"]), float(step["gy"])
+                gx_val = step["gx"]
+                gy_val = step["gy"]
+                
+                # 支持 gx/gy 中也可以是区域名称
+                if isinstance(gx_val, str):
+                    center = _get_region_center(gx_val)
+                    if center is None:
+                        self._emit(f"⚠️ 找不到区域：{gx_val}", "WARN")
+                        return None, None
+                    gx = center[0]
+                else:
+                    gx = float(gx_val)
+                
+                if isinstance(gy_val, str):
+                    center = _get_region_center(gy_val)
+                    if center is None:
+                        self._emit(f"⚠️ 找不到区域：{gy_val}", "WARN")
+                        return None, None
+                    gy = center[1]
+                else:
+                    gy = float(gy_val)
+                
+                return gx, gy
             except Exception:
                 return None, None
 
