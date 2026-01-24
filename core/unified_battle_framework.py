@@ -108,6 +108,11 @@ class UnifiedBattleFramework:
     # 邮件配置
     EMAIL_ADDRESS = "1713518932qqcom@gmail.com"
     
+    # 电池区域
+    KEY_BATTERY = "系统.电池"
+    COLOR_BATTERY_RED = (255, 0, 0)  # #FF0000
+    COLOR_BATTERY_BLACK = (0, 0, 0)  # #000000
+    
     def __init__(self, bot, regions: RegionStore, template_root: str):
         self.bot = bot
         self.regions = regions
@@ -1363,6 +1368,55 @@ class UnifiedBattleFramework:
         ok2 = self._check_color_strict(key2, color2, tolerance)
         return ok1, ok2
     
+    def _detect_battery_status(self, use_foreground: bool = False) -> Optional[int]:
+        """
+        检测电池状态
+        - 红色 #FF0000 -> 返回 1
+        - 黑色 #000000 -> 返回 0
+        - 其他或检测失败 -> 返回 None
+        
+        Returns:
+            1: 红色（有电）
+            0: 黑色（无电）
+            None: 检测失败
+        """
+        try:
+            battery_reg = self.regions.get(self.KEY_BATTERY)
+            if not battery_reg:
+                self._emit("⚠️ 电池区域不存在", "WARN")
+                return None
+            
+            # 获取区域图像
+            gx1, gy1, gx2, gy2 = battery_reg.outer_bbox()
+            img = window_manager.grab_game_bbox(gx1, gy1, gx2, gy2)
+            if img is None:
+                return None
+            
+            # 计算平均RGB
+            pixels = list(img.getdata())
+            if not pixels:
+                return None
+            
+            r = int(round(sum(p[0] for p in pixels) / len(pixels)))
+            g = int(round(sum(p[1] for p in pixels) / len(pixels)))
+            b = int(round(sum(p[2] for p in pixels) / len(pixels)))
+            mean_rgb = (r, g, b)
+            
+            # 严格匹配红色或黑色（允许小误差 tolerance=5）
+            tolerance = 5
+            if (abs(r - 255) <= tolerance and abs(g - 0) <= tolerance and abs(b - 0) <= tolerance):
+                self._emit(f"🔋 电池状态检测：红色 (RGB={mean_rgb}) -> 1", "INFO")
+                return 1
+            elif (abs(r - 0) <= tolerance and abs(g - 0) <= tolerance and abs(b - 0) <= tolerance):
+                self._emit(f"🔋 电池状态检测：黑色 (RGB={mean_rgb}) -> 0", "INFO")
+                return 0
+            else:
+                self._emit(f"⚠️ 电池状态检测：未知颜色 (RGB={mean_rgb})", "WARN")
+                return None
+        except Exception as e:
+            self._emit(f"❌ 电池状态检测异常: {e}", "ERROR")
+            return None
+    
     def stage4_post_battle(self, config: BattleConfig, is_training_room: bool = False, is_hero_tower: bool = False) -> bool:
         """
         Stage 4: 战斗结束处理
@@ -1515,6 +1569,48 @@ class UnifiedBattleFramework:
             # 未知动作类型，默认进入1 AND 1检测
             self._emit("⚠️ 未知动作类型，默认进入1 AND 1检测", "WARN")
             self._wait_for_confirm_probes(config)
+        
+        # ✅ 新增：1AND1之后，检测电池状态（仅野外模式）
+        if config.mode == BattleMode.WILD:
+            battery_status_after = self._detect_battery_status(config.use_foreground)
+            if battery_status_after is not None:
+                self._emit(f"🔋 [战后检测] 电池状态: {battery_status_after}", "INFO")
+                
+                # 如果是在 DarRouteRunner 中调用，比较状态并决定是否刷新重连
+                if hasattr(self.bot, 'dar_route_runner'):
+                    dar_runner = self.bot.dar_route_runner
+                    battery_before = getattr(dar_runner, '_battery_status_before_battle', None)
+                    
+                    if battery_before is not None:
+                        # 获取当前profile，判断是否为双塔或嘟咕噜模式
+                        current_profile = getattr(dar_runner, '_current_profile', None)
+                        profile_name_lower = current_profile.name.lower() if current_profile else ""
+                        is_shuangta_or_dugulu = "双塔" in profile_name_lower or "嘟咕噜" in profile_name_lower
+                        
+                        # 双塔和嘟咕噜模式：使用1 to 0触发重启
+                        # 其他模式：使用测试模式标志判断
+                        if is_shuangta_or_dugulu:
+                            # 双塔和嘟咕噜模式：1 to 0 触发
+                            if battery_before == 1 and battery_status_after == 0:
+                                self._emit(f"⚠️ [电池检测] 状态变化: {battery_before} to {battery_status_after} ({profile_name_lower}模式：1 to 0) -> 触发刷新重连", "WARN")
+                                dar_runner._battery_status_after_battle = battery_status_after
+                                dar_runner._should_refresh_reconnect = True
+                        else:
+                            # 其他模式：根据测试模式标志判断
+                            test_mode = getattr(dar_runner, '_battery_test_mode', True)
+                            
+                            if test_mode:
+                                # 测试模式：1 to 1
+                                if battery_before == 1 and battery_status_after == 1:
+                                    self._emit(f"⚠️ [电池检测] 状态变化: {battery_before} to {battery_status_after} (测试模式：1 to 1) -> 触发刷新重连", "WARN")
+                                    dar_runner._battery_status_after_battle = battery_status_after
+                                    dar_runner._should_refresh_reconnect = True
+                            else:
+                                # 正式模式：1 to 0
+                                if battery_before == 1 and battery_status_after == 0:
+                                    self._emit(f"⚠️ [电池检测] 状态变化: {battery_before} to {battery_status_after} (正式模式：1 to 0) -> 触发刷新重连", "WARN")
+                                    dar_runner._battery_status_after_battle = battery_status_after
+                                    dar_runner._should_refresh_reconnect = True
         
         return True
     

@@ -248,6 +248,12 @@ class DarRouteRunner:
         # 探针扫描结果（用于战斗中切换精灵）
         self._flash_aifeia_pos: Optional[str] = None  # 闪光艾菲亚的位置（"二"或"三"）
         
+        # 电池状态相关
+        self._battery_status_before_battle: Optional[int] = None  # 入站前最后一个电池状态
+        self._battery_status_after_battle: Optional[int] = None  # 战后的电池状态
+        self._battery_test_mode = True  # 测试模式：1 to 1 触发重连；正式模式改为 False：1 to 0 触发重连
+        self._should_refresh_reconnect = False  # 是否需要刷新重连
+        
         # 敌方信息监控：最后一次测得的等级和血量（用于双塔模式逃跑判断）
         self._last_enemy_level: Optional[int] = None
         self._last_enemy_hp: Optional[int] = None
@@ -1872,6 +1878,8 @@ class DarRouteRunner:
     ) -> None:
         try:
             profile = profile or DEFAULT_PROFILE_MANTIS
+            # ✅ 保存当前profile，供刷新重连时使用
+            self._current_profile = profile
             # ✅ 重置1AND1监控标志（确保新任务开始时标志正确）
             self._stop_1and1_monitoring = False
             
@@ -1908,7 +1916,7 @@ class DarRouteRunner:
             if profile.name == "闪光皮皮(164)":
                 # 1) 执行恢复逻辑（不包含放回仓库）
                 self._emit("💊 [闪光皮皮] 执行恢复流程", "SYSTEM")
-                self._recover_pets(use_foreground, stop_event, skip_return_storage=True)
+                self._recover_pets(use_foreground, stop_event, skip_return_storage=True, profile=profile)
                 
                 # 2) 执行地图进入脚本（切换到10号地图）
                 self._emit("🗺️ [闪光皮皮] 执行地图进入脚本：地图\\10.json（切换到10号地图）", "SYSTEM")
@@ -1930,7 +1938,7 @@ class DarRouteRunner:
             else:
                 # 普通流程：先执行恢复逻辑（不包含放回仓库）
                 self._emit("💊 执行恢复流程（进入地图前）", "SYSTEM")
-                self._recover_pets(use_foreground, stop_event, skip_return_storage=True)
+                self._recover_pets(use_foreground, stop_event, skip_return_storage=True, profile=profile)
                 
                 # 2) 执行地图进入脚本（从 地图\\{map_swf_id}.json 读取）
                 self._emit(f"🗺️ 执行地图进入脚本：地图\\{profile.map_swf_id}.json", "SYSTEM")
@@ -1943,6 +1951,15 @@ class DarRouteRunner:
                     self._emit("⛔ 等待地图进入超时/已停止", "WARN")
                     return
                 self._emit("✅ 已进入地图：开始解析路线", "SUCCESS")
+
+                # ✅ 新增：检测电池状态（进入地图后，A点检测前）
+                if self._unified_framework:
+                    battery_status = self._unified_framework._detect_battery_status(use_foreground)
+                    if battery_status is not None:
+                        self._battery_status_before_battle = battery_status
+                        self._emit(f"🔋 [启动检测] 电池状态: {battery_status}", "INFO")
+                    else:
+                        self._emit("⚠️ [启动检测] 电池状态检测失败", "WARN")
 
                 # 4) 解析路线点 & A/B
                 route_points, reg_a, reg_b = self._resolve_route_regions(profile.route_hint)
@@ -2842,6 +2859,24 @@ class DarRouteRunner:
             nie_family_id: 尼尔家族ID（416=尼奥，77/310=尼尔/闪光尼尔，None=没有尼尔家族）
         """
         try:
+            # ✅ 检查是否需要刷新重连（在打开背包之前）
+            if getattr(self, '_should_refresh_reconnect', False):
+                self._should_refresh_reconnect = False
+                self._emit("🔄 [电池刷新] 检测到需要刷新重连，执行刷新流程", "WARN")
+                if profile is None:
+                    # 如果没有传入profile，尝试从当前任务获取
+                    profile = getattr(self, '_current_profile', None)
+                if profile:
+                    self._execute_battery_refresh_reconnect(profile, use_foreground, stop_event)
+                    # 刷新重连后，重新启动任务
+                    self.run(stop_event, use_foreground, profile, 
+                            getattr(self, '_test_mode', False),
+                            getattr(self, '_smart_tracking_mode', False),
+                            getattr(self, '_xiaodouya_nie_test_mode', False))
+                    return
+                else:
+                    self._emit("⚠️ [电池刷新] 无法获取profile，跳过刷新重连", "WARN")
+            
             # 1. 打开精灵背包
             self._emit("💼 打开精灵背包", "INFO")
             bag_open_key = "精灵背包.打开精灵背包"
@@ -4317,6 +4352,13 @@ class DarRouteRunner:
         """
         # ✅ 校准和点击逻辑已经在_click_opposite_then_click_target_until_skill中完成
         # 现在需要：1) 迅速进行pattern检测判断对战类型 2) 等待PetItem并立即执行对应逻辑
+        
+        # ✅ 新增：入站前更新电池状态
+        if self._unified_framework:
+            battery_status = self._unified_framework._detect_battery_status(use_foreground)
+            if battery_status is not None:
+                self._battery_status_before_battle = battery_status
+                self._emit(f"🔋 [入站前检测] 电池状态: {battery_status}", "INFO")
         
         # ✅ 第一步：收集所有pet IDs，判断对战类型（只看尼尔家族）
         pet_ids = self._immediate_collected_pet_ids  # 使用立即收集到的pet IDs
@@ -6760,6 +6802,9 @@ class DarRouteRunner:
                         if "双塔" in profile_name_lower:
                             # 双塔模式：使用带重试的版本
                             self._execute_reconnect_scripts_for_shuangta(profile, use_foreground, stop_event, retry_count=0, max_retries=10)
+                        elif "嘟咕噜" in profile_name_lower:
+                            # 嘟咕噜模式：使用带重试的版本
+                            self._execute_reconnect_scripts_for_dugulu(profile, use_foreground, stop_event, retry_count=0, max_retries=10)
                         else:
                             # 其他模式：使用普通版本
                             self._execute_reconnect_scripts(profile, use_foreground, stop_event)
@@ -6788,6 +6833,14 @@ class DarRouteRunner:
                             # 点击一次普通确认（使用后台点击，不干扰前台操作）
                             self._click_region(self.KEY_NORMAL_CONFIRM, use_foreground=False)
                             time.sleep(0.2)  # 等待点击生效
+                            
+                            # ✅ 新增：1AND1常态化确认后，检测电池状态
+                            if self._unified_framework:
+                                battery_status = self._unified_framework._detect_battery_status(use_foreground=False)
+                                if battery_status is not None:
+                                    self._emit(f"🔋 [常态1AND1检测] 电池状态: {battery_status}", "INFO")
+                                    # 更新入站前的电池状态（作为最新的基准）
+                                    self._battery_status_before_battle = battery_status
                             
                             # ✅ 等待一小段时间，确保login信号（如果会出现）已经出现
                             time.sleep(0.5)
@@ -6962,11 +7015,20 @@ class DarRouteRunner:
                         if self.TOKEN_LOGIN_SWF in str(line):
                             self._emit("✅ [刷新流程] 检测到/login/Login.swf信号，重新执行脚本", "SUCCESS")
                             
-                            # 重新执行重连脚本（循环检测map 315直到成功）
+                            # 根据profile类型选择正确的重连方法
+                            profile_name_lower = profile.name.lower()
                             if retry_count < max_retries:
                                 self._emit(f"🔄 [刷新流程] 重新尝试执行重连脚本（第 {retry_count + 1}/{max_retries} 次）", "INFO")
-                                # 递归调用，继续检测map 315
-                                self._execute_reconnect_scripts_for_shuangta(profile, use_foreground, stop_event, retry_count + 1, max_retries)
+                                if "双塔" in profile_name_lower:
+                                    # 双塔模式：递归调用双塔重连方法（检测map 315）
+                                    self._execute_reconnect_scripts_for_shuangta(profile, use_foreground, stop_event, retry_count + 1, max_retries)
+                                elif "嘟咕噜" in profile_name_lower:
+                                    # 嘟咕噜模式：递归调用嘟咕噜重连方法（检测map 323）
+                                    self._execute_reconnect_scripts_for_dugulu(profile, use_foreground, stop_event, retry_count + 1, max_retries)
+                                else:
+                                    # 其他模式：使用通用重连方法（但这种情况不应该发生，因为只有双塔和嘟咕噜会调用这个方法）
+                                    self._emit(f"⚠️ [刷新流程] 未知的profile类型：{profile.name}，使用通用重连方法", "WARN")
+                                    self._execute_reconnect_scripts(profile, use_foreground, stop_event)
                             else:
                                 self._emit(f"⚠️ [刷新流程] 达到最大重试次数（{max_retries}次），停止重试", "WARN")
                             return
@@ -6981,9 +7043,119 @@ class DarRouteRunner:
             import traceback
             self._emit(f"📋 异常详情: {traceback.format_exc()}", "ERROR")
     
+    def _execute_battery_refresh_reconnect(self, profile: WildCaptureProfile, use_foreground: bool, stop_event: threading.Event) -> None:
+        """
+        执行电池状态触发的刷新重连（参考双塔刷新逻辑）
+        """
+        try:
+            self._emit("🔄 [电池刷新] 电池状态变化触发刷新重连", "WARN")
+            
+            # 执行刷新流程（参考 _execute_refresh_flow）
+            self._emit("🔄 [电池刷新] 开始执行刷新流程", "INFO")
+            
+            # 1. 点击client左上角原始坐标x y各自+5
+            self._emit("🖱️ [电池刷新] 点击client左上角+5位置（屏幕坐标）", "INFO")
+            if not window_manager.click_client_origin_offset(offset_x=5, offset_y=5):
+                self._emit("⚠️ [电池刷新] 点击client左上角失败", "WARN")
+                return
+            
+            time.sleep(0.5)
+            
+            # 2. 按向下箭头⬇
+            self._emit("⌨️ [电池刷新] 按下向下箭头键", "INFO")
+            if use_foreground:
+                import win32api
+                import win32con
+                win32api.keybd_event(win32con.VK_DOWN, 0, 0, 0)
+                time.sleep(0.1)
+                win32api.keybd_event(win32con.VK_DOWN, 0, win32con.KEYEVENTF_KEYUP, 0)
+            else:
+                window_manager.send_key_arrow_down()
+            
+            time.sleep(0.5)
+            
+            # 3. 按enter
+            self._emit("⌨️ [电池刷新] 按下Enter键", "INFO")
+            if use_foreground:
+                import win32api
+                import win32con
+                win32api.keybd_event(win32con.VK_RETURN, 0, 0, 0)
+                time.sleep(0.1)
+                win32api.keybd_event(win32con.VK_RETURN, 0, win32con.KEYEVENTF_KEYUP, 0)
+            else:
+                window_manager.send_key_enter()
+            
+            self._emit("✅ [电池刷新] 刷新操作完成，等待client重启", "SUCCESS")
+            time.sleep(2.0)
+            
+            # 4. 等待login信号
+            self._emit("⏳ [电池刷新] 等待/login/Login.swf信号...", "INFO")
+            from core.logger import fetch_kernel_since, kernel_cursor
+            
+            start_cursor = kernel_cursor()
+            start_time = time.time()
+            max_wait_time = 300.0  # 最多等待5分钟
+            
+            while (time.time() - start_time) < max_wait_time:
+                if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                    self._emit("⛔ [电池刷新] 等待login信号时被停止", "WARN")
+                    return
+                
+                # 检查日志
+                lines = fetch_kernel_since(start_cursor)
+                if isinstance(lines, list):
+                    for line in lines:
+                        if "/login/Login.swf" in str(line):
+                            self._emit("✅ [电池刷新] 检测到/login/Login.swf信号，重新执行脚本", "SUCCESS")
+                            
+                            # 根据profile类型选择正确的重连方法
+                            profile_name_lower = profile.name.lower()
+                            if "双塔" in profile_name_lower:
+                                # 双塔模式：使用带循环重试的版本
+                                self._execute_reconnect_scripts_for_shuangta(profile, use_foreground, stop_event, retry_count=0, max_retries=10)
+                            elif "嘟咕噜" in profile_name_lower:
+                                # 嘟咕噜模式：使用带循环重试的版本
+                                self._execute_reconnect_scripts_for_dugulu(profile, use_foreground, stop_event, retry_count=0, max_retries=10)
+                            else:
+                                # 其他模式：使用通用版本
+                                self._execute_reconnect_scripts(profile, use_foreground, stop_event)
+                            return
+                
+                start_cursor = kernel_cursor()
+                time.sleep(0.5)
+            
+            self._emit("⚠️ [电池刷新] 等待login信号超时", "WARN")
+            
+        except Exception as e:
+            self._emit(f"❌ [电池刷新] 执行异常: {e}", "ERROR")
+            import traceback
+            self._emit(f"📋 异常详情: {traceback.format_exc()}", "ERROR")
+    
     def _execute_reconnect_scripts_for_shuangta(self, profile: WildCaptureProfile, use_foreground: bool, stop_event: Optional[threading.Event] = None, retry_count: int = 0, max_retries: int = 10) -> None:
         """
         执行重连脚本（双塔模式专用），如果map不是315则循环刷新+重连直到成功
+        
+        Args:
+            profile: 当前捕捉配置
+            use_foreground: 是否前台执行
+            stop_event: 停止事件
+            retry_count: 当前重试次数
+            max_retries: 最大重试次数（默认10次）
+        """
+        if stop_event and stop_event.is_set():
+            self._emit("⛔ [重连脚本] 停止重试", "WARN")
+            return
+        
+        if getattr(self.bot, "stop_current", False):
+            self._emit("⛔ [重连脚本] stop_current被设置，停止重试", "WARN")
+            return
+        
+        # 执行重连脚本的核心逻辑
+        self._execute_reconnect_scripts_core(profile, use_foreground, stop_event, retry_count, max_retries)
+    
+    def _execute_reconnect_scripts_for_dugulu(self, profile: WildCaptureProfile, use_foreground: bool, stop_event: Optional[threading.Event] = None, retry_count: int = 0, max_retries: int = 10) -> None:
+        """
+        执行重连脚本（嘟咕噜模式专用），如果map不是323则循环刷新+重连直到成功
         
         Args:
             profile: 当前捕捉配置
@@ -7128,7 +7300,53 @@ class DarRouteRunner:
                     actual_stop_event = stop_event if stop_event is not None else threading.Event()
                     self._execute_refresh_flow_and_wait_login(profile, use_foreground, actual_stop_event, retry_count, max_retries)
                     return
-            elif "螳螂" in profile_name_lower or "小豆芽" in profile_name_lower or "嘟咕噜" in profile_name_lower:
+            elif "嘟咕噜" in profile_name_lower:
+                # 嘟咕噜模式：和双塔模式一样的逻辑（循环重试、地图验证、直接调用run）
+                # 等待一小段时间，确保日志都被收集
+                time.sleep(2.0)
+                
+                # 清除stop_current标志
+                if self.bot:
+                    self.bot.stop_current = False
+                    self._emit("✅ [重连脚本] stop_current标志已清除", "SUCCESS")
+                
+                # 检测最后的map信号（323）和newNPC
+                last_map_id, has_newNPC = self._check_last_map_and_newnpc(323, timeout_s=10.0)
+                
+                if last_map_id == 323 and has_newNPC:
+                    # 检测到map 323且后面跟着newNPC，执行嘟咕噜捕捉流程
+                    self._emit("✅ [重连脚本] 检测到map 323 + newNPC，执行嘟咕噜捕捉流程", "SUCCESS")
+                    
+                    # ✅ 标记重连脚本执行完成
+                    self._reconnect_scripts_executing = False
+                    
+                    # 递归调用run方法，执行嘟咕噜捕捉流程
+                    # 使用传入的stop_event（如果提供了），否则创建新的
+                    actual_stop_event = stop_event if stop_event is not None else threading.Event()
+                    self.run(
+                        actual_stop_event, 
+                        use_foreground, 
+                        profile, 
+                        test_mode=False, 
+                        smart_tracking_mode=False, 
+                        xiaodouya_nie_test_mode=False
+                    )
+                    return
+                else:
+                    # 没有检测到map 323 + newNPC，执行刷新流程并重试
+                    if last_map_id is not None and last_map_id != 323:
+                        self._emit(f"⚠️ [重连脚本] 检测到错误地图 {last_map_id}（期望323），执行刷新流程并重试（第 {retry_count + 1}/{max_retries} 次）", "WARN")
+                    else:
+                        self._emit(f"⚠️ [重连脚本] 未检测到map 323 + newNPC（检测到map={last_map_id}, has_newNPC={has_newNPC}），执行刷新流程并重试（第 {retry_count + 1}/{max_retries} 次）", "WARN")
+                    
+                    # ✅ 标记重连脚本执行完成
+                    self._reconnect_scripts_executing = False
+                    
+                    # 执行刷新流程并等待login信号，然后重新执行重连脚本（循环直到成功）
+                    actual_stop_event = stop_event if stop_event is not None else threading.Event()
+                    self._execute_refresh_flow_and_wait_login(profile, use_foreground, actual_stop_event, retry_count, max_retries)
+                    return
+            elif "螳螂" in profile_name_lower or "小豆芽" in profile_name_lower:
                 # 对于其他模式，保持原有逻辑（设置重启标志）
                 self._emit("⏳ [重连脚本] 等待2秒后清除stop_current标志，设置重启标志", "INFO")
                 time.sleep(2.0)
