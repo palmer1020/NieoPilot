@@ -813,6 +813,32 @@ class UnifiedBattleFramework:
                 
                 time.sleep(0.02)  # 减少等待时间，提高检测频率（从0.05s改为0.02s）
             
+            # 超时前最后检查：即使没检测到PetItem，也检查是否已进入战斗
+            if not petitem_found:
+                # 最后检查：检测回合探针（右下角蓝色探针）
+                if round_probe_model is None:
+                    round_probe_model = self._load_probe_templates()
+                
+                if round_probe_model and (skill_detected_time is not None or petswf_detected_time is not None):
+                    probe_state, blue_score, gray_score = self._detect_round_probe(round_probe_model)
+                    if probe_state == "BLUE" and blue_score >= 0.90:
+                        # 虽然没有PetItem日志，但回合探针变蓝，说明已经进入战斗
+                        self._emit("✅ 超时前最后检查：检测到回合探针变蓝，判定已进入战斗", "SUCCESS")
+                        petitem_found = True
+                        
+                        # 执行第一回合动作（如果还没有执行）
+                        if config:
+                            round_idx = 1
+                            if config.action_callback:
+                                action_type = config.action_callback(round_idx)
+                                self._execute_action(action_type, config, round_idx=round_idx, invincible_first_round=config.invincible_first_round)
+                            elif config.skill_key:
+                                self._click_region_twice(config.skill_key, config.use_foreground, gap=0.06)
+                                self._last_action = LastActionType.SKILL
+                            self._emit("✅ 第一回合动作已执行（超时前最后检查）", "SUCCESS")
+                        
+                        return True, None
+            
             # 超时
             self._emit(f"⏱️ Stage 2 超时（{timeout_s}s内未检测到PetItem）", "WARN")
             return False, None
@@ -928,6 +954,15 @@ class UnifiedBattleFramework:
                 time.sleep(0.1)
                 self._last_action = LastActionType.SKILL
         elif action_type in ("capsule", "capsule_high"):
+            # ✅ 所有捕捉逻辑前：先双击切换战斗面板，再双击切换捕捉面板
+            battle_panel_key = "对战.切换战斗面板"
+            if self._rs_get(battle_panel_key):
+                self._emit("🔄 切换对战面板（双击）...", "INFO")
+                self._click_region_twice(battle_panel_key, config.use_foreground, gap=0.06)
+                time.sleep(0.3)  # 等待面板切换
+            else:
+                self._emit("⚠️ 未找到切换对战面板的 region，跳过", "WARN")
+            
             # 实现胶囊逻辑（capsule_high表示尼尔家族模式：只使用高级胶囊）
             if round_idx == 1 and invincible_first_round:
                 # 第一回合：无敌胶囊
@@ -935,6 +970,7 @@ class UnifiedBattleFramework:
                 inv_panel = self._first_existing_key(["对战.捕捉.切换捕捉面板"])
                 if inv_panel and self._rs_get(inv_key):
                     # 切换捕捉面板点两次，然后等待约0.5s
+                    self._emit("🔄 切换捕捉面板（双击）...", "INFO")
                     self._click_region_twice(inv_panel, config.use_foreground, gap=0.10)
                     time.sleep(0.50)
                     self._click_region_twice(inv_key, config.use_foreground, gap=0.08)
@@ -980,17 +1016,24 @@ class UnifiedBattleFramework:
                 if has_split or has_combo:
                     # 胶囊节奏判断
                     if action_type == "capsule_high":
-                        # 尼尔家族模式：只使用高级胶囊
+                        # 高级胶囊模式：只使用高级胶囊
                         use_mid = False
                     elif config.test_mode_capsule_only_mid:
                         # 测试模式：只使用中级胶囊
                         use_mid = True
+                    elif action_type == "capsule" and round_idx == 1:
+                        # ✅ 第1回合使用胶囊（稀有捕捉模式）：使用中级胶囊（中高交替从第1回合开始）
+                        use_mid = True
+                    elif action_type == "capsule":
+                        # ✅ 胶囊模式（稀有捕捉）：中高交替（奇数回合中级，偶数回合高级）
+                        use_mid = (round_idx % 2 == 1)  # 回合1,3,5,7...用中级；回合2,4,6,8...用高级
                     else:
                         # 正常模式：中级(回合2) / 高级(回合3) / 中级(回合4) / 高级...
                         use_mid = (round_idx % 3 != 0)  # 回合2,4,5,7...用中级；回合3,6,9...用高级
                     
                     if has_split:
                         # 分开录制：面板 + 胶囊（胶囊连点2次）
+                        self._emit("🔄 切换捕捉面板（双击）...", "INFO")
                         self._click_region_twice(panel, config.use_foreground, gap=0.10)
                         time.sleep(0.50)
                         cap_key = mid if use_mid else high

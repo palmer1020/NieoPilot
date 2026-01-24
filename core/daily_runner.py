@@ -66,63 +66,57 @@ class DailyRunner:
             ok = self.run_single_script(name, bg_mode=background_mode)
             ok_all = ok_all and ok
 
-        # ✅ 完成AtoF后执行勇者之塔循环
-        # 检查是否完成了AtoF（即序列包含A到F，且最后一个脚本是F）
+        # ✅ 无论执行哪种 daily sequence，完成后都执行勇者之塔循环和后续任务
         if not self._should_abort() and ok_all:
-            # 检查序列是否包含A到F（按顺序）
-            expected_atof = ["A", "B", "C", "D", "E", "F"]
-            if len(sequence) >= len(expected_atof):
-                # 检查前6个是否匹配AtoF
-                if sequence[:len(expected_atof)] == expected_atof:
+            try:
+                self._emit("⏱ 日常任务完成：1s 后开始【勇者之塔】循环…", "SYSTEM")
+                time.sleep(1.0)
+                ok_tower = self.run_hero_tower(times=10, background_mode=background_mode, use_unified_framework=False)
+                ok_all = ok_all and ok_tower
+                
+                # ✅ 勇者之塔完成后，先点击"勇者之塔.离开"，等待7秒，再执行1v1x2和大乱斗x2
+                if not self._should_abort() and ok_tower:
+                    use_foreground = (not background_mode)
+                    regions = getattr(self.bot, "regions", None)
+                    
+                    if regions:
+                        # 点击"勇者之塔.离开"
+                        try:
+                            self._emit("🖱 点击：勇者之塔.离开", "INFO")
+                            if self._click_region_safe(regions, "勇者之塔.离开", use_foreground):
+                                # 等待7秒
+                                self._emit("⏳ 等待7秒...", "INFO")
+                                time.sleep(7.0)
+                            else:
+                                self._emit("⚠️ 点击勇者之塔.离开失败，但继续执行", "WARN")
+                        except Exception as e:
+                            self._emit(f"⚠️ 点击勇者之塔.离开异常: {e}，但继续执行", "WARN")
+                    
+                    # 等待3秒后执行1v1x2
                     try:
-                        self._emit("⏱ AtoF完成：1s 后开始【勇者之塔】循环…", "SYSTEM")
-                        time.sleep(1.0)
-                        ok_tower = self.run_hero_tower(times=10, background_mode=background_mode, use_unified_framework=False)
-                        ok_all = ok_all and ok_tower
-                        
-                        # ✅ 勇者之塔完成后，先点击"勇者之塔.离开"，等待7秒，再执行1v1x2和大乱斗x2
-                        if not self._should_abort() and ok_tower:
-                            use_foreground = (not background_mode)
-                            regions = getattr(self.bot, "regions", None)
-                            
-                            if regions:
-                                # 点击"勇者之塔.离开"
-                                try:
-                                    self._emit("🖱 点击：勇者之塔.离开", "INFO")
-                                    if self._click_region_safe(regions, "勇者之塔.离开", use_foreground):
-                                        # 等待7秒
-                                        self._emit("⏳ 等待7秒...", "INFO")
-                                        time.sleep(7.0)
-                                    else:
-                                        self._emit("⚠️ 点击勇者之塔.离开失败，但继续执行", "WARN")
-                                except Exception as e:
-                                    self._emit(f"⚠️ 点击勇者之塔.离开异常: {e}，但继续执行", "WARN")
-                            
-                            # 等待3秒后执行1v1x2
-                            try:
-                                self._emit("⏱ 勇者之塔完成：3s 后开始【1v1x2】…", "SYSTEM")
-                                time.sleep(3.0)
-                                if not self._should_abort():
-                                    ok_1v1 = self.run_1v1_x2(use_foreground=use_foreground)
-                                    ok_all = ok_all and ok_1v1
-                            except Exception as e:
-                                self._emit(f"💥 1v1x2异常: {e}", "ERROR")
-                                ok_all = False
-                            
-                            # 等待3秒后执行大乱斗x2
-                            if not self._should_abort() and ok_all:
-                                try:
-                                    self._emit("⏱ 1v1x2完成：3s 后开始【大乱斗x2】…", "SYSTEM")
-                                    time.sleep(3.0)
-                                    if not self._should_abort():
-                                        ok_chaos = self.run_chaos_battle_x2(use_foreground=use_foreground)
-                                        ok_all = ok_all and ok_chaos
-                                except Exception as e:
-                                    self._emit(f"💥 大乱斗x2异常: {e}", "ERROR")
-                                    ok_all = False
+                        self._emit("⏱ 勇者之塔完成：3s 后开始【1v1x2】…", "SYSTEM")
+                        time.sleep(3.0)
+                        if not self._should_abort():
+                            ok_1v1 = self.run_1v1_x2(use_foreground=use_foreground)
+                            ok_all = ok_all and ok_1v1
                     except Exception as e:
-                        self._emit(f"💥 勇者之塔循环异常: {e}", "ERROR")
+                        self._emit(f"💥 1v1x2异常: {e}", "ERROR")
                         ok_all = False
+                    
+                    # 等待3秒后执行大乱斗x2
+                    if not self._should_abort() and ok_all:
+                        try:
+                            self._emit("⏱ 1v1x2完成：3s 后开始【大乱斗x2】…", "SYSTEM")
+                            time.sleep(3.0)
+                            if not self._should_abort():
+                                ok_chaos = self.run_chaos_battle_x2(use_foreground=use_foreground)
+                                ok_all = ok_all and ok_chaos
+                        except Exception as e:
+                            self._emit(f"💥 大乱斗x2异常: {e}", "ERROR")
+                            ok_all = False
+            except Exception as e:
+                self._emit(f"💥 勇者之塔循环异常: {e}", "ERROR")
+                ok_all = False
 
         return ok_all
 

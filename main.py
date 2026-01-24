@@ -38,6 +38,9 @@ def main():
 
     window = Dashboard()
     bot = BotWorker(project_root)
+    
+    # ✅ 将bot实例赋值给window，以便dashboard中的按钮可以使用
+    window.bot = bot
 
     bot.start()  # 引擎常驻待命
 

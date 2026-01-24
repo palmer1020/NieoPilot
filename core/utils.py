@@ -321,6 +321,60 @@ class WindowManager:
             win32gui.PostMessage(self.hwnd, win32con.WM_LBUTTONUP, 0, l_param)
         except Exception:
             pass
+    
+    def send_key(self, vk_code: int):
+        """
+        发送键盘按键到游戏窗口（后台）
+        
+        Args:
+            vk_code: 虚拟键码（win32con.VK_XXX）
+        """
+        if not self.hwnd:
+            return
+        try:
+            win32gui.PostMessage(self.hwnd, win32con.WM_KEYDOWN, vk_code, 0)
+            time.sleep(0.05)
+            win32gui.PostMessage(self.hwnd, win32con.WM_KEYUP, vk_code, 0)
+        except Exception:
+            pass
+    
+    def send_key_arrow_down(self):
+        """发送向下箭头键"""
+        self.send_key(win32con.VK_DOWN)
+    
+    def send_key_enter(self):
+        """发送Enter键"""
+        self.send_key(win32con.VK_RETURN)
+    
+    def click_client_origin_offset(self, offset_x: int = 5, offset_y: int = 5):
+        """
+        点击client左上角坐标+偏移量的位置（屏幕坐标，用于刷新）
+        
+        Args:
+            offset_x: X偏移量（默认5）
+            offset_y: Y偏移量（默认5）
+        """
+        if not self.hwnd:
+            return False
+        try:
+            # 获取client左上角的屏幕坐标
+            client_rect = win32gui.GetClientRect(self.hwnd)
+            client_x, client_y = win32gui.ClientToScreen(self.hwnd, (0, 0))
+            
+            # 计算点击位置（client左上角+偏移量）
+            click_x = client_x + offset_x
+            click_y = client_y + offset_y
+            
+            # 点击该位置（使用屏幕坐标）
+            win32api.SetCursorPos((click_x, click_y))
+            time.sleep(0.05)
+            win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, click_x, click_y, 0, 0)
+            time.sleep(0.05)
+            win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, click_x, click_y, 0, 0)
+            return True
+        except Exception as e:
+            logger.error(f"点击client左上角偏移位置失败: {e}")
+            return False
 
     # ===============================
     # Grab (模板匹配/探针)

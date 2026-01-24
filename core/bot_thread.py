@@ -622,12 +622,38 @@ class BotWorker(QThread):
                                     else:
                                         self.emit_and_log("⚠️ 登录脚本执行失败，继续执行后续步骤", "WARN")
                                 
-                                # 1.5. 执行亨姆脚本（定时任务专用）
+                                # ✅ 1.5. 等待0.5s，点击登录.亨姆区域，执行亨姆.json
                                 if not self.stop_current:
-                                    if self.daily_runner.run_single_script("亨姆", bg_mode=use_background):
-                                        self.emit_and_log("✅ 亨姆脚本执行完成", "SUCCESS")
+                                    time.sleep(0.5)
+                                    
+                                    # 点击登录.亨姆区域
+                                    try:
+                                        from core.region_store import RegionStore
+                                        regions = getattr(self.dar_route_runner, "regions", None)
+                                        if regions:
+                                            hengmu_region = regions.get("登录.亨姆")
+                                            if hengmu_region:
+                                                self.emit_and_log("🖱️ 点击登录.亨姆区域", "INFO")
+                                                self.dar_route_runner._click_region(hengmu_region, use_foreground)
+                                                time.sleep(0.2)  # 等待点击生效
+                                            else:
+                                                self.emit_and_log("⚠️ 找不到登录.亨姆区域，跳过点击", "WARN")
+                                        else:
+                                            self.emit_and_log("⚠️ regions未初始化，跳过点击亨姆区域", "WARN")
+                                    except Exception as e:
+                                        self.emit_and_log(f"⚠️ 点击登录.亨姆区域时出错: {e}", "WARN")
+                                
+                                # ✅ 1.5. 在执行to脚本之前，执行亨姆检测流程
+                                if not self.stop_current:
+                                    self.emit_and_log("🔍 开始执行亨姆检测流程", "INFO")
+                                    if self.dar_route_runner._handle_hengmu_before_to_script(
+                                        profile=profile,
+                                        use_foreground=use_foreground,
+                                        stop_event=self._stop_event
+                                    ):
+                                        self.emit_and_log("✅ 亨姆检测流程完成", "SUCCESS")
                                     else:
-                                        self.emit_and_log("⚠️ 亨姆脚本执行失败，继续执行后续步骤", "WARN")
+                                        self.emit_and_log("⚠️ 亨姆检测流程失败，继续执行to脚本", "WARN")
                                 
                                 # 2. 执行切换脚本（toXXX.json）
                                 if not self.stop_current:

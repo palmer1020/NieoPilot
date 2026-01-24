@@ -167,6 +167,13 @@ class Dashboard(QWidget):
         # row3.addWidget(self.btn_smart_tracking_test)
         # wild_layout.addLayout(row3)
 
+        # 双塔刷新按钮（独立按钮）
+        row3 = QHBoxLayout()
+        self.btn_shuangta_refresh = QPushButton("🔄 双塔刷新（循环重连直到进入）")
+        self.btn_shuangta_refresh.clicked.connect(self.on_shuangta_refresh)
+        row3.addWidget(self.btn_shuangta_refresh)
+        wild_layout.addLayout(row3)
+
         wild_group.setLayout(wild_layout)
 
         # ✅ 关键：把 group 加到外层 control_panel
@@ -880,4 +887,46 @@ class Dashboard(QWidget):
         self.log_message(f"🌊 启动尼奥模式（10/11地图循环）{test_msg}", "SYSTEM")
         self._lock_ui()
         self.start_signal.emit(tasks)
+    
+    def on_shuangta_refresh(self):
+        """执行双塔刷新流程"""
+        self.btn_shuangta_refresh.setEnabled(False)
+        self.log_message("🔄 开始执行双塔刷新流程...", "SYSTEM")
+        threading.Thread(target=self._shuangta_refresh_worker, daemon=True).start()
+    
+    def _shuangta_refresh_worker(self):
+        """双塔刷新流程的工作线程"""
+        try:
+            from core.dar_route_runner import DEFAULT_PROFILE_SHUANGTA
+            
+            # 检查是否有bot实例
+            if not hasattr(self, "bot") or not self.bot:
+                self.log_message("❌ bot实例不存在，无法执行刷新流程", "ERROR")
+                QMetaObject.invokeMethod(self.btn_shuangta_refresh, "setEnabled", Qt.ConnectionType.QueuedConnection, Q_ARG(bool, True))
+                return
+            
+            bot = self.bot
+            
+            # 检查是否有dar_route_runner
+            if not hasattr(bot, "dar_route_runner") or not bot.dar_route_runner:
+                self.log_message("❌ dar_route_runner不存在，无法执行刷新流程", "ERROR")
+                QMetaObject.invokeMethod(self.btn_shuangta_refresh, "setEnabled", Qt.ConnectionType.QueuedConnection, Q_ARG(bool, True))
+                return
+            
+            dar_route_runner = bot.dar_route_runner
+            
+            # 创建stop_event
+            stop_event = threading.Event()
+            
+            # 执行刷新流程
+            use_foreground = self.chk_foreground.isChecked()
+            dar_route_runner._execute_refresh_flow_and_wait_login(DEFAULT_PROFILE_SHUANGTA, use_foreground, stop_event, retry_count=0, max_retries=10)
+            
+            self.log_message("✅ 双塔刷新流程执行完成", "SUCCESS")
+        except Exception as e:
+            self.log_message(f"❌ 双塔刷新流程执行异常: {e}", "ERROR")
+            import traceback
+            self.log_message(f"📋 异常详情: {traceback.format_exc()}", "ERROR")
+        finally:
+            QMetaObject.invokeMethod(self.btn_shuangta_refresh, "setEnabled", Qt.ConnectionType.QueuedConnection, Q_ARG(bool, True))
 

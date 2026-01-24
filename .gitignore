@@ -40,6 +40,7 @@ human_verify_samples/
 hv_samples/未处理/
 baseline_data/*.pkl
 _restore_backup/
+assets/templates/
 
 # 临时和生成的文件
 *.tmp
