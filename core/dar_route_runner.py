@@ -2354,7 +2354,7 @@ class DarRouteRunner:
         # 4) 持续点击目标刷新点，每次点击后检测校准，循环直到检测到pet/swf/或PetItem信号
         TOKEN_FIGHT_PET = "/resource/fightResource/pet/swf/"
         TOKEN_PETITEM = "/resource/item/petItem/icon/"
-        timeout_s = 10.0  # 最多等待10秒
+        timeout_s = 15.0  # 最多等待15秒
         click_interval = 0.33  # 点击间隔（秒，每秒3次）
         last_click_time = 0.0
         start_time = time.time()
@@ -2902,18 +2902,23 @@ class DarRouteRunner:
                 target_pet_position = self._identify_target_pet_by_color(use_foreground)
                 
                 if target_pet_position:
-                    # 找到目标精灵，双击对应位置
+                    # 找到目标精灵，点击6次对应位置（每次间隔0.25s）
                     pet_key = f"精灵背包.精灵{target_pet_position}"
                     pet_btn_key = f"精灵背包.精灵{target_pet_position}按钮"
                     
-                    self._emit(f"🐾 [放回仓库] 颜色检测成功：精灵{target_pet_position}需要放回仓库（蓝色血条），准备双击放回仓库", "INFO")
+                    self._emit(f"🐾 [放回仓库] 颜色检测成功：精灵{target_pet_position}需要放回仓库（蓝色血条），准备点击6次放回仓库", "INFO")
                     
-                    try:
-                        self._click_region_twice(pet_btn_key, use_foreground)
-                    except KeyError:
-                        self._click_region_twice(pet_key, use_foreground)
+                    # 点击6次，每次间隔0.25秒
+                    click_interval = 0.25
+                    for i in range(6):
+                        try:
+                            self._click_region(pet_btn_key, use_foreground)
+                        except KeyError:
+                            self._click_region(pet_key, use_foreground)
+                            if i < 5:  # 最后一次不需要等待
+                                self._sleep_abortable(stop_event, click_interval)
                     
-                    # 双击后等待1.5s（稀有精灵和尼奥模式）
+                    # 点击6次后等待1.5s（稀有精灵和尼奥模式）
                     self._sleep_abortable(stop_event, 1.5)
                     
                     # 2.2 点击一次"放回仓库"
@@ -2929,17 +2934,22 @@ class DarRouteRunner:
                     # 点击放回仓库后等待1s
                     self._sleep_abortable(stop_event, 1.0)
                 else:
-                    # 颜色检测失败，回退到旧逻辑（双击精灵三）
-                    self._emit("⚠️ [放回仓库] 颜色检测失败，使用默认逻辑（双击精灵三）", "WARN")
+                    # 颜色检测失败，回退到旧逻辑（点击6次精灵三）
+                    self._emit("⚠️ [放回仓库] 颜色检测失败，使用默认逻辑（点击6次精灵三）", "WARN")
                     pet_three_key = "精灵背包.精灵三"
                     pet_three_btn_key = "精灵背包.精灵三按钮"
                     
-                    try:
-                        self._click_region_twice(pet_three_btn_key, use_foreground)
-                    except KeyError:
-                        self._click_region_twice(pet_three_key, use_foreground)
+                    # 点击6次，每次间隔0.25秒
+                    click_interval = 0.25
+                    for i in range(6):
+                        try:
+                            self._click_region(pet_three_btn_key, use_foreground)
+                        except KeyError:
+                            self._click_region(pet_three_key, use_foreground)
+                            if i < 5:  # 最后一次不需要等待
+                                self._sleep_abortable(stop_event, click_interval)
                     
-                    # 双击后等待1.5s（稀有精灵和尼奥模式）
+                    # 点击6次后等待1.5s（稀有精灵和尼奥模式）
                     self._sleep_abortable(stop_event, 1.5)
                     
                     # 点击一次"放回仓库"
@@ -4353,13 +4363,6 @@ class DarRouteRunner:
         # ✅ 校准和点击逻辑已经在_click_opposite_then_click_target_until_skill中完成
         # 现在需要：1) 迅速进行pattern检测判断对战类型 2) 等待PetItem并立即执行对应逻辑
         
-        # ✅ 新增：入站前更新电池状态
-        if self._unified_framework:
-            battery_status = self._unified_framework._detect_battery_status(use_foreground)
-            if battery_status is not None:
-                self._battery_status_before_battle = battery_status
-                self._emit(f"🔋 [入站前检测] 电池状态: {battery_status}", "INFO")
-        
         # ✅ 第一步：收集所有pet IDs，判断对战类型（只看尼尔家族）
         pet_ids = self._immediate_collected_pet_ids  # 使用立即收集到的pet IDs
         nie_family_id = None
@@ -4665,23 +4668,23 @@ class DarRouteRunner:
                 if not in_battle:
                     # 确实没有进入战斗，跳过本次对战
                     self._emit("↩ 确认未进入战斗，回到 A 并跳过本次对战", "WARN")
-                    self._click_region(reg_a, use_foreground)
-                    self._current_pos = self._region_center(reg_a)
-                    self._last_anchor = "A"
-                    self._sleep_abortable(stop_event, 1.0)
-                    # ✅ 重新标定所有9个点（与初始标定保持一致）
-                    map_id = getattr(profile, 'map_swf_id', None)
-                    self._emit("📏 跳过后重新标定稳态（使用稳健模式，检测所有9个点）", "SYSTEM")
-                    baseline_start_time = time.time()
-                    self._recalibrate_all_robust(route_points, stop_event, map_id=map_id)
-                    baseline_duration = time.time() - baseline_start_time
-                    
-                    # ✅ 等待至少5秒确保基线稳定（与初始标定一致）
-                    min_wait_after_baseline = 5.0
-                    if baseline_duration < min_wait_after_baseline:
-                        wait_time = min_wait_after_baseline - baseline_duration
-                        self._emit(f"⏳ 等待{wait_time:.1f}s后继续扫描（确保基线稳定，稳健模式）", "INFO")
-                        self._sleep_abortable(stop_event, wait_time)
+                self._click_region(reg_a, use_foreground)
+                self._current_pos = self._region_center(reg_a)
+                self._last_anchor = "A"
+                self._sleep_abortable(stop_event, 1.0)
+                # ✅ 重新标定所有9个点（与初始标定保持一致）
+                map_id = getattr(profile, 'map_swf_id', None)
+                self._emit("📏 跳过后重新标定稳态（使用稳健模式，检测所有9个点）", "SYSTEM")
+                baseline_start_time = time.time()
+                self._recalibrate_all_robust(route_points, stop_event, map_id=map_id)
+                baseline_duration = time.time() - baseline_start_time
+                
+                # ✅ 等待至少5秒确保基线稳定（与初始标定一致）
+                min_wait_after_baseline = 5.0
+                if baseline_duration < min_wait_after_baseline:
+                    wait_time = min_wait_after_baseline - baseline_duration
+                    self._emit(f"⏳ 等待{wait_time:.1f}s后继续扫描（确保基线稳定，稳健模式）", "INFO")
+                    self._sleep_abortable(stop_event, wait_time)
                     return "skipped"  # 确实失败，跳过本次对战
                 else:
                     # 已经进入战斗，继续执行战斗逻辑
@@ -5644,15 +5647,17 @@ class DarRouteRunner:
             self._emit(f"⚠️ 检测深蓝色探针异常: {e}", "WARN")
             return False
 
-    def _ocr_enemy_info_fast(self, use_foreground: bool) -> Tuple[Optional[int], Optional[int]]:
+    def _ocr_enemy_info_fast(self, use_foreground: bool) -> Tuple[Optional[int], Optional[int], Optional[Image.Image], Optional[Image.Image]]:
         """
         快速OCR扫描敌方精灵等级和血量（只尝试一次，但保存截图）
         
         Returns:
-            (level, hp): (等级, 血量)，如果识别失败则返回None
+            (level, hp, level_img, hp_img): (等级, 血量, 等级原图, 血量原图)，如果识别失败则返回None
         """
         level = None
         hp = None
+        level_img = None
+        hp_img = None
         
         # OCR等级
         level_key = "对战信息.敌方精灵等级"
@@ -5662,6 +5667,7 @@ class DarRouteRunner:
                 x1, y1, x2, y2 = r.outer_bbox()
                 img = window_manager.grab_game_bbox(x1, y1, x2, y2, min_size_px=2)
                 if img:
+                    level_img = img
                     from PIL import ImageOps
                     import re
                     
@@ -5718,6 +5724,7 @@ class DarRouteRunner:
                 x1, y1, x2, y2 = r.outer_bbox()
                 img = window_manager.grab_game_bbox(x1, y1, x2, y2, min_size_px=2)
                 if img:
+                    hp_img = img
                     from PIL import ImageOps
                     import re
                     
@@ -5769,7 +5776,34 @@ class DarRouteRunner:
         except Exception as e:
             self._emit(f"⚠️ OCR血量异常: {e}", "WARN")
         
-        return level, hp
+        return level, hp, level_img, hp_img
+
+    def _save_enemy_ocr_images(
+        self,
+        level: int,
+        hp: int,
+        level_img: Optional[Image.Image],
+        hp_img: Optional[Image.Image],
+        battle_num: int,
+    ) -> None:
+        """保存敌方等级/血量OCR成功时的原图（仅保存一份）"""
+        if level_img is None or hp_img is None:
+            return
+        if not self.bot or not hasattr(self.bot, "project_root"):
+            return
+        try:
+            save_dir = os.path.join(self.bot.project_root, "debug_ocr_enemy")
+            os.makedirs(save_dir, exist_ok=True)
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            ms = int((time.time() % 1) * 1000)
+            ts_full = f"{ts}_{ms:03d}"
+            hp_path = os.path.join(save_dir, f"{hp}_{battle_num}_{ts_full}.png")
+            level_path = os.path.join(save_dir, f"{level}_{battle_num}_{ts_full}.png")
+            hp_img.save(hp_path)
+            level_img.save(level_path)
+            self._emit(f"📷 [OCR] 保存原图：{os.path.basename(hp_path)} / {os.path.basename(level_path)}", "DEBUG")
+        except Exception as e:
+            self._emit(f"⚠️ [OCR] 保存原图失败: {e}", "WARN")
 
     def _ocr_enemy_info(self, use_foreground: bool) -> Tuple[Optional[int], Optional[int]]:
         """
@@ -6068,6 +6102,8 @@ class DarRouteRunner:
                 last_hp = None
                 ocr_scan_count = 0
                 condition_met = False  # 是否检测到符合条件
+                saved_ocr_images = False
+                battle_num = self._battle_count + 1
                 
                 petitem_token = "/resource/item/petItem/icon/"
                 petitem_cursor = kernel_cursor()
@@ -6107,7 +6143,11 @@ class DarRouteRunner:
                     if not petitem_detected:
                         ocr_scan_count += 1
                         self._emit(f"🔍 [敌方信息监控] 执行第 {ocr_scan_count} 次OCR扫描...", "DEBUG")
-                        scan_level, scan_hp = self._ocr_enemy_info_fast(use_foreground)
+                        scan_level, scan_hp, level_img, hp_img = self._ocr_enemy_info_fast(use_foreground)
+                        
+                        if not saved_ocr_images and scan_level is not None and scan_hp is not None:
+                            self._save_enemy_ocr_images(scan_level, scan_hp, level_img, hp_img, battle_num)
+                            saved_ocr_images = True
                         
                         # 更新最后一次成功测得的数据
                         if scan_level is not None:
@@ -6301,7 +6341,7 @@ class DarRouteRunner:
         
         # 如果既不是卡塔也不是奇塔，或者不满足逃跑条件，继续捕捉
         return False
-
+    
     def _identify_target_pet_by_color(self, use_foreground: bool) -> Optional[str]:
         """
         通过颜色检测识别要放回仓库的精灵位置（精灵二、三、四）
@@ -6751,6 +6791,8 @@ class DarRouteRunner:
             self._emit("🔍 启动常态1AND1监控（后台线程）", "INFO")
             last_check_time = 0.0
             check_interval = 0.5  # 每0.5秒检查一次（不高频，可能半小时到两小时触发一次）
+            paused_logged = False
+            last_debug_skip_log = 0.0
             
             # 用于非阻塞检查/login/Login.swf的状态
             login_swf_check_active = False
@@ -6760,16 +6802,28 @@ class DarRouteRunner:
             while not stop_event.is_set() and not getattr(self.bot, "stop_current", False):
                 # ✅ 关键：如果停止监控标志被设置，退出监控
                 if getattr(self, "_stop_1and1_monitoring", False):
-                    self._emit("🛑 [常态1AND1] 停止监控", "INFO")
-                    return
+                    if not paused_logged:
+                        self._emit("⏸️ [常态1AND1] 暂停监控（等待恢复）", "INFO")
+                        paused_logged = True
+                    time.sleep(1.0)
+                    continue
+                elif paused_logged:
+                    self._emit("▶️ [常态1AND1] 监控已恢复", "INFO")
+                    paused_logged = False
                 
                 # ✅ 关键：如果不在稳态扫描阶段（在战斗中），暂停监控
                 if not self._is_scanning_steady_state:
+                    if time.time() - last_debug_skip_log >= 10.0:
+                        self._emit("🐞 [常态1AND1] 跳过检测：未处于稳态扫描阶段", "DEBUG")
+                        last_debug_skip_log = time.time()
                     time.sleep(1.0)
                     continue
                 
                 # ✅ 关键：如果正在恢复中，完全跳过检测（不进行任何1AND1检查）
                 if getattr(self, "_is_recovering", False):
+                    if time.time() - last_debug_skip_log >= 10.0:
+                        self._emit("🐞 [常态1AND1] 跳过检测：恢复流程中", "DEBUG")
+                        last_debug_skip_log = time.time()
                     time.sleep(0.5)
                     continue
                 
@@ -6800,11 +6854,11 @@ class DarRouteRunner:
                         # 执行重连脚本（脚本执行完成后会根据profile判断是否需要重启）
                         profile_name_lower = profile.name.lower()
                         if "双塔" in profile_name_lower:
-                            # 双塔模式：使用带重试的版本
-                            self._execute_reconnect_scripts_for_shuangta(profile, use_foreground, stop_event, retry_count=0, max_retries=10)
+                            # 双塔模式：使用带重试的版本（不限次数）
+                            self._execute_reconnect_scripts_for_shuangta(profile, use_foreground, stop_event, retry_count=0, max_retries=None)
                         elif "嘟咕噜" in profile_name_lower:
-                            # 嘟咕噜模式：使用带重试的版本
-                            self._execute_reconnect_scripts_for_dugulu(profile, use_foreground, stop_event, retry_count=0, max_retries=10)
+                            # 嘟咕噜模式：使用带重试的版本（不限次数）
+                            self._execute_reconnect_scripts_for_dugulu(profile, use_foreground, stop_event, retry_count=0, max_retries=None)
                         else:
                             # 其他模式：使用普通版本
                             self._execute_reconnect_scripts(profile, use_foreground, stop_event)
@@ -6942,7 +6996,7 @@ class DarRouteRunner:
             self._emit(f"📋 异常详情: {traceback.format_exc()}", "ERROR")
             return (None, False)
     
-    def _execute_refresh_flow_and_wait_login(self, profile: WildCaptureProfile, use_foreground: bool, stop_event: threading.Event, retry_count: int = 0, max_retries: int = 10) -> None:
+    def _execute_refresh_flow_and_wait_login(self, profile: WildCaptureProfile, use_foreground: bool, stop_event: threading.Event, retry_count: int = 0, max_retries: Optional[int] = None) -> None:
         """
         执行刷新流程，然后等待login信号后重新执行脚本
         
@@ -7017,8 +7071,9 @@ class DarRouteRunner:
                             
                             # 根据profile类型选择正确的重连方法
                             profile_name_lower = profile.name.lower()
-                            if retry_count < max_retries:
-                                self._emit(f"🔄 [刷新流程] 重新尝试执行重连脚本（第 {retry_count + 1}/{max_retries} 次）", "INFO")
+                            if max_retries is None or retry_count < max_retries:
+                                max_retries_str = f"/{max_retries}" if max_retries is not None else ""
+                                self._emit(f"🔄 [刷新流程] 重新尝试执行重连脚本（第 {retry_count + 1}{max_retries_str} 次）", "INFO")
                                 if "双塔" in profile_name_lower:
                                     # 双塔模式：递归调用双塔重连方法（检测map 315）
                                     self._execute_reconnect_scripts_for_shuangta(profile, use_foreground, stop_event, retry_count + 1, max_retries)
@@ -7029,8 +7084,6 @@ class DarRouteRunner:
                                     # 其他模式：使用通用重连方法（但这种情况不应该发生，因为只有双塔和嘟咕噜会调用这个方法）
                                     self._emit(f"⚠️ [刷新流程] 未知的profile类型：{profile.name}，使用通用重连方法", "WARN")
                                     self._execute_reconnect_scripts(profile, use_foreground, stop_event)
-                            else:
-                                self._emit(f"⚠️ [刷新流程] 达到最大重试次数（{max_retries}次），停止重试", "WARN")
                             return
                 
                 start_cursor = kernel_cursor()
@@ -7111,11 +7164,11 @@ class DarRouteRunner:
                             # 根据profile类型选择正确的重连方法
                             profile_name_lower = profile.name.lower()
                             if "双塔" in profile_name_lower:
-                                # 双塔模式：使用带循环重试的版本
-                                self._execute_reconnect_scripts_for_shuangta(profile, use_foreground, stop_event, retry_count=0, max_retries=10)
+                                # 双塔模式：使用带循环重试的版本（不限次数）
+                                self._execute_reconnect_scripts_for_shuangta(profile, use_foreground, stop_event, retry_count=0, max_retries=None)
                             elif "嘟咕噜" in profile_name_lower:
-                                # 嘟咕噜模式：使用带循环重试的版本
-                                self._execute_reconnect_scripts_for_dugulu(profile, use_foreground, stop_event, retry_count=0, max_retries=10)
+                                # 嘟咕噜模式：使用带循环重试的版本（不限次数）
+                                self._execute_reconnect_scripts_for_dugulu(profile, use_foreground, stop_event, retry_count=0, max_retries=None)
                             else:
                                 # 其他模式：使用通用版本
                                 self._execute_reconnect_scripts(profile, use_foreground, stop_event)
@@ -7131,7 +7184,7 @@ class DarRouteRunner:
             import traceback
             self._emit(f"📋 异常详情: {traceback.format_exc()}", "ERROR")
     
-    def _execute_reconnect_scripts_for_shuangta(self, profile: WildCaptureProfile, use_foreground: bool, stop_event: Optional[threading.Event] = None, retry_count: int = 0, max_retries: int = 10) -> None:
+    def _execute_reconnect_scripts_for_shuangta(self, profile: WildCaptureProfile, use_foreground: bool, stop_event: Optional[threading.Event] = None, retry_count: int = 0, max_retries: Optional[int] = None) -> None:
         """
         执行重连脚本（双塔模式专用），如果map不是315则循环刷新+重连直到成功
         
@@ -7140,7 +7193,7 @@ class DarRouteRunner:
             use_foreground: 是否前台执行
             stop_event: 停止事件
             retry_count: 当前重试次数
-            max_retries: 最大重试次数（默认10次）
+            max_retries: 最大重试次数（None 表示不限次数）
         """
         if stop_event and stop_event.is_set():
             self._emit("⛔ [重连脚本] 停止重试", "WARN")
@@ -7153,7 +7206,7 @@ class DarRouteRunner:
         # 执行重连脚本的核心逻辑
         self._execute_reconnect_scripts_core(profile, use_foreground, stop_event, retry_count, max_retries)
     
-    def _execute_reconnect_scripts_for_dugulu(self, profile: WildCaptureProfile, use_foreground: bool, stop_event: Optional[threading.Event] = None, retry_count: int = 0, max_retries: int = 10) -> None:
+    def _execute_reconnect_scripts_for_dugulu(self, profile: WildCaptureProfile, use_foreground: bool, stop_event: Optional[threading.Event] = None, retry_count: int = 0, max_retries: Optional[int] = None) -> None:
         """
         执行重连脚本（嘟咕噜模式专用），如果map不是323则循环刷新+重连直到成功
         
@@ -7162,7 +7215,7 @@ class DarRouteRunner:
             use_foreground: 是否前台执行
             stop_event: 停止事件
             retry_count: 当前重试次数
-            max_retries: 最大重试次数（默认10次）
+            max_retries: 最大重试次数（None 表示不限次数）
         """
         if stop_event and stop_event.is_set():
             self._emit("⛔ [重连脚本] 停止重试", "WARN")
@@ -7175,7 +7228,7 @@ class DarRouteRunner:
         # 执行重连脚本的核心逻辑
         self._execute_reconnect_scripts_core(profile, use_foreground, stop_event, retry_count, max_retries)
     
-    def _execute_reconnect_scripts_core(self, profile: WildCaptureProfile, use_foreground: bool, stop_event: Optional[threading.Event] = None, retry_count: int = 0, max_retries: int = 10) -> None:
+    def _execute_reconnect_scripts_core(self, profile: WildCaptureProfile, use_foreground: bool, stop_event: Optional[threading.Event] = None, retry_count: int = 0, max_retries: Optional[int] = None) -> None:
         """
         执行重连脚本的核心逻辑：登录.json + to{profile}.json
         执行完成后，检测最后的map信号，根据结果决定执行双塔捕捉流程或刷新流程
@@ -7185,7 +7238,7 @@ class DarRouteRunner:
             use_foreground: 是否前台执行
             stop_event: 停止事件（可选，用于执行双塔捕捉流程）
             retry_count: 当前重试次数（用于双塔模式的循环重试）
-            max_retries: 最大重试次数（用于双塔模式的循环重试）
+            max_retries: 最大重试次数（用于双塔模式的循环重试，None 表示不限次数）
         """
         # 设置标志表示正在执行重连脚本
         self._reconnect_scripts_executing = True
@@ -7334,10 +7387,11 @@ class DarRouteRunner:
                     return
                 else:
                     # 没有检测到map 323 + newNPC，执行刷新流程并重试
+                    max_retries_str = f"/{max_retries}" if max_retries is not None else ""
                     if last_map_id is not None and last_map_id != 323:
-                        self._emit(f"⚠️ [重连脚本] 检测到错误地图 {last_map_id}（期望323），执行刷新流程并重试（第 {retry_count + 1}/{max_retries} 次）", "WARN")
+                        self._emit(f"⚠️ [重连脚本] 检测到错误地图 {last_map_id}（期望323），执行刷新流程并重试（第 {retry_count + 1}{max_retries_str} 次）", "WARN")
                     else:
-                        self._emit(f"⚠️ [重连脚本] 未检测到map 323 + newNPC（检测到map={last_map_id}, has_newNPC={has_newNPC}），执行刷新流程并重试（第 {retry_count + 1}/{max_retries} 次）", "WARN")
+                        self._emit(f"⚠️ [重连脚本] 未检测到map 323 + newNPC（检测到map={last_map_id}, has_newNPC={has_newNPC}），执行刷新流程并重试（第 {retry_count + 1}{max_retries_str} 次）", "WARN")
                     
                     # ✅ 标记重连脚本执行完成
                     self._reconnect_scripts_executing = False

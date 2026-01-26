@@ -1402,17 +1402,12 @@ class UnifiedBattleFramework:
             b = int(round(sum(p[2] for p in pixels) / len(pixels)))
             mean_rgb = (r, g, b)
             
-            # 严格匹配红色或黑色（允许小误差 tolerance=5）
-            tolerance = 5
-            if (abs(r - 255) <= tolerance and abs(g - 0) <= tolerance and abs(b - 0) <= tolerance):
-                self._emit(f"🔋 电池状态检测：红色 (RGB={mean_rgb}) -> 1", "INFO")
+            # 规则：R 通道 >= 64 判定为 1，否则判定为 0
+            if r >= 64:
+                self._emit(f"🔋 电池状态检测：R>=64 (RGB={mean_rgb}) -> 1", "INFO")
                 return 1
-            elif (abs(r - 0) <= tolerance and abs(g - 0) <= tolerance and abs(b - 0) <= tolerance):
-                self._emit(f"🔋 电池状态检测：黑色 (RGB={mean_rgb}) -> 0", "INFO")
-                return 0
-            else:
-                self._emit(f"⚠️ 电池状态检测：未知颜色 (RGB={mean_rgb})", "WARN")
-                return None
+            self._emit(f"🔋 电池状态检测：R<64 (RGB={mean_rgb}) -> 0", "INFO")
+            return 0
         except Exception as e:
             self._emit(f"❌ 电池状态检测异常: {e}", "ERROR")
             return None
@@ -1576,12 +1571,16 @@ class UnifiedBattleFramework:
             if battery_status_after is not None:
                 self._emit(f"🔋 [战后检测] 电池状态: {battery_status_after}", "INFO")
                 
-                # 如果是在 DarRouteRunner 中调用，比较状态并决定是否刷新重连
+                # 如果是在 DarRouteRunner 中调用，更新电池状态作为下一次的基准
                 if hasattr(self.bot, 'dar_route_runner'):
                     dar_runner = self.bot.dar_route_runner
                     battery_before = getattr(dar_runner, '_battery_status_before_battle', None)
                     
-                    if battery_before is not None:
+                    # ✅ 无论是否捕捉成功，都更新电池状态作为下一次的基准
+                    dar_runner._battery_status_before_battle = battery_status_after
+                    
+                    # ✅ 只有捕捉成功后，才判断是否触发刷新重连
+                    if self._last_action == LastActionType.CAPSULE and battery_before is not None:
                         # 获取当前profile，判断是否为双塔或嘟咕噜模式
                         current_profile = getattr(dar_runner, '_current_profile', None)
                         profile_name_lower = current_profile.name.lower() if current_profile else ""
