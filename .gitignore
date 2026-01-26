@@ -36,6 +36,7 @@ desktop.ini
 
 # Project specific - 不需要上传的文件
 debug_ocr/
+debug_ocr_enemy/
 human_verify_samples/
 hv_samples/未处理/
 baseline_data/*.pkl
