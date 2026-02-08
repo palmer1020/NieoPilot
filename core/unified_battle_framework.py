@@ -558,6 +558,34 @@ class UnifiedBattleFramework:
         calibration_attempts = 0
         max_calibration_attempts = 5
         
+        # ✅ 补丁：在启动内核监听之前，先检查initial_cursor之前的日志中是否有fightResource/pet/swf/信号
+        # 这样可以确保在野外稀有精灵模式和尼奥模式中都能正确记录时间
+        # 注意：只在skip_stage1=True且提供了initial_cursor时执行，不影响其他场景
+        # 时间测量是只读的，不影响任何OCR、精灵识别、入战等逻辑
+        petswf_detected_time: Optional[float] = None
+        if skip_stage1 and initial_cursor is not None:
+            try:
+                from core.logger import fetch_kernel_since
+                # 检查initial_cursor之前最多200条日志（确保能检测到fightResource/pet/swf/信号）
+                check_cursor = max(0, initial_cursor - 200)
+                lines = fetch_kernel_since(check_cursor)
+                if isinstance(lines, list):
+                    # 从最新到最旧查找fightResource/pet/swf/信号（找到第一个就停止）
+                    for line in reversed(lines):
+                        line_str = str(line)
+                        if self._has_fight_pet(line_str):
+                            # 找到信号，使用当前时间作为近似值
+                            # 注意：由于无法获取精确的检测时间，这里使用当前时间作为近似值
+                            # 实际的时间差可能会稍微偏大，但足以用于时间测量和趋势分析
+                            # ✅ 时间测量是只读的，不影响任何其他逻辑
+                            petswf_detected_time = time.time()
+                            self._emit(f"📝 [时间统计] 在Stage 2启动前检测到fightResource/pet/swf/信号（已记录时间，cursor范围: {check_cursor}->{initial_cursor}）", "INFO")
+                            break
+            except Exception as e:
+                # 如果检查失败，不影响后续流程（petswf_detected_time保持为None，后续会继续检测）
+                # ✅ 时间测量失败不影响任何其他逻辑
+                pass
+        
         # 启动内核监听（尽早开始监听，以便及时检测PetItem）
         self._start_kernel_listen()
         
@@ -581,7 +609,8 @@ class UnifiedBattleFramework:
             last_click_time = 0.0
             click_interval = 0.1  # 每0.1秒点击一次
             saw_fight_skill = False  # 标志：是否已检测到fightResource/skill/swf（停止点击）
-            petswf_detected_time: Optional[float] = None  # ✅ petswf（fightResource/pet/swf/）第一次出现的时间（用于记录时间差）
+            # ✅ petswf_detected_time 已在上面初始化（如果提前检测到，已设置；否则为None）
+            # 注意：时间测量是只读的，不影响任何OCR、精灵识别、入战等逻辑
             skill_detected_time: Optional[float] = None  # skill出现的时间（用于右下角检测判断）
             round_probe_was_gray = False  # 回合探针是否曾经是灰色（用于检测先灰后蓝）
             round_probe_model = None  # 回合探针模板模型（延迟加载）
@@ -958,6 +987,19 @@ class UnifiedBattleFramework:
                 # 减少延迟，技能点击后只需要短暂等待即可（从0.55s减少到0.1s）
                 time.sleep(0.1)
                 self._last_action = LastActionType.SKILL
+        elif action_type == "skill2":
+            # 技能二：使用"对战.使用技能二"region
+            skill2_key = "对战.使用技能二"
+            if self._rs_get(skill2_key):
+                self._click_region_twice(skill2_key, config.use_foreground, gap=0.06)
+                time.sleep(0.1)
+                self._last_action = LastActionType.SKILL
+            else:
+                self._emit("⚠️ 未找到技能二 region，回退为技能一", "WARN")
+                if config.skill_key:
+                    self._click_region_twice(config.skill_key, config.use_foreground, gap=0.06)
+                    time.sleep(0.1)
+                    self._last_action = LastActionType.SKILL
         elif action_type in ("capsule", "capsule_high"):
             # ✅ 所有捕捉逻辑前：先双击切换战斗面板，再双击切换捕捉面板
             battle_panel_key = "对战.切换战斗面板"
@@ -1026,15 +1068,15 @@ class UnifiedBattleFramework:
                     elif config.test_mode_capsule_only_mid:
                         # 测试模式：只使用中级胶囊
                         use_mid = True
-                    elif action_type == "capsule" and round_idx == 1:
-                        # ✅ 第1回合使用胶囊（稀有捕捉模式）：使用中级胶囊（中高交替从第1回合开始）
+                    elif action_type == "capsule" and round_idx == 1 and config.invincible_first_round:
+                        # ✅ 第1回合使用胶囊且是螳螂无敌胶囊：使用中级胶囊（保留无敌胶囊逻辑）
                         use_mid = True
                     elif action_type == "capsule":
-                        # ✅ 胶囊模式（稀有捕捉）：中高交替（奇数回合中级，偶数回合高级）
-                        use_mid = (round_idx % 2 == 1)  # 回合1,3,5,7...用中级；回合2,4,6,8...用高级
+                        # ✅ 野外捕捉模式（除螳螂无敌胶囊外）：只使用高级胶囊
+                        use_mid = False  # 所有野外捕捉模式都使用高级胶囊
                     else:
-                        # 正常模式：中级(回合2) / 高级(回合3) / 中级(回合4) / 高级...
-                        use_mid = (round_idx % 3 != 0)  # 回合2,4,5,7...用中级；回合3,6,9...用高级
+                        # 正常模式：只使用高级胶囊
+                        use_mid = False  # 所有野外捕捉模式都使用高级胶囊
                     
                     if has_split:
                         # 分开录制：面板 + 胶囊（胶囊连点2次）

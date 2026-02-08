@@ -154,6 +154,7 @@ class Dashboard(QWidget):
         self.rare_combo.addItem("双塔（102/143 / map=320）", userData="shuangta")
         self.rare_combo.addItem("小豆芽（27 / map=11）", userData="xiaodouya")
         self.rare_combo.addItem("闪光皮皮（164 / map=10）", userData="flash_pipi")
+        self.rare_combo.addItem("眼球（269 / map=60）", userData="eyeball")
 
         row2.addWidget(self.btn_rare)
         row2.addWidget(QLabel("目标："))
@@ -223,44 +224,29 @@ class Dashboard(QWidget):
         nieo_group.setLayout(nieo_layout)
         control_panel.addWidget(nieo_group)
 
-        # ---------- 定时任务 ----------
-        scheduled_group = QGroupBox("⏰ 定时任务（睡前自动捕捉）")
-        scheduled_layout = QVBoxLayout()
+        # ---------- 双塔尼奥轮换模式（已替换原定时任务）----------
+        rotation_group = QGroupBox("🔄 双塔尼奥轮换模式（自动切换）")
+        rotation_layout = QVBoxLayout()
         
         row1 = QHBoxLayout()
-        row1.addWidget(QLabel("执行时间："))
-        self.datetime_scheduled = QDateTimeEdit()
-        self.datetime_scheduled.setDateTime(QDateTime.currentDateTime())  # 默认当前时间
-        self.datetime_scheduled.setCalendarPopup(True)
-        self.datetime_scheduled.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
-        row1.addWidget(self.datetime_scheduled)
-        scheduled_layout.addLayout(row1)
+        self.btn_start_rotation = QPushButton("▶ 启动轮换模式")
+        self.btn_start_rotation.clicked.connect(self.start_rotation_mode)
+        row1.addWidget(self.btn_start_rotation)
+        rotation_layout.addLayout(row1)
         
-        row2 = QHBoxLayout()
-        row2.addWidget(QLabel("目标精灵："))
-        self.scheduled_rare_combo = QComboBox()
-        self.scheduled_rare_combo.addItem("嘟咕噜（254 / map=323）", userData="dugulu")
-        self.scheduled_rare_combo.addItem("双塔（102/143 / map=320）", userData="shuangta")
-        self.scheduled_rare_combo.addItem("小豆芽（27 / map=11）", userData="xiaodouya")
-        self.scheduled_rare_combo.addItem("闪光皮皮（164 / map=10）", userData="flash_pipi")
-        self.scheduled_rare_combo.addItem("螳螂（122 / map=11）", userData="mantis")
-        self.scheduled_rare_combo.addItem("尼奥（21/22地图）", userData="nieo")
-        row2.addWidget(self.scheduled_rare_combo)
-        scheduled_layout.addLayout(row2)
+        # 说明文字
+        info_label = QLabel("说明：根据北京时间自动切换模式\n尼奥模式：19:55-00:00 | 双塔模式：00:00-19:55")
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("color: gray; font-size: 10px;")
+        rotation_layout.addWidget(info_label)
         
-        row3 = QHBoxLayout()
-        self.btn_start_scheduled = QPushButton("▶ 启动定时任务")
-        self.btn_start_scheduled.clicked.connect(self.start_scheduled_task)
-        row3.addWidget(self.btn_start_scheduled)
-        scheduled_layout.addLayout(row3)
+        rotation_group.setLayout(rotation_layout)
+        control_panel.addWidget(rotation_group)
         
-        # 勾选框：睡前在挂机脚本
-        self.chk_scheduled_from_hangup = QCheckBox("睡前在挂机脚本（先执行回到基地.json）")
-        self.chk_scheduled_from_hangup.setChecked(False)
-        scheduled_layout.addWidget(self.chk_scheduled_from_hangup)
-        
-        scheduled_group.setLayout(scheduled_layout)
-        control_panel.addWidget(scheduled_group)
+        # ---------- 原定时任务（已禁用）----------
+        # scheduled_group = QGroupBox("⏰ 定时任务（睡前自动捕捉）")
+        # scheduled_layout = QVBoxLayout()
+        # ... (原代码已注释，保留以备参考)
 
         # --- 训练室：练级 ---
         train_group = QGroupBox("🏫 训练室（练级）")
@@ -822,27 +808,22 @@ class Dashboard(QWidget):
         self._lock_ui()
         self.start_signal.emit(tasks)
     
-    def start_scheduled_task(self):
-        """启动定时任务"""
-        scheduled_datetime = self.datetime_scheduled.dateTime().toPyDateTime()
-        profile = self.scheduled_rare_combo.currentData() or "dugulu"
-        from_hangup = self.chk_scheduled_from_hangup.isChecked()
-        
+    def start_rotation_mode(self):
+        """启动双塔尼奥轮换模式"""
         tasks = {
-            "scheduled_task": True,
-            "scheduled_datetime": scheduled_datetime,
-            "wild_capture_profile": profile,
+            "rotation_mode": True,  # 新的轮换模式标识
             "use_foreground": self.chk_foreground.isChecked(),
-            "scheduled_from_hangup": from_hangup,  # 是否从挂机脚本开始
         }
         
-        formatted_time = scheduled_datetime.strftime("%Y-%m-%d %H:%M:%S")
-        mode_text = "回到基地" if from_hangup else "登录"
-        self.log_message(f"⏰ 定时任务已设置：{formatted_time}，目标：{profile}，模式：{mode_text}（如果已有定时任务将被覆盖）", "SYSTEM")
-        # 定时任务不需要锁定UI，允许与其他任务共存
-        # 只锁定其他UI，保持定时任务UI可用
-        self._lock_ui_except_scheduled()
+        self.log_message("🔄 启动双塔尼奥轮换模式（根据北京时间自动切换）", "SYSTEM")
+        self._lock_ui()
         self.start_signal.emit(tasks)
+    
+    def start_scheduled_task(self):
+        """启动定时任务（已禁用，保留以备参考）"""
+        # ⚠️ 原定时任务已禁用，请使用双塔尼奥轮换模式
+        self.log_message("⚠️ 原定时任务已禁用，请使用双塔尼奥轮换模式", "WARN")
+        return
     
     def start_test_nie(self):
         """启动尼尔测试（77/310，第二回合切精灵三）"""

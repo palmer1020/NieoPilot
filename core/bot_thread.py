@@ -15,7 +15,7 @@ from core.battle_runner import BattleRunner
 from core.training_level_runner import TrainingLevelRunner
 
 # 野外捕捉（螳螂/稀有精灵）
-from core.dar_route_runner import DarRouteRunner, DEFAULT_PROFILE_MANTIS, DEFAULT_PROFILE_DUGULU, DEFAULT_PROFILE_SHUANGTA, DEFAULT_PROFILE_XIAODOUYA, DEFAULT_PROFILE_FLASH_PIPI
+from core.dar_route_runner import DarRouteRunner, DEFAULT_PROFILE_MANTIS, DEFAULT_PROFILE_DUGULU, DEFAULT_PROFILE_SHUANGTA, DEFAULT_PROFILE_XIAODOUYA, DEFAULT_PROFILE_FLASH_PIPI, EYEBALL_PROFILE
 
 # 已移除 CalibrationTestRunner（438测试功能已删除）
 
@@ -290,7 +290,8 @@ class BotWorker(QThread):
                 or tasks.get("calibration_test")
                 or tasks.get("nie_family_test")  # ✅ 尼尔家族测试
                 or tasks.get("nieo_mode")  # ✅ 尼奥模式（10/11地图循环）
-                or tasks.get("scheduled_task")  # 定时任务
+                or tasks.get("rotation_mode")  # ✅ 双塔尼奥轮换模式（已替换原定时任务）
+                # or tasks.get("scheduled_task")  # ⚠️ 原定时任务已禁用
             )
 
             if not has_job:
@@ -430,6 +431,9 @@ class BotWorker(QThread):
                             profile = DEFAULT_PROFILE_XIAODOUYA
                         elif profile_name == "flash_pipi":
                             profile = DEFAULT_PROFILE_FLASH_PIPI
+                        elif profile_name == "eyeball":
+                            from core.dar_route_runner import EYEBALL_PROFILE
+                            profile = EYEBALL_PROFILE
                         else:
                             profile = DEFAULT_PROFILE_DUGULU
 
@@ -453,6 +457,8 @@ class BotWorker(QThread):
                             profile = DEFAULT_PROFILE_XIAODOUYA
                         elif profile_name == "flash_pipi":
                             profile = DEFAULT_PROFILE_FLASH_PIPI
+                        elif profile_name == "eyeball":
+                            profile = EYEBALL_PROFILE
                         else:
                             profile = DEFAULT_PROFILE_DUGULU
 
@@ -464,8 +470,17 @@ class BotWorker(QThread):
                             smart_tracking_mode=True,  # 启用智能追踪模式
                         )
 
-                    # ---- 定时任务 ----
-                    if tasks.get("scheduled_task") and (not self.stop_current):
+                    # ---- 双塔尼奥轮换模式 ----
+                    if tasks.get("rotation_mode") and (not self.stop_current):
+                        self.emit_and_log("🔄 启动双塔尼奥轮换模式", "SYSTEM")
+                        use_foreground = bool(tasks.get("use_foreground", False))
+                        self.dar_route_runner.run_rotation_mode(
+                            stop_event=self._stop_event,
+                            use_foreground=use_foreground,
+                        )
+                    
+                    # ---- 原定时任务（已禁用）----
+                    # if tasks.get("scheduled_task") and (not self.stop_current):
                         from datetime import datetime
                         scheduled_datetime = tasks.get("scheduled_datetime")
                         if scheduled_datetime:
@@ -485,6 +500,9 @@ class BotWorker(QThread):
                             elif profile_name == "flash_pipi":
                                 profile = DEFAULT_PROFILE_FLASH_PIPI
                                 script_name = "to闪光皮皮"  # 需要确认脚本名称
+                            elif profile_name == "eyeball":
+                                profile = EYEBALL_PROFILE
+                                script_name = "to眼球"
                             elif profile_name == "nieo":
                                 # 尼奥模式：定时任务使用to尼奥脚本，直接触发使用地图/27.json
                                 profile = None
