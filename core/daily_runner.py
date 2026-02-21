@@ -294,6 +294,232 @@ class DailyRunner:
         
         self._emit("✅ 大乱斗x2：2场对战全部完成", "SUCCESS")
         return True
+
+    # ----------------------------
+    # 小号对战（刷经验）：无限循环
+    # ----------------------------
+    def run_exp_minor_battle(self, use_foreground: bool = True) -> bool:
+        """执行小号对战（刷经验）：无限循环，首次进入恢复精灵一和精灵二，每场战斗结束后恢复，直到用户点击停止"""
+        if not window_manager.find_window():
+            self._emit("❌ 未检测到游戏窗口：无法执行小号对战", "ERROR")
+            return False
+
+        regions = getattr(self.bot, "regions", None)
+        if regions is None:
+            self._emit("❌ DailyRunner 缺少 bot.regions", "ERROR")
+            return False
+
+        from config import TEMPLATES_PATH
+        cleaner = PostBattleCleaner(self.bot, regions, TEMPLATES_PATH)
+
+        if self._unified_framework is None:
+            self._unified_framework = UnifiedBattleFramework(self.bot, regions, TEMPLATES_PATH)
+
+        battle_count = 0
+        while not self._should_abort():
+            battle_count += 1
+            self._emit(f"📚 小号对战：第 {battle_count} 场", "SYSTEM")
+
+            # 第一步：第零次战斗恢复（首次进入 + 每场战斗结束都恢复）
+            if not self._recover_pet_one_and_two(regions, use_foreground):
+                self._emit("❌ 恢复精灵一和精灵二失败", "ERROR")
+                return False
+
+            if self._should_abort():
+                return False
+
+            # 第二步：扫描 经验.1 区域，纯黑时点击并发起对战
+            self._emit("🔍 等待 经验.1 区域变黑（RGB均<30）...", "INFO")
+            poll_count = 0
+            while not self._should_abort():
+                poll_count += 1
+                log_rgb = (poll_count % 100 == 1)  # 每100次输出一次RGB调试（约10秒）
+                if self._check_exp_probe_1_black(regions, log_rgb=log_rgb):
+                    self._emit("✅ 经验.1 已变黑，点击区域1", "SUCCESS")
+                    if not self._click_region_safe(regions, "经验.1", use_foreground):
+                        break
+                    time.sleep(0.5)
+                    self._emit("🖱 双击 经验.接受对战", "INFO")
+                    self._click_region_safe(regions, "经验.接受对战", use_foreground)
+                    time.sleep(0.1)
+                    self._click_region_safe(regions, "经验.接受对战", use_foreground)
+                    break
+                time.sleep(0.1)
+
+            if self._should_abort():
+                return False
+
+            # 等待 PetItem（20秒超时）
+            self._emit("⏳ 等待 PetItem 进入对战（20秒超时）...", "INFO")
+            if not self._wait_for_petitem_and_first_skill(regions, use_foreground, timeout_s=20.0):
+                self._emit("❌ 等待 PetItem 或第一回合失败", "ERROR")
+                continue
+
+            if self._should_abort():
+                return False
+
+            # 第三步：战斗循环（技能一 + 精灵二/精灵一切换），检测到 map 信号即结束
+            if not self._run_exp_minor_battle_loop(regions, use_foreground):
+                self._emit("❌ 战斗循环失败", "ERROR")
+                continue
+
+            if self._should_abort():
+                return False
+
+            # 第四步：检测胜利探针（黄或白），点击确定（无1AND1）
+            self._emit("⏳ 等待UI稳定（2.5秒）...", "INFO")
+            time.sleep(2.5)
+            self._emit("🟡 检测胜利探针（黄色或白色）...", "INFO")
+            if not self._detect_victory_probe_yellow_or_white(cleaner, use_foreground, timeout_s=8.0):
+                self._emit("❌ 未检测到胜利探针（超时）", "ERROR")
+                continue
+
+            self._emit("🖱 点击：对话框.对战胜利确认", "INFO")
+            if not self._click_region_safe(regions, "对话框.对战胜利确认", use_foreground):
+                continue
+
+            # 无1AND1，直接回到第一步恢复
+            time.sleep(1.0)
+
+        self._emit("✅ 小号对战已停止", "SUCCESS")
+        return True
+
+    def _recover_pet_one_and_two(self, regions, use_foreground: bool) -> bool:
+        """恢复精灵一和精灵二：打开背包 -> 双击精灵一恢复 -> 等待 -> 双击精灵二恢复 -> 关闭背包"""
+        bag_open_key = "精灵背包.打开精灵背包"
+        pet_one_key = "精灵背包.精灵一"
+        pet_two_key = "精灵背包.精灵二"
+        recover_key = "精灵背包.精灵恢复"
+
+        try:
+            self._emit("💼 打开精灵背包", "INFO")
+            if not self._click_region_safe(regions, bag_open_key, use_foreground):
+                return False
+            time.sleep(2.5)
+
+            for pet_name, pet_key in [("精灵一", pet_one_key), ("精灵二", pet_two_key)]:
+                self._emit(f"🐾 双击{pet_name}（准备恢复）", "INFO")
+                if not self._click_region_safe(regions, pet_key, use_foreground):
+                    return False
+                time.sleep(0.1)
+                if not self._click_region_safe(regions, pet_key, use_foreground):
+                    return False
+                time.sleep(0.5)
+                self._emit("💊 点击精灵恢复", "INFO")
+                if not self._click_region_safe(regions, recover_key, use_foreground):
+                    return False
+                time.sleep(1.0)
+                self._emit("⏳ 使用1AND1确认", "INFO")
+                from core.unified_battle_framework import BattleConfig, BattleMode
+                config = BattleConfig(
+                    mode=BattleMode.FIXED,
+                    use_foreground=use_foreground,
+                    abort_check=lambda: self._should_abort()
+                )
+                self._unified_framework._wait_for_confirm_probes(config, timeout_s=2.0)
+                time.sleep(0.5)
+
+            self._emit("💼 关闭精灵背包", "INFO")
+            if not self._click_region_safe(regions, bag_open_key, use_foreground):
+                return False
+            time.sleep(0.5)
+            return True
+        except Exception as e:
+            self._emit(f"❌ 恢复精灵一和精灵二异常: {e}", "ERROR")
+            return False
+
+    def _check_exp_probe_1_black(self, regions, log_rgb: bool = False) -> bool:
+        """检查 经验.1 区域是否近乎纯黑（RGB均<30）
+
+        Args:
+            regions: 区域存储
+            log_rgb: 是否输出RGB调试信息（每10次检查输出一次，避免日志过多）
+        """
+        import numpy as np
+        r = regions.get("经验.1")
+        if not r:
+            if log_rgb:
+                self._emit("⚠️ [经验.1] 区域不存在", "DEBUG")
+            return False
+        x1, y1, x2, y2 = r.outer_bbox()
+        img = window_manager.grab_game_bbox(x1, y1, x2, y2, min_size_px=2)
+        if img is None:
+            if log_rgb:
+                self._emit("⚠️ [经验.1] grab_game_bbox 返回 None", "DEBUG")
+            return False
+        arr = np.asarray(img.convert("RGB"), dtype=np.uint8)
+        mean_rgb = arr.mean(axis=(0, 1)).astype(int)
+        r_val, g_val, b_val = int(mean_rgb[0]), int(mean_rgb[1]), int(mean_rgb[2])
+        is_black = r_val < 30 and g_val < 30 and b_val < 30
+        if log_rgb or is_black:
+            self._emit(f"🔍 [经验.1] RGB=({r_val},{g_val},{b_val}) 纯黑={is_black}", "INFO")
+        return is_black
+
+    def _run_exp_minor_battle_loop(self, regions, use_foreground: bool) -> bool:
+        """小号对战战斗循环：蓝时技能一，灰时 精灵二/出战/精灵一/出战
+
+        战斗结束：检测到 map 信号即可（小号对战只需 map）
+        """
+        from core.logger import fetch_kernel_since, kernel_cursor
+
+        battle_runner = getattr(self.bot, "battle_runner", None)
+        if battle_runner is None:
+            self._emit("❌ 缺少battle_runner", "ERROR")
+            return False
+
+        probe_model = battle_runner._load_probe_templates()
+        map_signal = "/resource/map/"
+        cursor = kernel_cursor()
+
+        switch_sequence = [
+            "对战.切换精灵.切换精灵二",
+            "对战.切换精灵.出战",
+            "对战.切换精灵.切换精灵一",
+            "对战.切换精灵.出战"
+        ]
+        switch_index = 0
+        last_switch_time = 0.0
+        switch_interval = 0.5
+        last_probe_state = "UNKNOWN"
+
+        self._emit("⚔️ 开始小号对战战斗循环...", "INFO")
+
+        while True:
+            if self._should_abort():
+                return False
+            self._wait_if_paused()
+
+            # 检查 map 信号（战斗结束，小号对战只需要 map）
+            try:
+                lines = fetch_kernel_since(cursor)
+                if isinstance(lines, list):
+                    for line in lines:
+                        line_str = str(line)
+                        if map_signal in line_str:
+                            self._emit("🏁 战斗结束（检测到 map 信号）", "SUCCESS")
+                            return True
+                cursor = kernel_cursor()
+            except Exception:
+                pass
+
+            # 回合探针：蓝时技能一，灰时切换精灵
+            state, _, _ = self._unified_framework._detect_round_probe(probe_model)
+            if last_probe_state == "GRAY" and state == "BLUE":
+                self._emit("🎯 检测到灰变蓝：使用技能一", "INFO")
+                if not self._click_region_safe(regions, "对战.使用技能一", use_foreground):
+                    return False
+                time.sleep(0.1)
+            elif state == "GRAY":
+                now = time.time()
+                if now - last_switch_time >= switch_interval:
+                    switch_key = switch_sequence[switch_index]
+                    if not self._click_region_safe(regions, switch_key, use_foreground):
+                        return False
+                    switch_index = (switch_index + 1) % len(switch_sequence)
+                    last_switch_time = now
+
+            last_probe_state = state
+            time.sleep(0.05)
     
     def _click_region_safe(self, regions, key: str, use_foreground: bool) -> bool:
         """安全点击区域"""

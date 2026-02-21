@@ -281,7 +281,8 @@ class BotWorker(QThread):
                 or tasks.get("gacha")  # ✅ 扭蛋
                 or tasks.get("hero_tower")  # ✅ 勇者之塔
                 or tasks.get("chaos_battle_x2")  # ✅ 大乱斗x2
-                or tasks.get("1v1_x2")  # ✅ 1v1x2
+                or tasks.get("1v1_x2")
+                or tasks.get("exp_minor_battle")  # ✅ 小号对战（刷经验）  # ✅ 1v1x2
                 or tasks.get("training_level")
                 or tasks.get("training_until_level")
                 or tasks.get("leiyi_training")   # 雷伊特训
@@ -350,6 +351,11 @@ class BotWorker(QThread):
                     if tasks.get("1v1_x2") and (not self.stop_current):
                         self.emit_and_log(f"⚔ 开始1v1x2（前台={use_foreground}）", "SYSTEM")
                         self.daily_runner.run_1v1_x2(use_foreground=use_foreground)
+
+                    # ---- 小号对战（刷经验）----
+                    if tasks.get("exp_minor_battle") and (not self.stop_current):
+                        self.emit_and_log(f"📚 开始小号对战（刷经验，前台={use_foreground}）", "SYSTEM")
+                        self.daily_runner.run_exp_minor_battle(use_foreground=use_foreground)
 
                     # ---- 雷伊特训 ----
                     if tasks.get("leiyi_training") and (not self.stop_current):

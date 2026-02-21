@@ -138,6 +138,16 @@ class Dashboard(QWidget):
 
         daily_group.setLayout(daily_layout)
         control_panel.addWidget(daily_group)
+
+        # ---- 刷经验 group ----
+        exp_group = QGroupBox("刷经验")
+        exp_layout = QHBoxLayout()
+        self.btn_exp_minor_battle = QPushButton("小号对战")
+        self.btn_exp_minor_battle.clicked.connect(self.on_run_exp_minor_battle)
+        exp_layout.addWidget(self.btn_exp_minor_battle)
+        exp_layout.addStretch()
+        exp_group.setLayout(exp_layout)
+        control_panel.addWidget(exp_group)
         
         # ---- Wild capture group ----
         wild_group = QGroupBox("野外捕捉")
@@ -474,6 +484,15 @@ class Dashboard(QWidget):
         self._lock_ui()
         self.start_signal.emit(tasks)
 
+    def on_run_exp_minor_battle(self):
+        """执行小号对战（刷经验）"""
+        tasks = {
+            "exp_minor_battle": True,
+            "use_foreground": self.chk_foreground.isChecked()
+        }
+        self.log_message("📚 启动小号对战（刷经验）", "SYSTEM")
+        self._lock_ui()
+        self.start_signal.emit(tasks)
 
     def on_open_script_recorder(self):
         """打开脚本录制器"""
