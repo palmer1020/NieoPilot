@@ -357,9 +357,14 @@ class UnifiedBattleFramework:
     # 内核日志监听
     # ================================
     
-    def _start_kernel_listen(self):
-        """启动内核日志监听"""
-        self._kernel_q.clear()
+    def _start_kernel_listen(self, clear_queue: bool = True):
+        """启动内核日志监听
+        
+        Args:
+            clear_queue: 是否清空队列。Stage 3 从 Stage 2 接管时传 False，保留 Stage 2 已捕获的 map 信号（解决普通逃跑 battle_success 误判）
+        """
+        if clear_queue:
+            self._kernel_q.clear()
         
         def _on_line(line: str):
             self._kernel_q.append(line)
@@ -412,6 +417,36 @@ class UnifiedBattleFramework:
                 npc_seen = True
         
         return map_seen, npc_seen
+    
+    def _check_map_after_calibration(self, expected_map_id: int) -> Optional[int]:
+        """
+        校准后检测地图变化（从内核日志中检测非目标地图）
+        
+        Args:
+            expected_map_id: 期望的地图ID
+            
+        Returns:
+            如果检测到非目标地图，返回该地图ID；否则返回None
+        """
+        MAP_SWF_RE = re.compile(r"/resource/map/(\d+)\.swf")
+        
+        exp = int(expected_map_id)
+        
+        # 从内核队列检查（实时检测，不消费队列）
+        temp_q = list(self._kernel_q)  # 使用list复制，不消费队列
+        for line in temp_q:
+            line_str = str(line)
+            m = MAP_SWF_RE.search(line_str)
+            if not m:
+                continue
+            try:
+                mid = int(m.group(1))
+            except Exception:
+                continue
+            if mid != exp:
+                return mid
+        
+        return None
     
     # ================================
     # Stage 2: 校准逻辑
@@ -523,6 +558,110 @@ class UnifiedBattleFramework:
         except Exception as e:
             self._emit(f"❌ 校准点击失败: {e}", "ERROR")
             return False
+    
+    def _handle_abnormal_distribution_fallback(
+        self,
+        x_values: List[int],
+        distribution: str,
+        use_foreground: bool,
+    ) -> Tuple[str, Optional[int]]:
+        """
+        处理异常分布的fallback逻辑（仅当校准出现异常分布时调用）
+        
+        流程：
+        1. 扫描游戏.1x, 2x, 3x, 4x区域，统计不为白色(255,255,255)的数量
+        2. 若全部白色：返回 ("reconnect", None)，调用方执行普通刷新重连
+        3. 若数量为3：排除白色点，对剩下3个点计算ab分布；若某count==1则点对应ab值（与正常校准一致）；否则任选非白色点
+        4. 若数量为2或1：任选非白色点
+        5. 保证：只要存在非白色x，至少返回一个可点击组
+        
+        Returns:
+            ("reconnect", None): 全部白色，需执行刷新重连
+            ("click", group_idx): 可点击的组号(1-4)
+        """
+        self._emit(f"🔄 [异常分布fallback] 开始处理异常分布: {distribution}", "INFO")
+        
+        COLOR_WHITE = (255, 255, 255)
+        x_non_white_indices = []
+        
+        # 步骤1：扫描游戏.1x, 2x, 3x, 4x区域
+        for i in range(1, 5):
+            key_x = f"游戏.{i}x"
+            try:
+                rgb_x = self._mean_rgb(key_x)
+                if rgb_x is None:
+                    x_non_white_indices.append(i - 1)
+                    self._emit(f"📊 [异常分布fallback] 游戏.{i}x 无法获取颜色，视为非白色", "DEBUG")
+                elif rgb_x != COLOR_WHITE:
+                    x_non_white_indices.append(i - 1)
+                    self._emit(f"📊 [异常分布fallback] 游戏.{i}x 颜色非白色", "DEBUG")
+            except Exception as e:
+                self._emit(f"⚠️ [异常分布fallback] 无法获取游戏.{i}x: {e}，视为非白色", "WARN")
+                x_non_white_indices.append(i - 1)
+        
+        non_white_count = len(x_non_white_indices)
+        self._emit(f"📊 [异常分布fallback] 非白色x区域数量: {non_white_count}", "INFO")
+        
+        # 步骤2：全部白色 -> 执行普通刷新重连
+        if non_white_count == 0:
+            self._emit("⚠️ [异常分布fallback] 所有x区域都是白色，需执行刷新重连", "WARN")
+            return ("reconnect", None)
+        
+        # 步骤3：数量为3
+        if non_white_count == 3:
+            white_idx = [i for i in range(4) if i not in x_non_white_indices][0]
+            self._emit(f"📊 [异常分布fallback] 排除白色的点：组{white_idx + 1}", "INFO")
+            
+            remaining_indices = list(x_non_white_indices)
+            remaining_ab_values = []
+            
+            for idx in remaining_indices:
+                group_num = idx + 1
+                key_a = f"游戏.{group_num}a"
+                key_b = f"游戏.{group_num}b"
+                try:
+                    ab_val = self._count_orange_in_pair(key_a, key_b)
+                    remaining_ab_values.append(ab_val)
+                except Exception:
+                    remaining_ab_values.append(0)
+            
+            count_0 = remaining_ab_values.count(0)
+            count_1 = remaining_ab_values.count(1)
+            count_2 = remaining_ab_values.count(2)
+            remaining_dist = f"{count_1}{count_0}{count_2}"
+            self._emit(f"📊 [异常分布fallback] 排除白色后三个点的分布: {remaining_dist} (count_0={count_0}, count_1={count_1}, count_2={count_2})", "INFO")
+            
+            # 与正常校准一致：哪个count==1，点对应ab值的点
+            if count_0 == 1:
+                for i, val in enumerate(remaining_ab_values):
+                    if val == 0:
+                        target_group = remaining_indices[i] + 1
+                        self._emit(f"🎯 [异常分布fallback] 分布{remaining_dist}，点ab=0的点：组{target_group}", "INFO")
+                        return ("click", target_group)
+            if count_1 == 1:
+                for i, val in enumerate(remaining_ab_values):
+                    if val == 1:
+                        target_group = remaining_indices[i] + 1
+                        self._emit(f"🎯 [异常分布fallback] 分布{remaining_dist}，点ab=1的点：组{target_group}", "INFO")
+                        return ("click", target_group)
+            if count_2 == 1:
+                for i, val in enumerate(remaining_ab_values):
+                    if val == 2:
+                        target_group = remaining_indices[i] + 1
+                        self._emit(f"🎯 [异常分布fallback] 分布{remaining_dist}，点ab=2的点：组{target_group}", "INFO")
+                        return ("click", target_group)
+            
+            # 分布为111、300、030、003等，任选非白色点
+            target_idx = x_non_white_indices[0]
+            target_group = target_idx + 1
+            self._emit(f"🎯 [异常分布fallback] 分布{remaining_dist}，任选非白色点：组{target_group}", "INFO")
+            return ("click", target_group)
+        
+        # 步骤4：数量为2或1，任选非白色点
+        target_idx = x_non_white_indices[0]
+        target_group = target_idx + 1
+        self._emit(f"🎯 [异常分布fallback] 非白色数量为{non_white_count}，选择：组{target_group}", "INFO")
+        return ("click", target_group)
     
     def stage2_calibration_and_petitem(
         self, 
@@ -1122,8 +1261,8 @@ class UnifiedBattleFramework:
         """
         self._emit("⚔️ Stage 3: 战斗循环", "INFO")
         
-        # ✅ 启动内核监听（用于检测战斗结束信号：map + newNpc）
-        self._start_kernel_listen()
+        # ✅ 启动内核监听（不清空队列，保留 Stage 2 已捕获的 map 信号，避免普通逃跑时误判 battle_success=False）
+        self._start_kernel_listen(clear_queue=False)
         
         # ✅ 第一回合已在Stage 2检测到PetItem时执行，这里从round_idx=1开始
         # 注意：如果第一回合动作刚执行，给它一点时间生效（但不要sleep太久）
@@ -1422,6 +1561,8 @@ class UnifiedBattleFramework:
             0: 黑色（无电）
             None: 检测失败
         """
+        # ✅ 按需求完全关闭电池检测（不输出日志，也不触发任何逻辑）
+        return None
         try:
             battery_reg = self.regions.get(self.KEY_BATTERY)
             if not battery_reg:
@@ -1607,51 +1748,7 @@ class UnifiedBattleFramework:
             self._emit("⚠️ 未知动作类型，默认进入1 AND 1检测", "WARN")
             self._wait_for_confirm_probes(config)
         
-        # ✅ 新增：1AND1之后，检测电池状态（仅野外模式）
-        if config.mode == BattleMode.WILD:
-            battery_status_after = self._detect_battery_status(config.use_foreground)
-            if battery_status_after is not None:
-                self._emit(f"🔋 [战后检测] 电池状态: {battery_status_after}", "INFO")
-                
-                # 如果是在 DarRouteRunner 中调用，更新电池状态作为下一次的基准
-                if hasattr(self.bot, 'dar_route_runner'):
-                    dar_runner = self.bot.dar_route_runner
-                    battery_before = getattr(dar_runner, '_battery_status_before_battle', None)
-                    
-                    # ✅ 无论是否捕捉成功，都更新电池状态作为下一次的基准
-                    dar_runner._battery_status_before_battle = battery_status_after
-                    
-                    # ✅ 只有捕捉成功后，才判断是否触发刷新重连
-                    if self._last_action == LastActionType.CAPSULE and battery_before is not None:
-                        # 获取当前profile，判断是否为双塔或嘟咕噜模式
-                        current_profile = getattr(dar_runner, '_current_profile', None)
-                        profile_name_lower = current_profile.name.lower() if current_profile else ""
-                        is_shuangta_or_dugulu = "双塔" in profile_name_lower or "嘟咕噜" in profile_name_lower
-                        
-                        # 双塔和嘟咕噜模式：使用1 to 0触发重启
-                        # 其他模式：使用测试模式标志判断
-                        if is_shuangta_or_dugulu:
-                            # 双塔和嘟咕噜模式：1 to 0 触发
-                            if battery_before == 1 and battery_status_after == 0:
-                                self._emit(f"⚠️ [电池检测] 状态变化: {battery_before} to {battery_status_after} ({profile_name_lower}模式：1 to 0) -> 触发刷新重连", "WARN")
-                                dar_runner._battery_status_after_battle = battery_status_after
-                                dar_runner._should_refresh_reconnect = True
-                        else:
-                            # 其他模式：根据测试模式标志判断
-                            test_mode = getattr(dar_runner, '_battery_test_mode', True)
-                            
-                            if test_mode:
-                                # 测试模式：1 to 1
-                                if battery_before == 1 and battery_status_after == 1:
-                                    self._emit(f"⚠️ [电池检测] 状态变化: {battery_before} to {battery_status_after} (测试模式：1 to 1) -> 触发刷新重连", "WARN")
-                                    dar_runner._battery_status_after_battle = battery_status_after
-                                    dar_runner._should_refresh_reconnect = True
-                            else:
-                                # 正式模式：1 to 0
-                                if battery_before == 1 and battery_status_after == 0:
-                                    self._emit(f"⚠️ [电池检测] 状态变化: {battery_before} to {battery_status_after} (正式模式：1 to 0) -> 触发刷新重连", "WARN")
-                                    dar_runner._battery_status_after_battle = battery_status_after
-                                    dar_runner._should_refresh_reconnect = True
+        # ✅ 已禁用：战后电池检测触发刷新重连（按需求完全关闭）
         
         return True
     

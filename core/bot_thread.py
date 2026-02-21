@@ -284,6 +284,7 @@ class BotWorker(QThread):
                 or tasks.get("1v1_x2")  # ✅ 1v1x2
                 or tasks.get("training_level")
                 or tasks.get("training_until_level")
+                or tasks.get("leiyi_training")   # 雷伊特训
                 or tasks.get("dar_route_test")   # 你 Dashboard 里有这个按钮
                 or tasks.get("wild_capture")     # ✅ 你新增的"螳螂/稀有精灵捕捉"
                 or tasks.get("smart_tracking_test")  # 智能追踪测试
@@ -350,6 +351,14 @@ class BotWorker(QThread):
                         self.emit_and_log(f"⚔ 开始1v1x2（前台={use_foreground}）", "SYSTEM")
                         self.daily_runner.run_1v1_x2(use_foreground=use_foreground)
 
+                    # ---- 雷伊特训 ----
+                    if tasks.get("leiyi_training") and (not self.stop_current):
+                        loop_count = self._parse_int(tasks.get("leiyi_loop_count", 10), 10)
+                        loop_count = max(1, min(999, loop_count))
+                        self.emit_and_log(f"⚡ 开始雷伊特训（循环={loop_count} 前台={use_foreground}）", "SYSTEM")
+                        self.dar_route_runner._check_and_fill_missing_swf_files()  # 像尼奥模式一样补齐swf
+                        self.daily_runner.run_leiyi_training(loop_count=loop_count, use_foreground=use_foreground)
+
                     # ---- 训练室：升级直到目标（优先于单批次）----
                     if tasks.get("training_until_level") and (not self.stop_current):
                         battles_per_batch = self._parse_int(tasks.get("battles_per_batch", 30), 30)
@@ -369,6 +378,7 @@ class BotWorker(QThread):
                             f"⬆ 升级直到 {target_level}（batch={battles_per_batch} recover_every={recover_every} debug_stop={debug_stop_level} 前台={use_foreground}）",
                             "SYSTEM",
                         )
+                        self.dar_route_runner._check_and_fill_missing_swf_files()  # 像尼奥模式一样补齐swf
                         self.training_level_runner.run_training_until_level(
                             target_level=target_level,
                             battles_per_batch=battles_per_batch,
@@ -393,6 +403,7 @@ class BotWorker(QThread):
                             f"🏫 训练室练级：{max_battles} 场（recover_every={recover_every} debug_stop={debug_stop_level} 前台={use_foreground}）",
                             "SYSTEM",
                         )
+                        self.dar_route_runner._check_and_fill_missing_swf_files()  # 像尼奥模式一样补齐swf
                         self.training_level_runner.run_training_level(
                             max_battles=max_battles,
                             recover_every=recover_every,
@@ -438,11 +449,24 @@ class BotWorker(QThread):
                             profile = DEFAULT_PROFILE_DUGULU
 
                         self.emit_and_log(f"🌲 野外捕捉启动：profile={profile_name} 前台={use_foreground}", "SYSTEM")
-                        self.dar_route_runner.run(
-                            stop_event=self._stop_event,
-                            use_foreground=use_foreground,
-                            profile=profile,
-                        )
+
+                        # 闪光皮皮专用：轮换重连前置（勾选时先执行双塔精灵版轮换重连，失败则重试完整流程直到成功）
+                        if profile_name == "flash_pipi" and tasks.get("rare_rotation_reconnect_first"):
+                            while not self.stop_current and not self._stop_event.is_set():
+                                ok = self.dar_route_runner._execute_flash_pipi_pre_rotation_reconnect(
+                                    use_foreground=use_foreground,
+                                    stop_event=self._stop_event,
+                                )
+                                if ok:
+                                    break
+                                self.emit_and_log("⚠️ 轮换重连前置失败，重试完整流程（1-5）直到启动模式", "WARN")
+
+                        if not self.stop_current and not self._stop_event.is_set():
+                            self.dar_route_runner.run(
+                                stop_event=self._stop_event,
+                                use_foreground=use_foreground,
+                                profile=profile,
+                            )
 
                     # ---- 智能追踪测试 ----
                     if tasks.get("smart_tracking_test") and (not self.stop_current):
@@ -472,11 +496,33 @@ class BotWorker(QThread):
 
                     # ---- 双塔尼奥轮换模式 ----
                     if tasks.get("rotation_mode") and (not self.stop_current):
-                        self.emit_and_log("🔄 启动双塔尼奥轮换模式", "SYSTEM")
+                        is_test_mode = bool(tasks.get("rotation_test_mode", False))
+                        mode_text = "测试模式（固定时间间隔切换）" if is_test_mode else "正式模式（根据北京时间自动切换）"
+                        self.emit_and_log(f"🔄 启动双塔尼奥轮换模式（{mode_text}）", "SYSTEM")
                         use_foreground = bool(tasks.get("use_foreground", False))
+                        
+                        # 测试模式参数
+                        interval_minutes_nieo = float(tasks.get("rotation_interval_minutes_nieo", 60.0) or 60.0)
+                        interval_minutes_shuangta = float(tasks.get("rotation_interval_minutes_shuangta", 60.0) or 60.0)
+                        hard_limit_sec = float(tasks.get("petswf_hard_limit_sec", 8.0) or 8.0)
+                        if is_test_mode:
+                            self.dar_route_runner.ROTATION_RECONNECT_INTERVAL_MINUTES_NIEO = interval_minutes_nieo
+                            self.dar_route_runner.ROTATION_RECONNECT_INTERVAL_MINUTES_SHUANGTA = interval_minutes_shuangta
+                            self.dar_route_runner.PETSWF_TO_PETITEM_HARD_LIMIT_SEC = hard_limit_sec
+                            self.emit_and_log(
+                                f"🧪 [轮换模式-测试] 参数：尼奥→双塔={interval_minutes_nieo}分钟，双塔→尼奥={interval_minutes_shuangta}分钟，硬线={hard_limit_sec}秒",
+                                "INFO",
+                            )
+                        else:
+                            # 非测试模式恢复默认值
+                            self.dar_route_runner.ROTATION_RECONNECT_INTERVAL_MINUTES_NIEO = 60.0
+                            self.dar_route_runner.ROTATION_RECONNECT_INTERVAL_MINUTES_SHUANGTA = 60.0
+                            self.dar_route_runner.PETSWF_TO_PETITEM_HARD_LIMIT_SEC = 8.0
+                        
                         self.dar_route_runner.run_rotation_mode(
                             stop_event=self._stop_event,
                             use_foreground=use_foreground,
+                            is_test_mode=is_test_mode,  # ✅ 传递测试模式标志
                         )
                     
                     # ---- 原定时任务（已禁用）----
@@ -663,15 +709,19 @@ class BotWorker(QThread):
                                 
                                 # ✅ 1.5. 在执行to脚本之前，执行亨姆检测流程
                                 if not self.stop_current:
-                                    self.emit_and_log("🔍 开始执行亨姆检测流程", "INFO")
-                                    if self.dar_route_runner._handle_hengmu_before_to_script(
-                                        profile=profile,
-                                        use_foreground=use_foreground,
-                                        stop_event=self._stop_event
-                                    ):
-                                        self.emit_and_log("✅ 亨姆检测流程完成", "SUCCESS")
+                                    # ✅ 检查 profile 是否已定义（尼奥模式下 profile 可能为 None）
+                                    if profile is not None:
+                                        self.emit_and_log("🔍 开始执行亨姆检测流程", "INFO")
+                                        if self.dar_route_runner._handle_hengmu_before_to_script(
+                                            profile=profile,
+                                            use_foreground=use_foreground,
+                                            stop_event=self._stop_event
+                                        ):
+                                            self.emit_and_log("✅ 亨姆检测流程完成", "SUCCESS")
+                                        else:
+                                            self.emit_and_log("⚠️ 亨姆检测流程失败，继续执行to脚本", "WARN")
                                     else:
-                                        self.emit_and_log("⚠️ 亨姆检测流程失败，继续执行to脚本", "WARN")
+                                        self.emit_and_log("ℹ️ 跳过亨姆检测流程（尼奥模式，profile为None）", "INFO")
                                 
                                 # 2. 执行切换脚本（toXXX.json）
                                 if not self.stop_current:
@@ -714,13 +764,17 @@ class BotWorker(QThread):
                                                 f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"bot_thread.py:648","message":"定时任务调用dar_route_runner.run","data":{"profile_name":profile_name,"profile_is_none":(profile is None)},"timestamp":int(time.time()*1000)})+"\n")
                                         except: pass
                                         # #endregion
-                        self.dar_route_runner.run(
-                            stop_event=self._stop_event,
-                            use_foreground=use_foreground,
-                            profile=profile,
-                                        test_mode=False,
-                                        smart_tracking_mode=False,  # 定时任务使用正常的捕捉逻辑
-                                    )
+                                        # ✅ 检查 profile 是否已定义（尼奥模式下 profile 可能为 None）
+                                        if profile is not None:
+                                            self.dar_route_runner.run(
+                                                stop_event=self._stop_event,
+                                                use_foreground=use_foreground,
+                                                profile=profile,
+                                                test_mode=False,
+                                                smart_tracking_mode=False,  # 定时任务使用正常的捕捉逻辑
+                                            )
+                                        else:
+                                            self.emit_and_log("⚠️ profile为None，无法执行普通捕捉模式", "WARN")
 
                     # ---- 🌊 尼奥模式（10/11地图循环）----
                     if tasks.get("nieo_mode") and (not self.stop_current):

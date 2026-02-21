@@ -636,71 +636,72 @@ class DailyRunner:
         - 黄色（通过cleaner.detect_victory_probe_yellow检测）
         - 白色（FFFFFF，RGB值都>=245）
         """
+        result = self._detect_victory_probe_result(cleaner, use_foreground, timeout_s)
+        return result in ("yellow", "white")
+
+    def _detect_victory_probe_result(
+        self, cleaner, use_foreground: bool, timeout_s: float = 8.0
+    ) -> Optional[str]:
+        """检测胜利探针颜色，返回 "yellow" | "white" | None
+        
+        用于雷伊特训：黄色=胜利，白色=失败
+        """
         import numpy as np
-        
-        # 使用cleaner的detect_victory_probe_yellow方法检测黄色
-        # 同时检测白色（000000）
-        # ✅ 修复：使用和训练室相同的region "对战.胜利探针"，而不是"对话框.对战胜利确认"
-        key_victory = "对战.胜利探针"  # 与训练室保持一致
-        
+
+        key_victory = "对战.胜利探针"
+
         try:
             start_time = time.time()
             while (time.time() - start_time) < timeout_s:
                 if self._should_abort():
-                    return False
-                
+                    return None
+
                 try:
-                    # 检测黄色（使用cleaner的方法，它使用的是"对战.胜利探针"）
                     got_yellow, score, rgb = cleaner.detect_victory_probe_yellow(
                         use_foreground=use_foreground,
                         tol=10,
                         ratio_th=0.75
                     )
-                    
+
                     if got_yellow:
                         self._emit(f"✅ 检测到胜利黄色探针 (score={score:.3f}, rgb={rgb})", "SUCCESS")
-                        return True
-                    
-                    # 检测白色（FFFFFF）- 使用和训练室相同的region
+                        return "yellow"
+
                     img = cleaner._grab_region_img(key_victory)
                     if img is None:
                         time.sleep(0.08)
                         continue
-                    
+
                     arr = np.asarray(img.convert("RGB"), dtype=np.uint8)
                     h, w = arr.shape[:2]
                     cy, cx = h // 2, w // 2
-                    
-                    # 检查中心附近3x3区域
                     y1_patch = max(cy - 1, 0)
                     y2_patch = min(cy + 2, h)
                     x1_patch = max(cx - 1, 0)
                     x2_patch = min(cx + 2, w)
                     patch = arr[y1_patch:y2_patch, x1_patch:x2_patch, :]
-                    
-                    # 检测白色（FFFFFF，RGB值都接近255）
+
                     white_mask = (
                         (patch[..., 0].astype(np.int16) >= 245) &
                         (patch[..., 1].astype(np.int16) >= 245) &
                         (patch[..., 2].astype(np.int16) >= 245)
                     )
-                    
+
                     if white_mask.any():
-                        # 计算检测到的白色像素的平均RGB值用于日志
                         white_pixels = patch[white_mask]
                         avg_rgb = white_pixels.mean(axis=0).astype(int)
                         self._emit(f"✅ 检测到胜利白色探针（FFFFFF，rgb={tuple(avg_rgb)}）", "SUCCESS")
-                        return True
-                    
+                        return "white"
+
                 except Exception as e:
                     self._emit(f"⚠️ 检测胜利探针异常: {e}", "WARN")
-                
+
                 time.sleep(0.08)
-            
-            return False
+
+            return None
         except Exception as e:
             self._emit(f"❌ 检测胜利探针失败: {e}", "ERROR")
-            return False
+            return None
     
     def _wait_for_1and1_cleanup(self, use_foreground: bool, timeout_s: float = 0.0) -> bool:
         """等待并点击1AND1直到消失
@@ -916,6 +917,182 @@ class DailyRunner:
         except Exception as e:
             self._emit(f"❌ 恢复精灵一异常: {e}", "ERROR")
             return False
+
+    # ----------------------------
+    # 雷伊特训
+    # ----------------------------
+    def run_leiyi_training(
+        self,
+        loop_count: int = 10,
+        use_foreground: bool = True,
+    ) -> bool:
+        """雷伊特训：循环次数由输入框决定，黄色=胜利退出，白色=失败后恢复继续，或达到最大循环退出"""
+        if not window_manager.find_window():
+            self._emit("❌ 未检测到游戏窗口：无法执行雷伊特训", "ERROR")
+            return False
+
+        regions = getattr(self.bot, "regions", None)
+        if regions is None:
+            self._emit("❌ DailyRunner 缺少 bot.regions，无法执行雷伊特训", "ERROR")
+            return False
+
+        from config import TEMPLATES_PATH
+
+        cleaner = PostBattleCleaner(self.bot, regions, TEMPLATES_PATH)
+        if self._unified_framework is None:
+            self._unified_framework = UnifiedBattleFramework(self.bot, regions, TEMPLATES_PATH)
+
+        loop_count = max(1, min(999, loop_count))
+        self._emit(f"⚡ 雷伊特训：最多 {loop_count} 次循环（黄=胜利退出，白=失败恢复）", "SYSTEM")
+
+        for loop_idx in range(loop_count):
+            if self._should_abort():
+                self._emit("⛔ 雷伊特训中止（stop_current）", "SYSTEM")
+                return False
+
+            self._emit(f"⚡ 雷伊特训：第 {loop_idx + 1}/{loop_count} 轮", "SYSTEM")
+
+            # 1. 单击 特训.1
+            self._emit("🖱 点击：特训.1", "INFO")
+            if not self._click_region_safe(regions, "特训.1", use_foreground):
+                self._emit("❌ 点击特训.1失败", "ERROR")
+                return False
+            time.sleep(0.5)
+
+            # 2. 使用训练室校准逻辑：skip_stage1=False + trigger_callback，校准成功时自动重点 特训.2
+            def _trigger_leiyi_2():
+                r = regions.get("特训.2")
+                if not r:
+                    raise KeyError("找不到区域：特训.2")
+                x1, y1, x2, y2 = r.inner_bbox()
+                return ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
+
+            self._emit("⏳ 等待校准直到 PetItem 出现（训练室逻辑：校准成功后自动重点 特训.2）...", "INFO")
+            success, _ = self._unified_framework.stage2_calibration_and_petitem(
+                trigger_callback=_trigger_leiyi_2,
+                use_foreground=use_foreground,
+                timeout_s=60.0,
+                skip_stage1=False,  # 使用训练室校准逻辑，校准成功时重点 特训.2
+            )
+            if not success:
+                self._emit("❌ 等待 PetItem 或校准失败", "ERROR")
+                return False
+
+            # 4. 战斗循环：技能 4→2→1→3，记录结束回合
+            round_at_end = self._run_leiyi_battle_loop(regions, use_foreground)
+            if round_at_end is None:
+                self._emit("❌ 雷伊特训战斗循环失败或被中止", "ERROR")
+                return False
+
+            # 5. 等待 UI 稳定
+            self._emit("⏳ 等待 UI 稳定（2.5秒）...", "INFO")
+            time.sleep(2.5)
+
+            # 6. 检测胜利探针（1-3 回合必为白，4 回合需区分黄/白）
+            self._emit("🟡 检测胜利探针...", "INFO")
+            probe_result = self._detect_victory_probe_result(cleaner, use_foreground, timeout_s=8.0)
+            if probe_result is None:
+                self._emit("❌ 未检测到胜利探针（超时）", "ERROR")
+                return False
+
+            # 7. 点击确认
+            self._emit("🖱 点击：对话框.对战胜利确认", "INFO")
+            if not self._click_region_safe(regions, "对话框.对战胜利确认", use_foreground):
+                self._emit("❌ 点击胜利确认失败", "ERROR")
+                return False
+
+            # 8. 黄色=胜利 → 退出
+            if probe_result == "yellow":
+                self._emit("🏆 雷伊特训：胜利（黄色探针），结束任务", "SUCCESS")
+                return True
+
+            # 9. 白色=失败 → 点击特训.3 清理弹窗 → 恢复精灵一 → 下一轮
+            self._emit("❌ 本局失败（白色探针），清理弹窗并恢复精灵", "INFO")
+            time.sleep(1.0)
+            self._emit("🖱 点击：特训.3（清理失败弹窗）", "INFO")
+            if not self._click_region_safe(regions, "特训.3", use_foreground):
+                self._emit("⚠️ 点击特训.3失败，继续尝试恢复", "WARN")
+            time.sleep(0.5)
+            self._emit("🩹 恢复精灵一...", "INFO")
+            if not self._recover_pet_one(regions, use_foreground):
+                self._emit("⚠️ 恢复精灵一失败，继续下一轮", "WARN")
+            time.sleep(0.5)
+
+        self._emit(f"✅ 雷伊特训：已完成 {loop_count} 次循环", "SUCCESS")
+        return True
+
+    def _run_leiyi_battle_loop(
+        self, regions, use_foreground: bool
+    ) -> Optional[int]:
+        """雷伊特训战斗循环：技能顺序 4→2→1→3，返回战斗结束时的回合数，None 表示失败/中止"""
+        from core.logger import fetch_kernel_since, kernel_cursor
+
+        battle_runner = getattr(self.bot, "battle_runner", None)
+        if battle_runner is None:
+            self._emit("❌ 缺少 battle_runner，无法执行战斗循环", "ERROR")
+            return None
+
+        probe_model = battle_runner._load_probe_templates()
+        skill_order = [4, 2, 1, 3]
+        skill_names = ["一", "二", "三", "四"]
+
+        map_signal = "/resource/map/"
+        newnpc_signal = "/resource/newNpc/multi/0.swf"
+        cursor = kernel_cursor()
+        map_seen = False
+        npc_seen = False
+
+        last_probe_state = "UNKNOWN"
+        round_idx = 0
+
+        self._emit("⚔️ 雷伊特训战斗循环：技能顺序 4→2→1→3", "INFO")
+
+        while True:
+            if self._should_abort():
+                return None
+
+            self._wait_if_paused()
+
+            # 检测 map+newNPC（战斗结束）
+            try:
+                lines = fetch_kernel_since(cursor)
+                if isinstance(lines, list):
+                    for line in lines:
+                        line_str = str(line)
+                        if map_signal in line_str:
+                            map_seen = True
+                        if newnpc_signal in line_str:
+                            npc_seen = True
+                        if map_seen and npc_seen:
+                            self._emit(f"🏁 战斗结束（第 {round_idx} 回合后）", "SUCCESS")
+                            return round_idx
+                cursor = kernel_cursor()
+            except Exception:
+                pass
+
+            state, _, _ = self._unified_framework._detect_round_probe(probe_model)
+
+            # ✅ 首次进入时探针可能已是 BLUE（第一回合已就绪），需立即执行技能 4
+            if round_idx == 0 and state == "BLUE":
+                skill_num = skill_order[0]
+                skill_key = f"对战.使用技能{skill_names[skill_num - 1]}"
+                self._emit(f"🎯 第 1 回合：使用技能{skill_num}（探针已蓝，立即执行）", "INFO")
+                if not self._click_region_safe(regions, skill_key, use_foreground):
+                    return None
+                time.sleep(0.1)
+                round_idx += 1
+            elif last_probe_state == "GRAY" and state == "BLUE":
+                if round_idx < len(skill_order):
+                    skill_num = skill_order[round_idx]
+                    skill_key = f"对战.使用技能{skill_names[skill_num - 1]}"
+                    self._emit(f"🎯 第 {round_idx + 1} 回合：使用技能{skill_num}", "INFO")
+                    if not self._click_region_safe(regions, skill_key, use_foreground):
+                        return None
+                    time.sleep(0.1)
+                    round_idx += 1
+
+            last_probe_state = state
+            time.sleep(0.05)
 
     def run_single_script(self, script_name: str, bg_mode: bool = True) -> bool:
         script_path = self._resolve_script_path(script_name)

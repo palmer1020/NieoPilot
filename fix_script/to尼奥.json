@@ -4,8 +4,8 @@
     "steps": [
         {
             "action": "click",
-            "x": 229,
-            "y": 388,
+            "x": 216,
+            "y": 373,
             "delay": 1.0,
             "desc": "Step 1"
         },

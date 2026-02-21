@@ -40,29 +40,44 @@
         {
             "action": "click",
             "x": 760,
-            "y": 94,
-            "delay": 0.67,
+            "y": 100,
+            "delay": 0.3,
             "desc": "Step 5"
         },
         {
             "action": "click",
             "x": 760,
             "y": 100,
-            "delay": 0.24,
-            "desc": "Step 6"
+            "delay": 0.3,
+            "desc": "Step 5"
         },
         {
             "action": "click",
             "x": 760,
             "y": 100,
-            "delay": 0.24,
-            "desc": "Step 6"
-        },{
+            "delay": 0.3,
+            "desc": "Step 5"
+        },
+        {
             "action": "click",
             "x": 760,
             "y": 100,
-            "delay": 0.24,
-            "desc": "Step 6"
+            "delay": 0.3,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 760,
+            "y": 100,
+            "delay": 0.3,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 760,
+            "y": 100,
+            "delay": 0.3,
+            "desc": "Step 5"
         }
     ]
 }

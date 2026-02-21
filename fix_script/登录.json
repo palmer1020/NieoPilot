@@ -76,22 +76,8 @@
             "action": "click",
             "x": 612,
             "y": 428,
-            "delay": 6.23,
+            "delay": 5.5,
             "desc": "Step 11"
-        },
-        {
-            "action": "click",
-            "x": 1149,
-            "y": 188,
-            "delay": 1.97,
-            "desc": "Step 12"
-        },
-        {
-            "action": "click",
-            "x": 413,
-            "y": 315,
-            "delay": 2.37,
-            "desc": "Step 13"
         }
     ]
 }

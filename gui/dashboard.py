@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QComboBox, QLabel,
     QPushButton, QTextEdit, QGroupBox, QCheckBox, QLineEdit, QDateTimeEdit, QInputDialog
 )
+from PyQt6.QtGui import QDoubleValidator, QIntValidator
 from PyQt6.QtCore import QDateTime
 from PyQt6.QtCore import pyqtSignal, Qt, QMetaObject, Q_ARG, QDateTime
 
@@ -28,6 +29,9 @@ class Dashboard(QWidget):
 
         self._kernel_cb = self.kernel_log_signal.emit
         add_kernel_log_callback(self._kernel_cb)
+        
+        # ✅ 自动启动轮换模式的标志（日常任务完成后自动启动）
+        self._auto_start_rotation_after_daily = False
 
         self.init_ui()
 
@@ -155,10 +159,22 @@ class Dashboard(QWidget):
         self.rare_combo.addItem("小豆芽（27 / map=11）", userData="xiaodouya")
         self.rare_combo.addItem("闪光皮皮（164 / map=10）", userData="flash_pipi")
         self.rare_combo.addItem("眼球（269 / map=60）", userData="eyeball")
+        self.rare_combo.setCurrentIndex(self.rare_combo.findData("flash_pipi"))  # 默认选中闪光皮皮
+
+        # 闪光皮皮专用：轮换重连前置勾选框（仅选中闪光皮皮时可操作）
+        self.chk_flash_pipi_pre_rotation = QCheckBox("轮换重连前置（双塔精灵）")
+        self.chk_flash_pipi_pre_rotation.setChecked(False)
+        self.chk_flash_pipi_pre_rotation.setEnabled(False)  # 默认禁用，仅闪光皮皮时解锁
+        self._update_flash_pipi_pre_rotation_checkbox_state()
+
+        def on_rare_combo_changed():
+            self._update_flash_pipi_pre_rotation_checkbox_state()
+        self.rare_combo.currentIndexChanged.connect(on_rare_combo_changed)
 
         row2.addWidget(self.btn_rare)
         row2.addWidget(QLabel("目标："))
         row2.addWidget(self.rare_combo)
+        row2.addWidget(self.chk_flash_pipi_pre_rotation)
         wild_layout.addLayout(row2)
 
         # 智能追踪测试按钮（已隐藏，代码保留）
@@ -167,13 +183,6 @@ class Dashboard(QWidget):
         # self.btn_smart_tracking_test.clicked.connect(self.start_smart_tracking_test)
         # row3.addWidget(self.btn_smart_tracking_test)
         # wild_layout.addLayout(row3)
-
-        # 双塔刷新按钮（独立按钮）
-        row3 = QHBoxLayout()
-        self.btn_shuangta_refresh = QPushButton("🔄 双塔刷新（循环重连直到进入）")
-        self.btn_shuangta_refresh.clicked.connect(self.on_shuangta_refresh)
-        row3.addWidget(self.btn_shuangta_refresh)
-        wild_layout.addLayout(row3)
 
         wild_group.setLayout(wild_layout)
 
@@ -211,16 +220,6 @@ class Dashboard(QWidget):
         self.chk_skip_nie_77.setChecked(False)
         nieo_layout.addWidget(self.chk_skip_nie_77)
         
-        # 测试勾选框
-        row2 = QHBoxLayout()
-        self.chk_test_nieo = QCheckBox("🧪 测试尼奥（普通精灵：第一回合切换，第二回合逃跑）")
-        self.chk_test_nieo.setChecked(False)
-        self.chk_test_nie = QCheckBox("🧪 测试尼尔（普通精灵：第一回合切换，第二回合逃跑）")
-        self.chk_test_nie.setChecked(False)
-        row2.addWidget(self.chk_test_nieo)
-        row2.addWidget(self.chk_test_nie)
-        nieo_layout.addLayout(row2)
-        
         nieo_group.setLayout(nieo_layout)
         control_panel.addWidget(nieo_group)
 
@@ -233,6 +232,39 @@ class Dashboard(QWidget):
         self.btn_start_rotation.clicked.connect(self.start_rotation_mode)
         row1.addWidget(self.btn_start_rotation)
         rotation_layout.addLayout(row1)
+        
+        # 测试模式复选框
+        self.chk_rotation_test_mode = QCheckBox("测试模式（固定时间间隔切换）")
+        self.chk_rotation_test_mode.setChecked(False)
+        rotation_layout.addWidget(self.chk_rotation_test_mode)
+        
+        # 测试模式参数输入
+        row2 = QHBoxLayout()
+        row2.addWidget(QLabel("尼奥→双塔(分钟)："))
+        self.rotation_interval_minutes_nieo_input = QLineEdit()
+        self.rotation_interval_minutes_nieo_input.setText("60")
+        self.rotation_interval_minutes_nieo_input.setFixedWidth(70)
+        self.rotation_interval_minutes_nieo_input.setValidator(QIntValidator(1, 1440))
+        row2.addWidget(self.rotation_interval_minutes_nieo_input)
+        
+        row2.addWidget(QLabel("双塔→尼奥(分钟)："))
+        self.rotation_interval_minutes_shuangta_input = QLineEdit()
+        self.rotation_interval_minutes_shuangta_input.setText("60")
+        self.rotation_interval_minutes_shuangta_input.setFixedWidth(70)
+        self.rotation_interval_minutes_shuangta_input.setValidator(QIntValidator(1, 1440))
+        row2.addWidget(self.rotation_interval_minutes_shuangta_input)
+        
+        row2.addWidget(QLabel("硬线(秒)："))
+        self.petswf_hard_limit_sec_input = QLineEdit()
+        self.petswf_hard_limit_sec_input.setText("8")
+        self.petswf_hard_limit_sec_input.setFixedWidth(70)
+        self.petswf_hard_limit_sec_input.setValidator(QDoubleValidator(0.1, 60.0, 2))
+        row2.addWidget(self.petswf_hard_limit_sec_input)
+        row2.addStretch()
+        rotation_layout.addLayout(row2)
+        
+        self.chk_rotation_test_mode.stateChanged.connect(self._update_rotation_test_inputs_enabled)
+        self._update_rotation_test_inputs_enabled()
         
         # 说明文字
         info_label = QLabel("说明：根据北京时间自动切换模式\n尼奥模式：19:55-00:00 | 双塔模式：00:00-19:55")
@@ -278,6 +310,19 @@ class Dashboard(QWidget):
 
         train_group.setLayout(train_layout)
         control_panel.addWidget(train_group)
+
+        # --- 雷伊特训 ---
+        leiyi_group = QGroupBox("⚡ 雷伊特训")
+        leiyi_layout = QHBoxLayout()
+        self.btn_leiyi_training = QPushButton("⚡ 雷伊特训")
+        self.btn_leiyi_training.clicked.connect(self.on_run_leiyi_training)
+        self.leiyi_loop_box = QLineEdit()
+        self.leiyi_loop_box.setPlaceholderText("循环次数(默认10)")
+        self.leiyi_loop_box.setFixedWidth(120)
+        leiyi_layout.addWidget(self.btn_leiyi_training)
+        leiyi_layout.addWidget(self.leiyi_loop_box)
+        leiyi_group.setLayout(leiyi_layout)
+        control_panel.addWidget(leiyi_group)
 
 
         # ---------- 停止/内核日志/清空日志 ----------
@@ -375,6 +420,8 @@ class Dashboard(QWidget):
             "use_foreground": self.chk_foreground.isChecked()
         }
         self.log_message("📅 启动日常任务", "SYSTEM")
+        # ✅ 设置自动启动轮换模式的标志
+        self._auto_start_rotation_after_daily = True
         self._lock_ui()
         self.start_signal.emit(tasks)
 
@@ -646,6 +693,30 @@ class Dashboard(QWidget):
         self._lock_ui()
         self.start_signal.emit(tasks)
 
+    def on_run_leiyi_training(self):
+        try:
+            loop_txt = (self.leiyi_loop_box.text() or "").strip()
+            loop_count = 10 if loop_txt == "" else int(loop_txt)
+            if loop_count <= 0:
+                raise ValueError()
+            if loop_count > 999:
+                loop_count = 999
+        except Exception:
+            self.log_message("⚠ 雷伊特训：循环次数需为 1~999 的整数", "ERROR")
+            return
+        tasks = {
+            "daily_chain": False,
+            "gacha": False,
+            "battle_defeat": False,
+            "training_level": False,
+            "training_until_level": False,
+            "leiyi_training": True,
+            "leiyi_loop_count": loop_count,
+            "use_foreground": self.chk_foreground.isChecked()
+        }
+        self.log_message(f"⚡ 启动雷伊特训：{loop_count} 次循环", "SYSTEM")
+        self._lock_ui()
+        self.start_signal.emit(tasks)
 
     def on_stop(self):
         self.stop_signal.emit()
@@ -668,6 +739,8 @@ class Dashboard(QWidget):
         self.btn_1v1_x2.setEnabled(False)
         self.btn_training_level.setEnabled(False)
         self.btn_training_to_100.setEnabled(False)
+        if hasattr(self, "btn_leiyi_training"):
+            self.btn_leiyi_training.setEnabled(False)
         self.btn_stop.setEnabled(True)
 
         # ✅ 新增：锁住野外捕捉按钮
@@ -677,6 +750,8 @@ class Dashboard(QWidget):
             self.btn_rare.setEnabled(False)
         if hasattr(self, "rare_combo"):
             self.rare_combo.setEnabled(False)
+        if hasattr(self, "chk_flash_pipi_pre_rotation"):
+            self.chk_flash_pipi_pre_rotation.setEnabled(False)
         if hasattr(self, "btn_smart_tracking_test"):
             self.btn_smart_tracking_test.setEnabled(False)
 
@@ -711,6 +786,8 @@ class Dashboard(QWidget):
             self.btn_rare.setEnabled(False)
         if hasattr(self, "rare_combo"):
             self.rare_combo.setEnabled(False)
+        if hasattr(self, "chk_flash_pipi_pre_rotation"):
+            self.chk_flash_pipi_pre_rotation.setEnabled(False)
         if hasattr(self, "btn_smart_tracking_test"):
             self.btn_smart_tracking_test.setEnabled(False)
         # 定时任务相关UI保持可用（允许与其他任务共存）
@@ -722,6 +799,23 @@ class Dashboard(QWidget):
 
         if hasattr(self, "btn_calibration_test"):
             self.btn_calibration_test.setEnabled(False)
+        
+        # ✅ 禁用轮换模式和尼奥模式的按钮和勾选框
+        if hasattr(self, "btn_start_rotation"):
+            self.btn_start_rotation.setEnabled(False)
+        if hasattr(self, "chk_rotation_test_mode"):
+            self.chk_rotation_test_mode.setEnabled(False)
+        if hasattr(self, "rotation_interval_minutes_nieo_input"):
+            self.rotation_interval_minutes_nieo_input.setEnabled(False)
+        if hasattr(self, "rotation_interval_minutes_shuangta_input"):
+            self.rotation_interval_minutes_shuangta_input.setEnabled(False)
+        if hasattr(self, "petswf_hard_limit_sec_input"):
+            self.petswf_hard_limit_sec_input.setEnabled(False)
+        
+        if hasattr(self, "btn_nieo"):
+            self.btn_nieo.setEnabled(False)
+        if hasattr(self, "chk_skip_nie_77"):
+            self.chk_skip_nie_77.setEnabled(False)
         
         # 录制器按钮保持可用（它们独立运行）
 
@@ -737,6 +831,8 @@ class Dashboard(QWidget):
         self.btn_1v1_x2.setEnabled(True)
         self.btn_training_level.setEnabled(True)
         self.btn_training_to_100.setEnabled(True)
+        if hasattr(self, "btn_leiyi_training"):
+            self.btn_leiyi_training.setEnabled(True)
         self.btn_stop.setEnabled(False)
 
         if hasattr(self, "btn_mantis"):
@@ -747,6 +843,7 @@ class Dashboard(QWidget):
             self.rare_combo.setEnabled(True)
         if hasattr(self, "btn_smart_tracking_test"):
             self.btn_smart_tracking_test.setEnabled(True)
+        self._update_flash_pipi_pre_rotation_checkbox_state()  # 解锁时恢复勾选框状态（仅闪光皮皮时可操作）
         # 定时任务相关UI保持可用（允许与其他任务共存）
         # 不在这里解锁定时任务UI（因为从未锁定）
 
@@ -755,6 +852,30 @@ class Dashboard(QWidget):
 
         if hasattr(self, "btn_calibration_test"):
             self.btn_calibration_test.setEnabled(True)
+        
+        # ✅ 检查是否需要自动启动轮换模式（日常任务完成后）
+        # 注意：如果需要自动启动，不要解锁轮换模式和尼奥模式的UI
+        if self._auto_start_rotation_after_daily:
+            self._auto_start_rotation_after_daily = False  # 清除标志
+            
+            # 等待1秒后自动启动轮换模式
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(1000, self._auto_start_rotation_mode)
+            # 不解锁轮换模式和尼奥模式的UI，保持锁定状态
+        else:
+            # ✅ 只有在不需要自动启动时，才重新启用轮换模式和尼奥模式的按钮和勾选框
+            if hasattr(self, "btn_start_rotation"):
+                self.btn_start_rotation.setEnabled(True)
+            if hasattr(self, "chk_rotation_test_mode"):
+                self.chk_rotation_test_mode.setEnabled(True)
+                # 根据测试模式复选框状态更新输入框状态
+                if hasattr(self, "_update_rotation_test_inputs_enabled"):
+                    self._update_rotation_test_inputs_enabled()
+            
+            if hasattr(self, "btn_nieo"):
+                self.btn_nieo.setEnabled(True)
+            if hasattr(self, "chk_skip_nie_77"):
+                self.chk_skip_nie_77.setEnabled(True)
         
         # 录制器按钮保持可用（它们独立运行，不需要解锁）
 
@@ -772,6 +893,14 @@ class Dashboard(QWidget):
         self.log_box.clear()
         self.log_message("日志已清空", "SYSTEM")
 
+    def _update_flash_pipi_pre_rotation_checkbox_state(self):
+        """仅当选中闪光皮皮时解锁轮换重连前置勾选框"""
+        if hasattr(self, "chk_flash_pipi_pre_rotation") and hasattr(self, "rare_combo"):
+            is_flash_pipi = (self.rare_combo.currentData() or "") == "flash_pipi"
+            self.chk_flash_pipi_pre_rotation.setEnabled(is_flash_pipi)
+            if not is_flash_pipi:
+                self.chk_flash_pipi_pre_rotation.setChecked(False)
+
     
     def start_mantis_capture(self):
         tasks = {
@@ -784,19 +913,22 @@ class Dashboard(QWidget):
         self.start_signal.emit(tasks)
 
     def start_rare_capture(self):
-        profile = self.rare_combo.currentData() or "dugulu"
+        profile = self.rare_combo.currentData() or "flash_pipi"
         tasks = {
             "wild_capture": True,
             "wild_capture_profile": profile,
             "use_foreground": self.chk_foreground.isChecked(),
             # skip_nie_77 已移除，仅在尼奥模式中使用
         }
+        # 闪光皮皮专用：轮换重连前置（仅当勾选且选中闪光皮皮时传递）
+        if profile == "flash_pipi" and self.chk_flash_pipi_pre_rotation.isChecked():
+            tasks["rare_rotation_reconnect_first"] = True
         self.log_message(f"🧿 启动稀有精灵捕捉：{profile}", "SYSTEM")
         self._lock_ui()
         self.start_signal.emit(tasks)
 
     def start_smart_tracking_test(self):
-        profile = self.rare_combo.currentData() or "dugulu"
+        profile = self.rare_combo.currentData() or "flash_pipi"
         tasks = {
             "wild_capture": False,
             "smart_tracking_test": True,  # 新任务标识
@@ -810,14 +942,72 @@ class Dashboard(QWidget):
     
     def start_rotation_mode(self):
         """启动双塔尼奥轮换模式"""
+        is_test_mode = self.chk_rotation_test_mode.isChecked()
+        mode_text = "测试模式（固定时间间隔切换）" if is_test_mode else "正式模式（根据北京时间自动切换）"
+        
+        interval_minutes_nieo = self._parse_float_with_default(
+            self.rotation_interval_minutes_nieo_input.text(), 60.0
+        )
+        interval_minutes_shuangta = self._parse_float_with_default(
+            self.rotation_interval_minutes_shuangta_input.text(), 60.0
+        )
+        hard_limit_sec = self._parse_float_with_default(
+            self.petswf_hard_limit_sec_input.text(), 8.0
+        )
+        
         tasks = {
             "rotation_mode": True,  # 新的轮换模式标识
             "use_foreground": self.chk_foreground.isChecked(),
+            "rotation_test_mode": is_test_mode,  # ✅ 传递测试模式标志
+            "rotation_interval_minutes_nieo": interval_minutes_nieo,
+            "rotation_interval_minutes_shuangta": interval_minutes_shuangta,
+            "petswf_hard_limit_sec": hard_limit_sec,
         }
         
-        self.log_message("🔄 启动双塔尼奥轮换模式（根据北京时间自动切换）", "SYSTEM")
+        self.log_message(f"🔄 启动双塔尼奥轮换模式（{mode_text}）", "SYSTEM")
         self._lock_ui()
         self.start_signal.emit(tasks)
+    
+    def _auto_start_rotation_mode(self):
+        """自动启动轮换模式（日常任务完成后自动调用，复用 start_rotation_mode 的逻辑）"""
+        is_test_mode = self.chk_rotation_test_mode.isChecked()
+        mode_text = "测试模式（固定时间间隔切换）" if is_test_mode else "正式模式（根据北京时间自动切换）"
+        
+        interval_minutes_nieo = self._parse_float_with_default(
+            self.rotation_interval_minutes_nieo_input.text(), 60.0
+        )
+        interval_minutes_shuangta = self._parse_float_with_default(
+            self.rotation_interval_minutes_shuangta_input.text(), 60.0
+        )
+        hard_limit_sec = self._parse_float_with_default(
+            self.petswf_hard_limit_sec_input.text(), 8.0
+        )
+        
+        tasks = {
+            "rotation_mode": True,  # 新的轮换模式标识
+            "use_foreground": self.chk_foreground.isChecked(),
+            "rotation_test_mode": is_test_mode,  # ✅ 传递测试模式标志
+            "rotation_interval_minutes_nieo": interval_minutes_nieo,
+            "rotation_interval_minutes_shuangta": interval_minutes_shuangta,
+            "petswf_hard_limit_sec": hard_limit_sec,
+        }
+        
+        self.log_message(f"🔄 日常任务完成，自动启动轮换模式（{mode_text}）", "SYSTEM")
+        # ✅ 日常任务完成后 _unlock_ui_stopped 已执行，UI已解锁，需重新锁定以匹配轮换模式运行状态
+        self._lock_ui()
+        self.start_signal.emit(tasks)  # 发送和点击按钮一样的信号
+
+    def _update_rotation_test_inputs_enabled(self):
+        enabled = self.chk_rotation_test_mode.isChecked()
+        self.rotation_interval_minutes_nieo_input.setEnabled(enabled)
+        self.rotation_interval_minutes_shuangta_input.setEnabled(enabled)
+        self.petswf_hard_limit_sec_input.setEnabled(enabled)
+
+    def _parse_float_with_default(self, text: str, default_value: float) -> float:
+        try:
+            return float(text)
+        except (TypeError, ValueError):
+            return default_value
     
     def start_scheduled_task(self):
         """启动定时任务（已禁用，保留以备参考）"""
@@ -854,15 +1044,11 @@ class Dashboard(QWidget):
         tasks = {
             "nieo_mode": True,
             "use_foreground": self.chk_foreground.isChecked(),
-            "test_nieo": self.chk_test_nieo.isChecked() if hasattr(self, "chk_test_nieo") else False,
-            "test_nie": self.chk_test_nie.isChecked() if hasattr(self, "chk_test_nie") else False,
+            "test_nieo": False,
+            "test_nie": False,
             "skip_nie_77": self.chk_skip_nie_77.isChecked() if hasattr(self, "chk_skip_nie_77") else False,
         }
         test_msg = ""
-        if tasks.get("test_nieo"):
-            test_msg += " [测试尼奥模式]"
-        if tasks.get("test_nie"):
-            test_msg += " [测试尼尔模式]"
         if tasks.get("skip_nie_77"):
             test_msg += " [不捕捉尼尔]"
         self.log_message(f"🌊 启动尼奥模式（10/11地图循环）{test_msg}", "SYSTEM")

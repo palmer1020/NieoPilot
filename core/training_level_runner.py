@@ -295,10 +295,11 @@ class TrainingLevelRunner:
         recover_every: int = 5,
         debug_stop_level: Optional[int] = None,
         use_foreground: bool = False,
+        enable_ocr: bool = False,  # 仅直升100级启用OCR，单批次训练不启用
     ) -> Tuple[int, Optional[int], bool]:
         """
         返回：(已完成场数, 最后一次OCR等级, 是否触发停止条件)
-        停止条件：
+        停止条件（仅当 enable_ocr=True 时）：
           - OCR >= 100
           - 或 debug_stop_level 设置且 OCR >= debug_stop_level
         """
@@ -351,10 +352,10 @@ class TrainingLevelRunner:
 
             stop_after_this_battle = False
 
-            # ✅ OCR 回调：检查等级并设置停止标志
+            # ✅ OCR 回调：检查等级并设置停止标志（仅 enable_ocr=True 时执行，单批次训练不启用）
             def _check_level_and_set_stop():
                 nonlocal last_level, stop_after_this_battle, stopped_by_level
-                if not level_key:
+                if not enable_ocr or not level_key:
                     return
                 lvl = self._ocr_level_from_region(level_key)
                 if lvl is None:
@@ -476,6 +477,7 @@ class TrainingLevelRunner:
                 recover_every=recover_every,
                 debug_stop_level=stop_level,   # 用同一套停条件
                 use_foreground=use_foreground,
+                enable_ocr=True,   # 直升100级启用OCR
             )
 
             if stopped:

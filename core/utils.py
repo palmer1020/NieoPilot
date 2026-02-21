@@ -144,18 +144,19 @@ class WindowManager:
             ("中心", GAME_LOGIC_W / 2, GAME_LOGIC_H / 2),
         ]
 
-        logger.info("⏳ 1秒后开始演示鼠标定位...")
-        time.sleep(1.0)
+        # ✅ 暂时禁用指针移动逻辑：只计算坐标并输出日志
+        logger.info("⏳ 开始计算校准坐标...")
 
         for name, gx, gy in points:
             pos = self.game_to_screen(gx, gy)
             if not pos:
                 continue
             sx, sy = pos
-            win32api.SetCursorPos((sx, sy))
+            # ✅ 暂时禁用：不移动鼠标指针
+            # win32api.SetCursorPos((sx, sy))
             logger.info(f"👉 {name} ({gx:.0f},{gy:.0f}) -> ({sx},{sy})")
-            time.sleep(0.8)
 
+        logger.info("✅ 已校准")
         return True
 
     # ===============================
