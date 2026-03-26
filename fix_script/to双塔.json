@@ -102,10 +102,45 @@
         },
         {
             "action": "click",
-            "x": 374,
-            "y": 603,
-            "delay": 5.24,
-            "desc": "Step 15"
+            "x": 500,
+            "y": 550,
+            "delay": 6.35,
+            "desc": "path start"
+        },
+        {
+            "action": "click",
+            "x": 475,
+            "y": 560,
+            "delay": 0.09,
+            "desc": "path"
+        },
+        {
+            "action": "click",
+            "x": 450,
+            "y": 570,
+            "delay": 0.09,
+            "desc": "path"
+        },
+        {
+            "action": "click",
+            "x": 425,
+            "y": 580,
+            "delay": 0.09,
+            "desc": "path"
+        },
+        {
+            "action": "click",
+            "x": 400,
+            "y": 590,
+            "delay": 0.09,
+            "desc": "path"
+        },
+        {
+            "action": "click",
+            "x": 375,
+            "y": 600,
+            "delay": 0.2,
+            "desc": "path end"
         },
         {
             "action": "click",

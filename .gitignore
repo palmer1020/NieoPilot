@@ -45,6 +45,7 @@ assets/templates/
 battle_screenshots/
 capture_screenshots/
 rotation_screenshots/
+screenshots/
 
 # 临时和生成的文件
 *.tmp

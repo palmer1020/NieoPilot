@@ -32,22 +32,22 @@
         },
         {
             "action": "click",
-            "x": 393,
-            "y": 527,
+            "x": 468,
+            "y": 529,
             "delay": 3.97,
-            "desc": "Step 4"
+            "desc": "Step 4 - 放回仓库"
         },
         {
             "action": "click",
-            "x": 287,
-            "y": 521,
+            "x": 264,   
+            "y": 529,
             "delay": 1.73,
-            "desc": "Step 5"
+            "desc": "Step 5 - 身边跟随"
         },
         {
             "action": "click",
             "x": 214,
-            "y": 370,
+            "y": 380,
             "delay": 1.73,
             "desc": "Step 6"
         },
@@ -1180,17 +1180,17 @@
         },
         {
             "action": "click",
-            "x": 410,
-            "y": 514,
+            "x": 468,
+            "y": 529,
             "delay": 3.47,
-            "desc": "Step 168"
+            "desc": "Step 168 - 放回仓库"
         },
         {
             "action": "click",
-            "x": 289,
-            "y": 520,
+            "x": 264,
+            "y": 529,
             "delay": 3.33,
-            "desc": "Step 169"
+            "desc": "Step 169 - 身边跟随"
         },
         {
             "action": "click",
@@ -1201,10 +1201,10 @@
         },
         {
             "action": "click",
-            "x": 410,
+            "x": 468,
             "y": 529,
             "delay": 1.8,
-            "desc": "Step 171"
+            "desc": "Step 171 - 身边跟随"
         },
         {
             "action": "click",

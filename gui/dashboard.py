@@ -229,6 +229,11 @@ class Dashboard(QWidget):
         self.chk_skip_nie_77 = QCheckBox("不捕捉尼尔（77执行逃跑，310/416正常捕捉）")
         self.chk_skip_nie_77.setChecked(False)
         nieo_layout.addWidget(self.chk_skip_nie_77)
+
+        # 尼奥模式专用：前置重连勾选框（使用尼奥模式的三个精灵）
+        self.chk_nieo_pre_rotation = QCheckBox("前置重连（尼奥三精灵）")
+        self.chk_nieo_pre_rotation.setChecked(False)
+        nieo_layout.addWidget(self.chk_nieo_pre_rotation)
         
         nieo_group.setLayout(nieo_layout)
         control_panel.addWidget(nieo_group)
@@ -334,6 +339,14 @@ class Dashboard(QWidget):
         leiyi_group.setLayout(leiyi_layout)
         control_panel.addWidget(leiyi_group)
 
+        # --- 特训循环 ---
+        teixun_group = QGroupBox("🔄 特训循环")
+        teixun_layout = QHBoxLayout()
+        self.btn_teixun_loop = QPushButton("🔄 特训循环")
+        self.btn_teixun_loop.clicked.connect(self.on_run_teixun_loop)
+        teixun_layout.addWidget(self.btn_teixun_loop)
+        teixun_group.setLayout(teixun_layout)
+        control_panel.addWidget(teixun_group)
 
         # ---------- 停止/内核日志/清空日志 ----------
         btn_row = QHBoxLayout()
@@ -737,6 +750,21 @@ class Dashboard(QWidget):
         self._lock_ui()
         self.start_signal.emit(tasks)
 
+    def on_run_teixun_loop(self):
+        tasks = {
+            "daily_chain": False,
+            "gacha": False,
+            "battle_defeat": False,
+            "training_level": False,
+            "training_until_level": False,
+            "leiyi_training": False,
+            "teixun_loop": True,
+            "use_foreground": self.chk_foreground.isChecked()
+        }
+        self.log_message("🔄 启动特训循环（黄=1AND1，白=等待后直接恢复）", "SYSTEM")
+        self._lock_ui()
+        self.start_signal.emit(tasks)
+
     def on_stop(self):
         self.stop_signal.emit()
         self.log_message("🛑 已请求停止当前任务（等待引擎收尾）", "SYSTEM")
@@ -760,6 +788,8 @@ class Dashboard(QWidget):
         self.btn_training_to_100.setEnabled(False)
         if hasattr(self, "btn_leiyi_training"):
             self.btn_leiyi_training.setEnabled(False)
+        if hasattr(self, "btn_teixun_loop"):
+            self.btn_teixun_loop.setEnabled(False)
         self.btn_stop.setEnabled(True)
 
         # ✅ 新增：锁住野外捕捉按钮
@@ -796,6 +826,10 @@ class Dashboard(QWidget):
         self.btn_1v1_x2.setEnabled(False)
         self.btn_training_level.setEnabled(False)
         self.btn_training_to_100.setEnabled(False)
+        if hasattr(self, "btn_leiyi_training"):
+            self.btn_leiyi_training.setEnabled(False)
+        if hasattr(self, "btn_teixun_loop"):
+            self.btn_teixun_loop.setEnabled(False)
         self.btn_stop.setEnabled(True)
 
         # ✅ 新增：锁住野外捕捉按钮
@@ -852,6 +886,8 @@ class Dashboard(QWidget):
         self.btn_training_to_100.setEnabled(True)
         if hasattr(self, "btn_leiyi_training"):
             self.btn_leiyi_training.setEnabled(True)
+        if hasattr(self, "btn_teixun_loop"):
+            self.btn_teixun_loop.setEnabled(True)
         self.btn_stop.setEnabled(False)
 
         if hasattr(self, "btn_mantis"):
@@ -1066,6 +1102,7 @@ class Dashboard(QWidget):
             "test_nieo": False,
             "test_nie": False,
             "skip_nie_77": self.chk_skip_nie_77.isChecked() if hasattr(self, "chk_skip_nie_77") else False,
+            "nieo_pre_rotation_first": self.chk_nieo_pre_rotation.isChecked() if hasattr(self, "chk_nieo_pre_rotation") else False,
         }
         test_msg = ""
         if tasks.get("skip_nie_77"):

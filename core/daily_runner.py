@@ -936,13 +936,14 @@ class DailyRunner:
             use_foreground: 是否前台运行
             timeout_s: 超时时间，0.0表示不超时直到消失，>0表示超时时间（秒）
         """
-        from core.unified_battle_framework import BattleConfig
+        from core.unified_battle_framework import BattleConfig, BattleMode
         
         if self._unified_framework is None:
             return False
         
         # 创建临时config用于1AND1检测
         config = BattleConfig(
+            mode=BattleMode.FIXED,
             use_foreground=use_foreground,
             abort_check=lambda: self._should_abort()
         )
@@ -1144,6 +1145,79 @@ class DailyRunner:
             self._emit(f"❌ 恢复精灵一异常: {e}", "ERROR")
             return False
 
+    def _recover_teixun_pets(self, regions, use_foreground: bool) -> bool:
+        """特训恢复：恢复精灵一 + 扫描血条二/三/四，蓝色则一并恢复"""
+        bag_open_key = "精灵背包.打开精灵背包"
+        recover_key = "精灵背包.精灵恢复"
+        pet_keys = {"一": "精灵背包.精灵一", "二": "精灵背包.精灵二", "三": "精灵背包.精灵三", "四": "精灵背包.精灵四"}
+        hp_bar_keys = {"二": "精灵背包.血条二", "三": "精灵背包.血条三", "四": "精灵背包.血条四"}
+        # 蓝色血条 = 需恢复（参考 dar_route_runner）
+        COLOR_BLUE_HP = (24, 73, 146)
+        COLOR_TOLERANCE = 25  # 距离容差
+
+        if self._unified_framework is None:
+            self._emit("❌ 恢复精灵：缺少unified_framework", "ERROR")
+            return False
+
+        try:
+            self._emit("💼 打开精灵背包", "INFO")
+            if not self._click_region_safe(regions, bag_open_key, use_foreground):
+                return False
+            time.sleep(2.5)
+
+            def _recover_one_pet(pos: str) -> bool:
+                pet_key = pet_keys.get(pos)
+                if not pet_key:
+                    return False
+                self._emit(f"🐾 双击精灵{pos}（准备恢复）", "INFO")
+                if not self._click_region_safe(regions, pet_key, use_foreground):
+                    return False
+                time.sleep(0.1)
+                if not self._click_region_safe(regions, pet_key, use_foreground):
+                    return False
+                time.sleep(0.5)
+                self._emit("💊 点击精灵恢复", "INFO")
+                if not self._click_region_safe(regions, recover_key, use_foreground):
+                    return False
+                time.sleep(1.0)
+                self._emit("⏳ 使用1AND1确认（10秒超时）", "INFO")
+                from core.unified_battle_framework import BattleConfig, BattleMode
+                cfg = BattleConfig(mode=BattleMode.FIXED, use_foreground=use_foreground, abort_check=lambda: self._should_abort())
+                self._unified_framework._wait_for_confirm_probes(cfg, timeout_s=10.0)
+                time.sleep(0.5)
+                return True
+
+            def _is_hp_bar_blue(hp_key: str) -> bool:
+                rgb = self._unified_framework._mean_rgb(hp_key) if self._unified_framework else None
+                if rgb is None:
+                    return False
+                dist = ((rgb[0] - COLOR_BLUE_HP[0]) ** 2 + (rgb[1] - COLOR_BLUE_HP[1]) ** 2 + (rgb[2] - COLOR_BLUE_HP[2]) ** 2) ** 0.5
+                return dist <= COLOR_TOLERANCE
+
+            # 1. 恢复精灵一
+            if not _recover_one_pet("一"):
+                return False
+
+            # 2. 扫描血条二、三、四，蓝色则恢复
+            for pos in ["二", "三", "四"]:
+                hp_key = hp_bar_keys.get(pos)
+                if not hp_key or not regions.get(hp_key):
+                    continue
+                if _is_hp_bar_blue(hp_key):
+                    self._emit(f"🔵 血条{pos}为蓝色，恢复精灵{pos}", "INFO")
+                    if not _recover_one_pet(pos):
+                        self._emit(f"⚠️ 恢复精灵{pos}失败，继续", "WARN")
+
+            self._emit("💼 关闭精灵背包", "INFO")
+            if not self._click_region_safe(regions, bag_open_key, use_foreground):
+                pass
+            time.sleep(0.5)
+            self._emit("✅ 特训恢复完成", "SUCCESS")
+            return True
+        except Exception as e:
+            self._emit(f"❌ 特训恢复异常: {e}", "ERROR")
+            return False
+
     # ----------------------------
     # 雷伊特训
     # ----------------------------
@@ -1246,6 +1320,237 @@ class DailyRunner:
 
         self._emit(f"✅ 雷伊特训：已完成 {loop_count} 次循环", "SUCCESS")
         return True
+
+    # ----------------------------
+    # 特训循环（特训.A + 特训.B，输赢都继续）
+    # ----------------------------
+    def run_teixun_loop(self, use_foreground: bool = True) -> bool:
+        """特训循环：恢复精灵一 → A→B 入战(含校准) → 战斗(2/3/4技能) → map+黄白探针 → 确认
+        黄=1AND1后恢复；白=等待后跳过1AND1直接恢复。仅停止按钮退出。"""
+        if not window_manager.find_window():
+            self._emit("❌ 未检测到游戏窗口：无法执行特训循环", "ERROR")
+            return False
+
+        regions = getattr(self.bot, "regions", None)
+        if regions is None:
+            self._emit("❌ DailyRunner 缺少 bot.regions，无法执行特训循环", "ERROR")
+            return False
+
+        from config import TEMPLATES_PATH
+
+        cleaner = PostBattleCleaner(self.bot, regions, TEMPLATES_PATH)
+        if self._unified_framework is None:
+            self._unified_framework = UnifiedBattleFramework(self.bot, regions, TEMPLATES_PATH)
+
+        self._emit("🔄 特训循环：无限循环（黄=1AND1恢复，白=等待后直接恢复，仅停止按钮退出）", "SYSTEM")
+
+        teixun_win_count = 0
+        teixun_lose_count = 0
+        teixun_durations: List[float] = []  # 每次对战时长（秒）
+
+        while not self._should_abort():
+            self._emit("🔄 特训循环：新一轮", "SYSTEM")
+
+            # 1. 恢复精灵一，并扫描血条二/三/四，蓝色则一并恢复
+            self._emit("🩹 恢复精灵（一+血条二/三/四蓝色者）...", "INFO")
+            if not self._recover_teixun_pets(regions, use_foreground):
+                self._emit("❌ 恢复精灵失败", "ERROR")
+                return False
+            time.sleep(0.5)
+
+            # 2. 恢复完点击A之前，先点击一次 登录.隐藏
+            self._emit("🖱 点击：登录.隐藏", "INFO")
+            self._click_region_safe(regions, "登录.隐藏", use_foreground)
+            time.sleep(0.3)
+
+            # 3. 定义 trigger：先点 A，返回 B 坐标（校准 success 时会重新执行 A→B）
+            def _trigger_teixun_ab():
+                self._emit("🖱 点击：特训.A", "INFO")
+                if not self._click_region_safe(regions, "特训.A", use_foreground):
+                    raise KeyError("点击特训.A失败")
+                time.sleep(0.8)  # 点击A后稍长间隔再点B
+                r = regions.get("特训.B")
+                if not r:
+                    raise KeyError("找不到特训.B")
+                x1, y1, x2, y2 = r.inner_bbox()
+                return ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
+
+            self._emit("⏳ 等待校准直到 PetItem 出现（A→B，校准后重试 A→B）...", "INFO")
+            teixun_config = BattleConfig(
+                mode=BattleMode.FIXED,
+                use_foreground=use_foreground,
+                skill_key="对战.使用技能二",  # 第一回合用技能二
+                abort_check=lambda: self._should_abort(),
+            )
+            success, _ = self._unified_framework.stage2_calibration_and_petitem(
+                trigger_callback=_trigger_teixun_ab,
+                use_foreground=use_foreground,
+                timeout_s=60.0,
+                skip_stage1=False,
+                config=teixun_config,
+            )
+            if not success:
+                self._emit("⚠️ 等待 PetItem 或校准失败，重试入战...", "WARN")
+                continue
+
+            # 4. 战斗循环：2-4技能二×3，5-9技能三×5，10技能四×1后续四（第10回合后加切换）
+            battle_start_time = time.time()
+            round_at_end = self._run_teixun_battle_loop(regions, use_foreground)
+            if round_at_end is None:
+                self._emit("❌ 特训战斗循环失败或被中止", "ERROR")
+                return False
+
+            # 5. 等待 UI 稳定
+            self._emit("⏳ 等待 UI 稳定（2.5秒）...", "INFO")
+            time.sleep(2.5)
+
+            # 6. 检测黄白探针
+            self._emit("🟡 检测胜利探针...", "INFO")
+            probe_result = self._detect_victory_probe_result(cleaner, use_foreground, timeout_s=8.0)
+            if probe_result is None:
+                self._emit("❌ 未检测到胜利探针（超时）", "ERROR")
+                return False
+
+            # 7. 点击确认
+            self._emit("🖱 点击：对话框.对战胜利确认", "INFO")
+            if not self._click_region_safe(regions, "对话框.对战胜利确认", use_foreground):
+                self._emit("❌ 点击胜利确认失败", "ERROR")
+                return False
+
+            # 8. 战后统计 + 处理：黄=胜利，白=失败
+            battle_duration = time.time() - battle_start_time
+            teixun_durations.append(battle_duration)
+            avg_dur = sum(teixun_durations) / len(teixun_durations)
+            if probe_result == "yellow":
+                teixun_win_count += 1
+                self._emit(f"🏆 黄色探针：胜利（累计胜 {teixun_win_count} 败 {teixun_lose_count}，本次 {battle_duration:.1f}s，平均 {avg_dur:.1f}s）", "INFO")
+                self._wait_for_1and1_cleanup(use_foreground, timeout_s=10.0)
+            else:
+                teixun_lose_count += 1
+                self._emit(f"❌ 白色探针：失败（累计胜 {teixun_win_count} 败 {teixun_lose_count}，本次 {battle_duration:.1f}s，平均 {avg_dur:.1f}s）", "INFO")
+                time.sleep(2.0)  # 等待一小段时间
+
+        # 8. 停止时输出统计
+        total = teixun_win_count + teixun_lose_count
+        avg_dur = sum(teixun_durations) / len(teixun_durations) if teixun_durations else 0.0
+        self._emit("✅ 特训循环已停止", "SUCCESS")
+        self._emit(f"📊 统计：胜 {teixun_win_count} 败 {teixun_lose_count} 共 {total} 场，平均每场 {avg_dur:.1f} 秒", "SYSTEM")
+        return True
+
+    def _run_teixun_battle_loop(
+        self, regions, use_foreground: bool
+    ) -> Optional[int]:
+        """特训战斗循环：2-4回合技能二×3，5-9回合技能三×5，10回合技能四×1，后续四
+        第十回合使用技能四后灰期：双击精灵一→出战→精灵二→出战→精灵三→出战，直到下次蓝"""
+        from core.logger import fetch_kernel_since, kernel_cursor
+
+        battle_runner = getattr(self.bot, "battle_runner", None)
+        if battle_runner is None:
+            self._emit("❌ 缺少 battle_runner，无法执行战斗循环", "ERROR")
+            return None
+
+        probe_model = battle_runner._load_probe_templates()
+        skill_names = ["一", "二", "三", "四"]
+
+        # 第十回合起灰期：按 2341→3412→4123→1234 循环（每回合一循环）
+        _chu = "对战.切换精灵.出战"
+        _s = lambda n: f"对战.切换精灵.切换精灵{['一','二','三','四'][n-1]}"
+        teixun_switch_cycles = [
+            [_s(2), _chu, _s(3), _chu, _s(4), _chu, _s(1), _chu],  # 2341
+            [_s(3), _chu, _s(4), _chu, _s(1), _chu, _s(2), _chu],  # 3412
+            [_s(4), _chu, _s(1), _chu, _s(2), _chu, _s(3), _chu],  # 4123
+            [_s(1), _chu, _s(2), _chu, _s(3), _chu, _s(4), _chu],  # 1234
+        ]
+        teixun_switch_index = 0
+        teixun_switch_cycle_idx = 0  # 当前使用的循环：0=2341, 1=3412, 2=4123, 3=1234
+        last_teixun_switch_time = 0.0
+        teixun_switch_interval = 0.5
+        skill_four_after_round10 = False  # 第十回合使用技能四后为True，灰期做切换
+
+        map_signal = "/resource/map/"
+        cursor = kernel_cursor()
+        map_seen = False
+
+        last_probe_state = "UNKNOWN"
+        round_idx = 1  # stage2 已执行第1回合，此处从第2回合起
+
+        self._emit("⚔️ 特训战斗循环：2-4技能二×3，5-9技能三×5，10技能四×1后续四；第10回合起灰期 2341→3412→4123→1234 循环", "INFO")
+
+        def _double_click_region(key: str) -> bool:
+            if not self._click_region_safe(regions, key, use_foreground):
+                return False
+            time.sleep(0.1)
+            if not self._click_region_safe(regions, key, use_foreground):
+                return False
+            time.sleep(0.1)
+            return True
+
+        while True:
+            if self._should_abort():
+                return None
+
+            self._wait_if_paused()
+
+            # 检测 map 日志（战斗结束，只需 map 即可）
+            try:
+                lines = fetch_kernel_since(cursor)
+                if isinstance(lines, list):
+                    for line in lines:
+                        line_str = str(line)
+                        if map_signal in line_str:
+                            map_seen = True
+                            self._emit(f"🏁 战斗结束（检测到 map，第 {round_idx} 回合后）", "SUCCESS")
+                            return round_idx
+                cursor = kernel_cursor()
+            except Exception:
+                pass
+
+            state, _, _ = self._unified_framework._detect_round_probe(probe_model)
+
+            def _skill_for_round(r: int) -> int:
+                if r <= 4:
+                    return 2  # 2-4回合技能二×3
+                if r <= 9:
+                    return 3  # 5-9回合技能三×5
+                return 4  # 10回合技能四×1，后续四
+
+            if round_idx == 1 and state == "BLUE":
+                skill_num = _skill_for_round(2)
+                skill_key = f"对战.使用技能{skill_names[skill_num - 1]}"
+                self._emit(f"🎯 第 2 回合：使用技能{skill_num}", "INFO")
+                if not self._click_region_safe(regions, skill_key, use_foreground):
+                    return None
+                if round_idx + 1 >= 10 and skill_num == 4:
+                    skill_four_after_round10 = True
+                    teixun_switch_cycle_idx = (round_idx + 1 - 10) % 4
+                    teixun_switch_index = 0
+                time.sleep(0.1)
+                round_idx += 1
+            elif last_probe_state == "GRAY" and state == "BLUE":
+                skill_num = _skill_for_round(round_idx + 1)
+                skill_key = f"对战.使用技能{skill_names[skill_num - 1]}"
+                self._emit(f"🎯 第 {round_idx + 1} 回合：使用技能{skill_num}", "INFO")
+                if not self._click_region_safe(regions, skill_key, use_foreground):
+                    return None
+                if round_idx + 1 >= 10 and skill_num == 4:
+                    skill_four_after_round10 = True
+                    teixun_switch_cycle_idx = (round_idx + 1 - 10) % 4
+                    teixun_switch_index = 0
+                time.sleep(0.1)
+                round_idx += 1
+            elif state == "GRAY" and skill_four_after_round10:
+                # 灰期：按当前回合对应循环 2341/3412/4123/1234 双击
+                now = time.time()
+                if now - last_teixun_switch_time >= teixun_switch_interval:
+                    seq = teixun_switch_cycles[teixun_switch_cycle_idx]
+                    switch_key = seq[teixun_switch_index % len(seq)]
+                    if not _double_click_region(switch_key):
+                        return None
+                    teixun_switch_index += 1
+                    last_teixun_switch_time = now
+
+            last_probe_state = state
+            time.sleep(0.05)
 
     def _run_leiyi_battle_loop(
         self, regions, use_foreground: bool

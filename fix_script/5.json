@@ -26,7 +26,7 @@
         {
             "action": "click",
             "x": 214,
-            "y": 370,
+            "y": 380,
             "delay": 1.07,
             "desc": "Step 3"
         },
@@ -152,7 +152,7 @@
         {
             "action": "click",
             "x": 214,
-            "y": 370,
+            "y": 380,
             "delay": 1.07,
             "desc": "Step 3"
         },
@@ -250,7 +250,7 @@
         {
             "action": "click",
             "x": 214,
-            "y": 370,
+            "y": 380,
             "delay": 1.07,
             "desc": "Step 3"
         },
@@ -719,7 +719,7 @@
         {
             "action": "click",
             "x": 214,
-            "y": 370,
+            "y": 380,
             "delay": 1.07,
             "desc": "Step 3"
         },
@@ -1054,125 +1054,6 @@
         },
         {
             "action": "click",
-            "x": 520,
-            "y": 234,
-            "delay": 2.33,
-            "desc": "Step 142 - 艾迪星"
-        },
-        {
-            "action": "click",
-            "x": 452,
-            "y": 310,
-            "delay": 2.7,
-            "desc": "Step 143 - 黄金矿"
-        },
-        {
-            "action": "click",
-            "x": 529,
-            "y": 424,
-            "delay": 2.97,
-            "desc": "Step 144 - 确认"
-        },
-        {
-            "action": "click",
-            "x": 602,
-            "y": 444,
-            "delay": 3.93,
-            "desc": "Step 145"
-        },
-        {
-            "action": "click",
-            "x": 452,
-            "y": 310,
-            "delay": 1.13,
-            "desc": "Step 146 - 黄金矿"
-        },
-        {
-            "action": "click",
-            "x": 539,
-            "y": 429,
-            "delay": 1.27,
-            "desc": "Step 147"
-        },
-        {
-            "action": "click",
-            "x": 626,
-            "y": 442,
-            "delay": 4.2,
-            "desc": "Step 148  - 黄金矿"
-        },
-        {
-            "action": "click",
-            "x": 452,
-            "y": 310,
-            "delay": 1.0,
-            "desc": "Step 149"
-        },
-        {
-            "action": "click",
-            "x": 520,
-            "y": 430,
-            "delay": 1.27,
-            "desc": "Step 150"
-        },
-        {
-            "action": "click",
-            "x": 581,
-            "y": 437,
-            "delay": 4.1,
-            "desc": "Step 151  - 黄金矿 "
-        },
-        {
-            "action": "click",
-            "x": 452,
-            "y": 310,
-            "delay": 1.0,
-            "desc": "Step 152"
-        },
-        {
-            "action": "click",
-            "x": 532,
-            "y": 428,
-            "delay": 1.27,
-            "desc": "Step 153"
-        },
-        {
-            "action": "click",
-            "x": 594,
-            "y": 434,
-            "delay": 4.17,
-            "desc": "Step 154"
-        },
-        {   
-            "action": "click",
-            "x": 452,
-            "y": 310,
-            "delay": 1.1,
-            "desc": "Step 155 - 黄金矿"
-        },
-        {
-            "action": "click",
-            "x": 532,
-            "y": 428,
-            "delay": 1.13,
-            "desc": "Step 156"
-        },
-        {
-            "action": "click",
-            "x": 564,
-            "y": 444,
-            "delay": 3.9,
-            "desc": "Step 157"
-        },
-        {
-            "action": "click",
-            "x": 81,
-            "y": 648,
-            "delay": 0.97,
-            "desc": "Step 158"
-        },
-        {
-            "action": "click",
             "x": 658,
             "y": 268,
             "delay": 1.43,
@@ -1282,34 +1163,6 @@
             "y": 124,
             "delay": 0.2,
             "desc": "Step 174"
-        },
-        {
-            "action": "click",
-            "x": 84,
-            "y": 124,
-            "delay": 0.2,
-            "desc": "Step 175"
-        },
-        {
-            "action": "click",
-            "x": 85,
-            "y": 124,
-            "delay": 0.17,
-            "desc": "Step 176"
-        },
-        {
-            "action": "click",
-            "x": 86,
-            "y": 124,
-            "delay": 0.17,
-            "desc": "Step 177"
-        },
-        {
-            "action": "click",
-            "x": 86,
-            "y": 124,
-            "delay": 0.17,
-            "desc": "Step 178"
         },
         {
             "action": "click",
@@ -1502,27 +1355,6 @@
         },
         {
             "action": "click",
-            "x": 335,
-            "y": 79,
-            "delay": 0.17,
-            "desc": "Step 196"
-        },
-        {
-            "action": "click",
-            "x": 334,
-            "y": 79,
-            "delay": 0.17,
-            "desc": "Step 197"
-        },
-        {
-            "action": "click",
-            "x": 336,
-            "y": 79,
-            "delay": 0.2,
-            "desc": "Step 198"
-        },
-        {
-            "action": "click",
             "x": 586,
             "y": 450,
             "delay": 1.07,
@@ -1632,20 +1464,6 @@
             "y": 125,
             "delay": 0.2,
             "desc": "Step 214"
-        },
-        {
-            "action": "click",
-            "x": 997,
-            "y": 125,
-            "delay": 0.17,
-            "desc": "Step 215"
-        },
-        {
-            "action": "click",
-            "x": 997,
-            "y": 125,
-            "delay": 0.2,
-            "desc": "Step 216"
         },
         {
             "action": "click",
@@ -1776,7 +1594,7 @@
             "action": "click",
             "x": 568,
             "y": 476,
-            "delay": 0.27,
+            "delay": 3.27,
             "desc": "Step 227"
         },
         {

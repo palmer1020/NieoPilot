@@ -66,6 +66,7 @@ class BattleConfig:
     invincible_first_round: bool = False  # 第一回合是否使用无敌胶囊（仅野外模式）
     test_mode_capsule_only_mid: bool = False  # 测试模式：后续回合只使用中级胶囊（不交替高级）
     test_mode: bool = False  # 是否为测试模式
+    round_timeout_sec: Optional[float] = None  # 单回合等待灰变蓝或战斗结束的超时（秒），None=禁用
 
 
 class UnifiedBattleFramework:
@@ -128,6 +129,8 @@ class UnifiedBattleFramework:
         
         # ✅ petswf到PetItem的时间差记录（用于统计趋势）
         self._petswf_to_petitem_durations: List[float] = []
+        # ✅ stage3退出原因："normal" | "abort" | "round_timeout"（供调用方区分）
+        self._stage3_exit_reason: str = "normal"
         
     # ================================
     # 工具方法
@@ -1260,6 +1263,7 @@ class UnifiedBattleFramework:
         检测回合变化，执行动作，直到战斗结束
         """
         self._emit("⚔️ Stage 3: 战斗循环", "INFO")
+        self._stage3_exit_reason = "normal"
         
         # ✅ 启动内核监听（不清空队列，保留 Stage 2 已捕获的 map 信号，避免普通逃跑时误判 battle_success=False）
         self._start_kernel_listen(clear_queue=False)
@@ -1271,15 +1275,28 @@ class UnifiedBattleFramework:
         armed = False
         probe_model = self._load_probe_templates()
         last_probe_log = 0.0
-        last_action_at = time.time()  # 第一回合已在Stage 2执行，记录执行时间
+        last_action_at = time.time()  # 第一回合已在Stage 2执行，记录执行时间（用于回合超时检测）
         
         # ✅ 不sleep，立即开始检测后续回合（第一回合动作已经在stage2执行）
         
         while True:
+            now = time.time()
             # 检查中止
             if config.abort_check and config.abort_check():
+                self._stage3_exit_reason = "abort"
                 return False
             if self.bot and hasattr(self.bot, "stop_current") and self.bot.stop_current:
+                self._stage3_exit_reason = "abort"
+                return False
+            
+            # ✅ 回合超时检测：单回合内等待灰变蓝或战斗结束超过 round_timeout_sec 则重连
+            if config.round_timeout_sec is not None and (now - last_action_at) >= config.round_timeout_sec:
+                self._emit(
+                    f"⚠️ 对战回合超时（{config.round_timeout_sec:.0f}s内无灰变蓝或战斗结束），触发重连",
+                    "WARN",
+                )
+                self._stage3_exit_reason = "round_timeout"
+                self._stop_kernel_listen()
                 return False
             
             # 检查暂停
@@ -1493,6 +1510,21 @@ class UnifiedBattleFramework:
         t0 = time.time()
         click_interval = 0.1  # 点击间隔（100ms，快速响应）
         has_clicked_at_least_once = False  # 是否至少点击过一次
+        
+        # 确保：进入时若1AND1已存在（如上次残留），首轮检测即发现并开始点击
+        ok_white, ok_blue = self._check_probe_pair(
+            self.KEY_GENERAL_PROBE, COLOR_WHITE,
+            self.KEY_NORMAL_CONFIRM_PROBE, COLOR_BLUE,
+            tolerance=5
+        )
+        if ok_white and ok_blue:
+            has_clicked_at_least_once = True
+            self._emit("✅ 检测到 1 AND 1（进入时已存在），循环点击直到消失", "SUCCESS")
+            try:
+                self._click_region(self.KEY_NORMAL_CONFIRM_BTN, config.use_foreground)
+                time.sleep(click_interval)
+            except KeyError:
+                self._emit("⚠️ 确认按钮不存在", "WARN")
         
         self._emit("⏳ 等待通用探针白色 + 普通确认探针蓝色 1 AND 1（必须出现过一次且直到消失）", "INFO")
         

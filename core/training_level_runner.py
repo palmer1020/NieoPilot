@@ -134,17 +134,8 @@ class TrainingLevelRunner:
             self.bot.emit_and_log("📟 OCR失败：pytesseract不可用（未安装/未配置tesseract）", "WARN")
             return None
 
-        # 4) 保存原图，看看你截到的到底是不是等级数字
-        if self.save_level_ocr_debug:
-            try:
-                os.makedirs(os.path.join(self.bot.project_root, "debug_ocr"), exist_ok=True)
-                ts = int(time.time() * 1000)
-                tag = debug_tag or "level"
-                raw_path = os.path.join(self.bot.project_root, "debug_ocr", f"{tag}_{ts}_raw.png")
-                img.save(raw_path)
-                self.bot.emit_and_log(f"📟 OCR原图已保存: {raw_path}", "DEBUG")
-            except Exception as e:
-                self.bot.emit_and_log(f"📟 保存OCR原图失败: {e}", "DEBUG")
+        # 4) OCR调试截图：统一保存到 screenshots/（文件名包含识别到的等级；失败则保存 unknown）
+        debug_save_requested = bool(getattr(self, "save_level_ocr_debug", False))
 
         # 5) 多种预处理 + 多种 config 尝试（只要抓到数字就返回）
         def _try_ocr(pil_img, config):
@@ -178,9 +169,29 @@ class TrainingLevelRunner:
                 txt, val = _try_ocr(v, cfg)
                 best_txt = txt
                 if val is not None and 1 <= val <= 120:
+                    if debug_save_requested:
+                        try:
+                            os.makedirs(os.path.join(self.bot.project_root, "screenshots"), exist_ok=True)
+                            ts = int(time.time() * 1000)
+                            tag = debug_tag or "level"
+                            out_path = os.path.join(self.bot.project_root, "screenshots", f"ocr_train_{tag}_lvl{val}_{ts}.png")
+                            img.save(out_path)
+                            self.bot.emit_and_log(f"📟 OCR原图已保存: {out_path}", "DEBUG")
+                        except Exception as e:
+                            self.bot.emit_and_log(f"📟 保存OCR原图失败: {e}", "DEBUG")
                     return val
 
         # 没识别到数字：把原文打出来，方便你看差在哪
+        if debug_save_requested:
+            try:
+                os.makedirs(os.path.join(self.bot.project_root, "screenshots"), exist_ok=True)
+                ts = int(time.time() * 1000)
+                tag = debug_tag or "level"
+                out_path = os.path.join(self.bot.project_root, "screenshots", f"ocr_train_{tag}_lvl_unknown_{ts}.png")
+                img.save(out_path)
+                self.bot.emit_and_log(f"📟 OCR原图已保存: {out_path}", "DEBUG")
+            except Exception as e:
+                self.bot.emit_and_log(f"📟 保存OCR原图失败: {e}", "DEBUG")
         self.bot.emit_and_log(f"📟 OCR未出数字，raw_text={best_txt!r}", "DEBUG")
         return None
 

@@ -1,0 +1,27 @@
+{
+    "name": "双倍",
+    "create_time": "2026-02-24 17:06:28",
+    "steps": [
+        {
+            "action": "click",
+            "x": 502,
+            "y": 527,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 701,
+            "y": 295,
+            "delay": 2.5,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 522,
+            "y": 444,
+            "delay": 1.23,
+            "desc": "Step 3"
+        }
+    ]
+}

@@ -286,6 +286,7 @@ class BotWorker(QThread):
                 or tasks.get("training_level")
                 or tasks.get("training_until_level")
                 or tasks.get("leiyi_training")   # 雷伊特训
+                or tasks.get("teixun_loop")     # 特训循环
                 or tasks.get("dar_route_test")   # 你 Dashboard 里有这个按钮
                 or tasks.get("wild_capture")     # ✅ 你新增的"螳螂/稀有精灵捕捉"
                 or tasks.get("smart_tracking_test")  # 智能追踪测试
@@ -364,6 +365,11 @@ class BotWorker(QThread):
                         self.emit_and_log(f"⚡ 开始雷伊特训（循环={loop_count} 前台={use_foreground}）", "SYSTEM")
                         self.dar_route_runner._check_and_fill_missing_swf_files()  # 像尼奥模式一样补齐swf
                         self.daily_runner.run_leiyi_training(loop_count=loop_count, use_foreground=use_foreground)
+
+                    # ---- 特训循环 ----
+                    if tasks.get("teixun_loop") and (not self.stop_current):
+                        self.emit_and_log(f"🔄 开始特训循环（前台={use_foreground}）", "SYSTEM")
+                        self.daily_runner.run_teixun_loop(use_foreground=use_foreground)
 
                     # ---- 训练室：升级直到目标（优先于单批次）----
                     if tasks.get("training_until_level") and (not self.stop_current):
@@ -787,6 +793,7 @@ class BotWorker(QThread):
                         test_nieo = tasks.get("test_nieo", False)
                         test_nie = tasks.get("test_nie", False)
                         skip_nie_77 = tasks.get("skip_nie_77", False)
+                        nieo_pre_rotation_first = tasks.get("nieo_pre_rotation_first", False)
                         test_msg = ""
                         if test_nieo:
                             test_msg += " [测试尼奥模式]"
@@ -794,14 +801,29 @@ class BotWorker(QThread):
                             test_msg += " [测试尼尔模式]"
                         if skip_nie_77:
                             test_msg += " [不捕捉尼尔]"
+                        if nieo_pre_rotation_first:
+                            test_msg += " [前置重连]"
                         self.emit_and_log(f"🌊 启动尼奥模式（10/11地图循环）{test_msg}", "SYSTEM")
-                        self.dar_route_runner.run_nieo_mode(
-                            stop_event=self._stop_event,
-                            use_foreground=use_foreground,
-                            test_nieo=test_nieo,
-                            test_nie=test_nie,
-                            skip_nie_77=skip_nie_77,
-                        )
+
+                        # 尼奥模式专用：前置重连（使用尼奥模式的三个精灵）
+                        if nieo_pre_rotation_first:
+                            while not self.stop_current and not self._stop_event.is_set():
+                                ok = self.dar_route_runner._execute_nieo_pre_rotation_reconnect(
+                                    use_foreground=use_foreground,
+                                    stop_event=self._stop_event,
+                                )
+                                if ok:
+                                    break
+                                self.emit_and_log("⚠️ 尼奥模式前置重连失败，重试完整流程（1-4）直到成功", "WARN")
+
+                        if not self.stop_current and not self._stop_event.is_set():
+                            self.dar_route_runner.run_nieo_mode(
+                                stop_event=self._stop_event,
+                                use_foreground=use_foreground,
+                                test_nieo=test_nieo,
+                                test_nie=test_nie,
+                                skip_nie_77=skip_nie_77,
+                            )
                     
                     # ---- 🧪 尼尔家族测试 ----
                     if tasks.get("nie_family_test") and (not self.stop_current):
