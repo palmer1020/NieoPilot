@@ -83,7 +83,6 @@ class HumanVerifyWatcher:
         """命中关键词时调用：保存 panel/info/4选项 + meta.json"""
         try:
             window_manager.maximize_window()
-            window_manager.scan_boundaries()
         except Exception:
             pass
 

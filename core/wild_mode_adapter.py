@@ -45,7 +45,7 @@ class WildModeAdapter:
         Stage 3: 野外捕捉动作逻辑
         
         - 第1回合：技能1（或无敌胶囊）
-        - 第2回合开始：切换捕捉面板 -> 胶囊（中级/高级交替）
+        - 第2回合开始：切换捕捉面板 -> 胶囊（具体档位由 UnifiedBattleFramework 全局「高超高特高超」循环）
         """
         if round_idx == 1:
             if invincible_first_round:
@@ -53,8 +53,7 @@ class WildModeAdapter:
             else:
                 return "skill"  # 技能1
         
-        # 第2回合开始：捕捉逻辑
-        # 胶囊节奏：中级(回合2) / 高级(回合3) / 中级(回合4) / 高级...
+        # 第2回合开始：捕捉逻辑（胶囊档位见 unified_battle_framework 6 格循环）
         return "capsule"
     
     def run_wild_battle(

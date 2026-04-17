@@ -1,33 +1,33 @@
 {
     "name": "放生",
-    "create_time": "2026-02-06 14:07:21",
+    "create_time": "2026-04-10 16:44:20",
     "steps": [
         {
             "action": "click",
-            "x": 776,
-            "y": 476,
-            "delay": 1.0,
+            "x": 761,
+            "y": 464,
+            "delay": 0.5,
             "desc": "Step 1"
         },
         {
             "action": "click",
-            "x": 506,
-            "y": 444,
-            "delay": 1.4,
+            "x": 514,
+            "y": 448,
+            "delay": 0.5,
             "desc": "Step 2"
         },
         {
             "action": "click",
-            "x": 602,
-            "y": 443,
-            "delay": 1.03,
+            "x": 603,
+            "y": 435,
+            "delay": 0.5,
             "desc": "Step 3"
         },
         {
             "action": "click",
-            "x": 602,
-            "y": 443,
-            "delay": 0.47,
+            "x": 603,
+            "y": 435,
+            "delay": 0.5,
             "desc": "Step 4"
         }
     ]

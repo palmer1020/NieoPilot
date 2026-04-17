@@ -67,12 +67,16 @@ class BattleConfig:
     test_mode_capsule_only_mid: bool = False  # 测试模式：后续回合只使用中级胶囊（不交替高级）
     test_mode: bool = False  # 是否为测试模式
     round_timeout_sec: Optional[float] = None  # 单回合等待灰变蓝或战斗结束的超时（秒），None=禁用
+    # 覆盖默认「高超高特高超」循环；例如轮换模式「超特超超特超」
+    capsule_cycle_tiers_override: Optional[Tuple[str, ...]] = None
 
 
 class UnifiedBattleFramework:
     """
     统一对战流程框架
     """
+    # 战后「通用白 + 确认蓝」1AND1 清理：整段等待+连点最长秒数（避免探针卡死时无限点击）
+    POST_BATTLE_CONFIRM_DIALOG_TIMEOUT_SEC = 20.0
     
     # Region keys
     KEY_BIG_PROBE = "游戏.大探针"
@@ -124,6 +128,10 @@ class UnifiedBattleFramework:
         self._last_action: Optional[LastActionType] = None
         self._round_idx = 0
         
+        # 捕捉胶囊全局循环：「高→超→高→特→高→超」每 6 次一循环，跨对战累计（技能回合不占位）
+        self._capsule_cycle_index: int = 0
+        self._capsule_cycle_tiers_override: Optional[Tuple[str, ...]] = None
+        
         # 日志节流：记录上次输出时间，避免高频日志刷屏
         self._log_throttle: Dict[str, float] = {}
         
@@ -131,6 +139,15 @@ class UnifiedBattleFramework:
         self._petswf_to_petitem_durations: List[float] = []
         # ✅ stage3退出原因："normal" | "abort" | "round_timeout"（供调用方区分）
         self._stage3_exit_reason: str = "normal"
+
+        # Stage2 finally 停止监听前记录 cursor；Stage3 启动后把这段空隙内的内核行补进 _kernel_q（见 _merge_kernel_buffer_after_stage2_gap）
+        self._kernel_gap_fill_cursor: Optional[int] = None
+
+        # Per-battle capsule tier counts (reset at stage3 start, incremented in _execute_action)
+        self._battle_capsule_counts: Dict[str, int] = {}
+        # Per-battle timing
+        self._battle_start_time: float = 0.0
+        self._battle_duration: float = 0.0
         
     # ================================
     # 工具方法
@@ -217,7 +234,30 @@ class UnifiedBattleFramework:
             except Exception:
                 continue
         return None
-    
+
+    # 节奏「高超高特高超」：高级 → 超级 → 高级 → 特级 → 高级 → 超级
+    _CAPSULE_CYCLE_TIERS: Tuple[str, ...] = ("high", "high", "super", "special", "high", "super")
+
+    def _resolve_capsule_tier_key(self, tier: str) -> Optional[str]:
+        """按档位解析胶囊 region 键（不含切换面板）。"""
+        if tier == "mid":
+            return self._first_existing_key(
+                ["对战.捕捉.中级精灵胶囊", "对战.捕捉.中级胶囊"]
+            )
+        if tier == "high":
+            return self._first_existing_key(
+                ["对战.捕捉.高级精灵胶囊", "对战.捕捉.高级胶囊"]
+            )
+        if tier == "super":
+            return self._first_existing_key(
+                ["对战.捕捉.超级精灵胶囊", "对战.捕捉.超级胶囊"]
+            )
+        if tier == "special":
+            return self._first_existing_key(
+                ["对战.捕捉.特级精灵胶囊", "对战.捕捉.特级胶囊"]
+            )
+        return None
+
     def _check_color_strict(self, key: str, target_rgb: Tuple[int, int, int], tolerance: int = 0) -> bool:
         """检查region平均RGB是否严格等于目标颜色"""
         rgb = self._mean_rgb(key)
@@ -420,6 +460,22 @@ class UnifiedBattleFramework:
                 npc_seen = True
         
         return map_seen, npc_seen
+
+    def _merge_kernel_buffer_after_stage2_gap(self) -> None:
+        """
+        Stage2 的 finally 会 _stop_kernel_listen；若在首回合（如螳螂无敌）即结束战斗，
+        map/newNpc 可能落在这段「无回调」窗口，只存在于 logger 全局 ring buffer。
+        在 Stage3 重新监听后补入 _kernel_q，避免 _check_battle_end 漏检而一直等第二回合探针。
+        """
+        c = getattr(self, "_kernel_gap_fill_cursor", None)
+        if c is None:
+            return
+        try:
+            for line in fetch_kernel_since(c):
+                self._kernel_q.append(line)
+        except Exception:
+            pass
+        self._kernel_gap_fill_cursor = None
     
     def _check_map_after_calibration(self, expected_map_id: int) -> Optional[int]:
         """
@@ -677,7 +733,10 @@ class UnifiedBattleFramework:
     ) -> Tuple[bool, Optional[CalibrationResult]]:
         """
         Stage 2: 检测PetItem + 校准逻辑
-        
+
+        若传入 config（含 action_callback），在检测到 PetItem 时会立即执行第一回合动作，
+        再返回；Stage 3 不再重复第一回合。野外流程见 DarRouteRunner._handle_battle_trigger。
+
         流程：
         1. 如果skip_stage1=False，获取触发坐标并持续点击触发点
         2. 如果skip_stage1=True（野外模式），直接等待检测信号（不持续点击）
@@ -1019,7 +1078,11 @@ class UnifiedBattleFramework:
             self._emit(f"⏱️ Stage 2 超时（{timeout_s}s内未检测到PetItem）", "WARN")
             return False, None
         finally:
-            # 确保停止内核监听
+            # 在移除回调前记下 cursor，供 Stage3 补全「停监听～再监听」之间漏进 _kernel_q 的 map/newNpc
+            try:
+                self._kernel_gap_fill_cursor = kernel_cursor()
+            except Exception:
+                self._kernel_gap_fill_cursor = None
             self._stop_kernel_listen()
     
     # ================================
@@ -1142,6 +1205,18 @@ class UnifiedBattleFramework:
                     self._click_region_twice(config.skill_key, config.use_foreground, gap=0.06)
                     time.sleep(0.1)
                     self._last_action = LastActionType.SKILL
+        elif action_type == "skill4":
+            skill4_key = "对战.使用技能四"
+            if self._rs_get(skill4_key):
+                self._click_region_twice(skill4_key, config.use_foreground, gap=0.06)
+                time.sleep(0.1)
+                self._last_action = LastActionType.SKILL
+            else:
+                self._emit("⚠️ 未找到技能四 region，回退为技能一", "WARN")
+                if config.skill_key:
+                    self._click_region_twice(config.skill_key, config.use_foreground, gap=0.06)
+                    time.sleep(0.1)
+                    self._last_action = LastActionType.SKILL
         elif action_type in ("capsule", "capsule_high"):
             # ✅ 所有捕捉逻辑前：先双击切换战斗面板，再双击切换捕捉面板
             battle_panel_key = "对战.切换战斗面板"
@@ -1165,6 +1240,7 @@ class UnifiedBattleFramework:
                     self._click_region_twice(inv_key, config.use_foreground, gap=0.08)
                     time.sleep(0.55)
                     self._emit(f"🛡 回合{round_idx}：无敌精灵胶囊(×2)", "INFO")
+                    self._battle_capsule_counts["invincible"] = self._battle_capsule_counts.get("invincible", 0) + 1
                     self._last_action = LastActionType.CAPSULE
                     return
                 else:
@@ -1175,76 +1251,123 @@ class UnifiedBattleFramework:
                         self._last_action = LastActionType.SKILL
                         return
             else:
-                # 第2回合开始：中级/高级胶囊交替
+                # 第2回合起：测试/特殊用中级；否则每次「投胶囊」走全局循环「高→超→高→特→高→超」（不占技能回合；稀有精灵仍由 callback 决定何时 capsule）
                 panel = self._first_existing_key([
                     "对战.捕捉.切换捕捉面板",
                     "对战.捕捉.切换捕捉面板+精灵胶囊",
                 ])
-                
+
                 mid = self._first_existing_key([
                     "对战.捕捉.中级精灵胶囊",
                     "对战.捕捉.中级胶囊",
                 ])
-                
+
                 high = self._first_existing_key([
                     "对战.捕捉.高级精灵胶囊",
                     "对战.捕捉.高级胶囊",
                 ])
-                
+
                 combo_mid = self._first_existing_key([
                     "对战.捕捉.切换捕捉面板+中级精灵胶囊",
                 ])
-                
+
                 combo_high = self._first_existing_key([
                     "对战.捕捉.切换捕捉面板+高级精灵胶囊",
                 ])
-                
-                has_split = bool(panel and mid and high)
-                has_combo = bool(combo_mid and combo_high)
-                
-                if has_split or has_combo:
-                    # 胶囊节奏判断
-                    if action_type == "capsule_high":
-                        # 高级胶囊模式：只使用高级胶囊
-                        use_mid = False
-                    elif config.test_mode_capsule_only_mid:
-                        # 测试模式：只使用中级胶囊
-                        use_mid = True
-                    elif action_type == "capsule" and round_idx == 1 and config.invincible_first_round:
-                        # ✅ 第1回合使用胶囊且是螳螂无敌胶囊：使用中级胶囊（保留无敌胶囊逻辑）
-                        use_mid = True
-                    elif action_type == "capsule":
-                        # ✅ 野外捕捉模式（除螳螂无敌胶囊外）：只使用高级胶囊
-                        use_mid = False  # 所有野外捕捉模式都使用高级胶囊
-                    else:
-                        # 正常模式：只使用高级胶囊
-                        use_mid = False  # 所有野外捕捉模式都使用高级胶囊
-                    
-                    if has_split:
-                        # 分开录制：面板 + 胶囊（胶囊连点2次）
-                        self._emit("🔄 切换捕捉面板（双击）...", "INFO")
-                        self._click_region_twice(panel, config.use_foreground, gap=0.10)
-                        time.sleep(0.50)
-                        cap_key = mid if use_mid else high
-                        self._click_region_twice(cap_key, config.use_foreground, gap=0.08)
-                        self._emit(
-                            f"🎯 回合{round_idx} 捕捉：面板 -> {'中级' if use_mid else '高级'}胶囊(×2)",
-                            "INFO",
-                        )
-                    else:
-                        # combo：直接点 combo 两次
-                        ck = combo_mid if use_mid else combo_high
-                        self._click_region_twice(ck, config.use_foreground, gap=0.50)
-                        self._emit(
-                            f"🎯 回合{round_idx} 捕捉：{'中级' if use_mid else '高级'}（combo×2）",
-                            "INFO",
-                        )
-                    self._last_action = LastActionType.CAPSULE
-                    return
+
+                use_mid_only = bool(
+                    config.test_mode_capsule_only_mid
+                    or (
+                        action_type == "capsule"
+                        and round_idx == 1
+                        and config.invincible_first_round
+                    )
+                )
+
+                cycle_tier: Optional[str] = None
+                cap_key: Optional[str] = None
+                label_zh = ""
+
+                if use_mid_only:
+                    cap_key = mid
+                    label_zh = "中级"
                 else:
+                    # 尼奥 / 稀有 / 野外等：凡投胶囊均走全局循环（默认「高超高特高超」），与技能回合无关
+                    tiers = (
+                        self._capsule_cycle_tiers_override
+                        if self._capsule_cycle_tiers_override is not None
+                        else self._CAPSULE_CYCLE_TIERS
+                    )
+                    cycle_tier = tiers[self._capsule_cycle_index % len(tiers)]
+                    self._capsule_cycle_index += 1
+                    cap_key = self._resolve_capsule_tier_key(cycle_tier)
+                    label_zh = {"high": "高级", "super": "超级", "special": "特级"}.get(
+                        cycle_tier, cycle_tier
+                    )
+                    if cap_key is None:
+                        self._emit(f"⚠ 循环档位「{label_zh}」区域缺失，回退高级胶囊", "WARN")
+                        cap_key = high
+                        label_zh = "高级(回退)"
+                    self._battle_capsule_counts[cycle_tier] = self._battle_capsule_counts.get(cycle_tier, 0) + 1
+
+                if not cap_key:
                     self._emit("⚠ 胶囊 region 缺失：无法执行胶囊动作", "WARN")
                     self._last_action = LastActionType.CAPSULE
                     return
+
+                has_split = bool(panel and cap_key)
+                has_combo = bool(combo_mid and combo_high)
+
+                slot_info = ""
+                if cycle_tier is not None and not use_mid_only:
+                    tiers = (
+                        self._capsule_cycle_tiers_override
+                        if self._capsule_cycle_tiers_override is not None
+                        else self._CAPSULE_CYCLE_TIERS
+                    )
+                    n_t = len(tiers)
+                    slot_info = f" [循环{(self._capsule_cycle_index - 1) % n_t + 1}/{n_t}]"
+
+                if has_split:
+                    self._emit("🔄 切换捕捉面板（双击）...", "INFO")
+                    self._click_region_twice(panel, config.use_foreground, gap=0.10)
+                    time.sleep(0.50)
+                    self._click_region_twice(cap_key, config.use_foreground, gap=0.08)
+                    self._emit(
+                        f"🎯 回合{round_idx} 捕捉：面板 -> {label_zh}胶囊(×2){slot_info}",
+                        "INFO",
+                    )
+                    self._last_action = LastActionType.CAPSULE
+                    return
+
+                if use_mid_only and combo_mid:
+                    self._click_region_twice(combo_mid, config.use_foreground, gap=0.50)
+                    self._emit(f"🎯 回合{round_idx} 捕捉：中级（combo×2）", "INFO")
+                    self._last_action = LastActionType.CAPSULE
+                    return
+
+                if (
+                    (not use_mid_only)
+                    and combo_high
+                    and cycle_tier == "high"
+                    and cap_key
+                    and high
+                    and cap_key == high
+                ):
+                    self._click_region_twice(combo_high, config.use_foreground, gap=0.50)
+                    self._emit(
+                        f"🎯 回合{round_idx} 捕捉：高级（combo×2）{slot_info}",
+                        "INFO",
+                    )
+                    self._last_action = LastActionType.CAPSULE
+                    return
+
+                self._emit(
+                    "⚠ 胶囊 region 缺失：特级/超级需「切换捕捉面板」与对应胶囊分开录制；或补全区域",
+                    "WARN",
+                )
+                self._last_action = LastActionType.CAPSULE
+                return
         elif action_type == "escape":
             # 逃跑逻辑：切换逃跑面板和确认逃跑都要点击两次
             escape_panel = self._first_existing_key(["对战.逃跑.切换逃跑面板"])
@@ -1264,12 +1387,18 @@ class UnifiedBattleFramework:
         """
         self._emit("⚔️ Stage 3: 战斗循环", "INFO")
         self._stage3_exit_reason = "normal"
+        self._battle_capsule_counts = {}
+        self._capsule_cycle_index = 0
+        self._capsule_cycle_tiers_override = getattr(config, "capsule_cycle_tiers_override", None)
+        self._battle_start_time = time.time()
+        self._battle_duration = 0.0
         
         # ✅ 启动内核监听（不清空队列，保留 Stage 2 已捕获的 map 信号，避免普通逃跑时误判 battle_success=False）
         self._start_kernel_listen(clear_queue=False)
+        self._merge_kernel_buffer_after_stage2_gap()
         
-        # ✅ 第一回合已在Stage 2检测到PetItem时执行，这里从round_idx=1开始
-        # 注意：如果第一回合动作刚执行，给它一点时间生效（但不要sleep太久）
+        # 第一回合已在 Stage2（PetItem）里执行；本循环里 round_idx 语义为「已执行到的回合」，
+        # 探针下一次变蓝时 round_idx 先 +1 再出招（即第二回合起）。勿与 BattleRunner.run_mantis_capture_mode 的一体化循环混用。
         round_idx = 1
         blue_streak = 0
         armed = False
@@ -1284,9 +1413,11 @@ class UnifiedBattleFramework:
             # 检查中止
             if config.abort_check and config.abort_check():
                 self._stage3_exit_reason = "abort"
+                self._battle_duration = time.time() - self._battle_start_time
                 return False
             if self.bot and hasattr(self.bot, "stop_current") and self.bot.stop_current:
                 self._stage3_exit_reason = "abort"
+                self._battle_duration = time.time() - self._battle_start_time
                 return False
             
             # ✅ 回合超时检测：单回合内等待灰变蓝或战斗结束超过 round_timeout_sec 则重连
@@ -1296,6 +1427,7 @@ class UnifiedBattleFramework:
                     "WARN",
                 )
                 self._stage3_exit_reason = "round_timeout"
+                self._battle_duration = time.time() - self._battle_start_time
                 self._stop_kernel_listen()
                 return False
             
@@ -1309,6 +1441,7 @@ class UnifiedBattleFramework:
             if white_probe_ready:
                 self._emit(f"🏁 检测到白色探针变白（newNPC已出现，回合{round_idx}），结束战斗", "SUCCESS")
                 self._round_idx = round_idx
+                self._battle_duration = time.time() - self._battle_start_time
                 
                 # 停止内核监听
                 self._stop_kernel_listen()
@@ -1323,6 +1456,7 @@ class UnifiedBattleFramework:
             if map_seen:
                 self._emit(f"🏁 检测到战斗结束信号（Map，回合{round_idx}），开始战后处理", "SUCCESS")
                 self._round_idx = round_idx
+                self._battle_duration = time.time() - self._battle_start_time
                 
                 # 停止内核监听
                 self._stop_kernel_listen()
@@ -1374,6 +1508,7 @@ class UnifiedBattleFramework:
                 if white_probe_ready:
                     self._emit(f"🏁 检测到白色探针变白（newNPC已出现，回合{round_idx}），结束战斗", "SUCCESS")
                     self._round_idx = round_idx
+                    self._battle_duration = time.time() - self._battle_start_time
                     
                     # 停止内核监听
                     self._stop_kernel_listen()
@@ -1391,6 +1526,7 @@ class UnifiedBattleFramework:
             
             time.sleep(0.03)
         
+        self._battle_duration = time.time() - self._battle_start_time
         return True
     
     # ================================
@@ -1564,14 +1700,21 @@ class UnifiedBattleFramework:
             
             time.sleep(0.05)  # 检测间隔（50ms）
         
-        # 超时处理
+        # 超时处理（总时长达 effective_timeout 才走到这里）
+        limit_desc = f"{timeout_s:.0f}s" if timeout_s > 0 else f"{effective_timeout:.0f}s"
         if has_clicked_at_least_once:
-            self._emit("✅ 已循环点击确认（超时但已处理）", "SUCCESS")
+            self._emit(
+                f"⚠️ 战后清理确认框：已达 {limit_desc} 上限，停止点击（1 AND 1 可能仍未消失）",
+                "WARN",
+            )
         else:
             if timeout_s <= 0:
-                self._emit("⚠️ 等待超时：未检测到 1 AND 1（无限等待模式）", "WARN")
+                self._emit(
+                    f"⚠️ 战后清理确认框：{limit_desc} 内未检测到 1 AND 1",
+                    "WARN",
+                )
             else:
-                self._emit(f"⚠️ 超时：{timeout_s}s内未检测到 1 AND 1", "WARN")
+                self._emit(f"⚠️ 超时：{timeout_s}s 内未检测到 1 AND 1", "WARN")
     
     def _check_probe_pair(self, key1: str, color1: Tuple[int, int, int], 
                           key2: str, color2: Tuple[int, int, int], 
@@ -1747,9 +1890,12 @@ class UnifiedBattleFramework:
                 except KeyError:
                     self._emit("⚠️ 升级确认或技能替换取消按钮不存在", "WARN")
             
-            # ✅ 3. 等待通用探针白色+普通确认探针蓝色 1 AND 1直到消失（所有模式统一：必须出现过一次1 AND 1且直到消失）
-            # 使用0或负数表示不超时，一直循环直到消失
-            self._wait_for_confirm_probes(config, timeout_s=0.0, is_training_room=is_training_room)
+            # ✅ 3. 等待通用探针白色+普通确认探针蓝色 1 AND 1直到消失（整段最长 POST_BATTLE_CONFIRM_DIALOG_TIMEOUT_SEC）
+            self._wait_for_confirm_probes(
+                config,
+                timeout_s=self.POST_BATTLE_CONFIRM_DIALOG_TIMEOUT_SEC,
+                is_training_room=is_training_room,
+            )
             
             # 4. 训练室模式：1AND1结束后点击关闭资料
             if is_training_room and not is_hero_tower:
@@ -1767,18 +1913,22 @@ class UnifiedBattleFramework:
         elif self._last_action == LastActionType.CAPSULE:
             # ✅ 胶囊动作（捕捉）：1 AND 1（必须出现过一次1 AND 1且直到消失）
             self._emit("🎣 检测到胶囊动作（捕捉），等待1 AND 1出现并直到消失", "INFO")
-            # 使用0或负数表示不超时，一直循环直到消失
-            self._wait_for_confirm_probes(config, timeout_s=0.0)
+            self._wait_for_confirm_probes(
+                config, timeout_s=self.POST_BATTLE_CONFIRM_DIALOG_TIMEOUT_SEC
+            )
             
         elif self._last_action == LastActionType.ESCAPE:
             # ✅ 逃跑动作：1 AND 1（必须出现过一次1 AND 1且直到消失）
             self._emit("🏃 检测到逃跑动作，等待1 AND 1出现并直到消失", "INFO")
-            # 使用0或负数表示不超时，一直循环直到消失
-            self._wait_for_confirm_probes(config, timeout_s=0.0)
+            self._wait_for_confirm_probes(
+                config, timeout_s=self.POST_BATTLE_CONFIRM_DIALOG_TIMEOUT_SEC
+            )
         else:
             # 未知动作类型，默认进入1 AND 1检测
             self._emit("⚠️ 未知动作类型，默认进入1 AND 1检测", "WARN")
-            self._wait_for_confirm_probes(config)
+            self._wait_for_confirm_probes(
+                config, timeout_s=self.POST_BATTLE_CONFIRM_DIALOG_TIMEOUT_SEC
+            )
         
         # ✅ 已禁用：战后电池检测触发刷新重连（按需求完全关闭）
         

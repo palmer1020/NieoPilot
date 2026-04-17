@@ -4,14 +4,14 @@
 SWF 文件批量替换与补齐脚本
 
 功能：
-1. 从 E:\\1\\nieoasset\\resource\\pet 下查找模板文件（254.swf 等）
-2. 步骤1：将 swf/ 目录下每个已有文件的内容替换为模板内容
+1. 查找模板文件（优先本目录下的 254.swf 等，其次 nieoasset/resource/pet 下）
+2. 步骤1：将游戏 pet/swf 目录下每个已有文件的内容替换为模板内容
 3. 步骤2：补齐 1.swf ~ 5000.swf（缺失的创建，已有的覆盖）
 
-用法：
-  python swf_generator.py           # 交互式，输入模板名和排除列表
-  python swf_generator.py 254       # 非交互，使用 254.swf 作为模板
-  python swf_generator.py --dry-run # 预览模式
+用法（在项目根目录）：
+  python swf/swf_generator.py
+  python swf/swf_generator.py 254
+  python swf/swf_generator.py --dry-run
 """
 
 import os
@@ -24,18 +24,20 @@ try:
 except ImportError:
     GAME_ASSET_BASE_PATH = r"E:\1\nieoasset"
     GAME_SWF_FOLDER = os.path.join(GAME_ASSET_BASE_PATH, "resource", "pet", "swf")
-    GAME_SWF_OG_FOLDER = os.path.join(GAME_ASSET_BASE_PATH, "resource", "pet", "swf_og")
 
 DST_DIR = Path(GAME_SWF_FOLDER)
 PET_BASE = Path(GAME_ASSET_BASE_PATH) / "resource" / "pet"
+_SCRIPT_DIR = Path(__file__).resolve().parent
 
 
 def find_template_file(template_id: str) -> Path:
     """
-    从 E:\\1\\nieoasset\\resource\\pet 下查找模板文件
-    依次尝试：pet/254.swf, pet/swf/254.swf, pet/swf_og/254.swf
+    依次尝试：
+    1) 本脚本同目录（项目 swf/254.swf）
+    2) pet/254.swf, pet/swf/254.swf, pet/swf_og/254.swf
     """
     candidates = [
+        _SCRIPT_DIR / f"{template_id}.swf",
         PET_BASE / f"{template_id}.swf",
         PET_BASE / "swf" / f"{template_id}.swf",
         PET_BASE / "swf_og" / f"{template_id}.swf",
@@ -43,7 +45,9 @@ def find_template_file(template_id: str) -> Path:
     for p in candidates:
         if p.exists():
             return p
-    raise FileNotFoundError(f"模板文件 {template_id}.swf 未找到，已尝试：{[str(c) for c in candidates]}")
+    raise FileNotFoundError(
+        f"模板文件 {template_id}.swf 未找到，已尝试：{[str(c) for c in candidates]}"
+    )
 
 
 def parse_excludes(s: str) -> set:
@@ -128,7 +132,7 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
 
     if args:
-        # 非交互：python swf_generator.py 254 或 python swf_generator.py 254 16,27
+        # 非交互：python swf/swf_generator.py 254 或 ... 254 16,27
         template_id = args[0]
         excludes = parse_excludes(args[1]) if len(args) > 1 else set()
     else:

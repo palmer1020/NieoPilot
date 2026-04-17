@@ -56,10 +56,6 @@ class Dashboard(QWidget):
         self.btn_debug = QPushButton("🎯 校准屏幕")
         self.btn_debug.clicked.connect(self.on_debug_screen)
         
-        # 🔧 校准测试：纯屏幕检测，不依赖日志
-        self.btn_calibration_test = QPushButton("🔧 校准测试")
-        self.btn_calibration_test.clicked.connect(self.on_run_calibration_test)
-        
         # 📝 脚本录制器
         self.btn_script_recorder = QPushButton("📝 脚本录制器")
         self.btn_script_recorder.clicked.connect(self.on_open_script_recorder)
@@ -74,7 +70,6 @@ class Dashboard(QWidget):
 
         base_layout.addWidget(self.btn_launch)
         base_layout.addWidget(self.btn_debug)
-        base_layout.addWidget(self.btn_calibration_test)
         base_layout.addWidget(self.btn_script_recorder)
         base_layout.addWidget(self.btn_region_recorder)
         base_layout.addWidget(self.btn_template_recorder)
@@ -85,36 +80,36 @@ class Dashboard(QWidget):
         daily_group = QGroupBox("📅 日常任务")
         daily_layout = QVBoxLayout()
 
-        # 第一行：一键执行日常按钮和脚本执行
+        # 第一行：一键日常 + 脚本/扭蛋（下拉默认扭蛋）+ 次数 + 执行
         row1 = QHBoxLayout()
         self.btn_run_daily = QPushButton("▶ 一键执行日常")
         self.btn_run_daily.clicked.connect(self.on_run_daily)
 
-        # 脚本下拉框和执行按钮
         self.script_combo = QComboBox()
         self._load_fix_scripts()
-        self.btn_run_script = QPushButton("▶ 执行脚本")
-        self.btn_run_script.clicked.connect(self.on_run_script)
+
+        self.task_repeat_box = QLineEdit()
+        self.task_repeat_box.setText("1")
+        self.task_repeat_box.setPlaceholderText("次数")
+        self.task_repeat_box.setFixedWidth(52)
+        self.task_repeat_box.setValidator(QIntValidator(1, 99999, self))
+
+        self.btn_run_task = QPushButton("▶ 执行")
+        self.btn_run_task.setToolTip("默认：扭蛋；可选 fix_script 下脚本，次数为执行遍数")
+        self.btn_run_task.clicked.connect(self.on_run_selected_task)
 
         self.chk_foreground = QCheckBox("前台运行（更稳定）")
         self.chk_foreground.setChecked(False)
 
         row1.addWidget(self.btn_run_daily, 2)
-        row1.addWidget(self.script_combo, 2)
-        row1.addWidget(self.btn_run_script, 1)
+        row1.addWidget(self.script_combo, 3)
+        row1.addWidget(self.task_repeat_box, 0)
+        row1.addWidget(self.btn_run_task, 1)
         row1.addWidget(self.chk_foreground, 1)
         daily_layout.addLayout(row1)
 
-        # 第二行：扭蛋和勇者之塔独立按钮
+        # 第二行：勇者之塔等（扭蛋已合并到上行）
         row2 = QHBoxLayout()
-        
-        # 扭蛋
-        row2.addWidget(QLabel("扭蛋次数："))
-        self.gacha_times_box = QLineEdit()
-        self.gacha_times_box.setPlaceholderText("次数")
-        self.gacha_times_box.setFixedWidth(80)
-        self.btn_gacha = QPushButton("▶ 扭蛋")
-        self.btn_gacha.clicked.connect(self.on_run_gacha)
         
         # 勇者之塔（固定10回合）
         self.btn_hero_tower = QPushButton("🗼 勇者之塔（10回合）")
@@ -128,8 +123,6 @@ class Dashboard(QWidget):
         self.btn_1v1_x2 = QPushButton("⚔ 1v1x2")
         self.btn_1v1_x2.clicked.connect(self.on_run_1v1_x2)
 
-        row2.addWidget(self.gacha_times_box)
-        row2.addWidget(self.btn_gacha)
         row2.addWidget(self.btn_hero_tower)
         row2.addWidget(self.btn_chaos_battle_x2)
         row2.addWidget(self.btn_1v1_x2)
@@ -139,12 +132,24 @@ class Dashboard(QWidget):
         daily_group.setLayout(daily_layout)
         control_panel.addWidget(daily_group)
 
-        # ---- 刷经验 group ----
-        exp_group = QGroupBox("刷经验")
+        # ---- 刷经验 + 雷伊特训 + 特训循环（单行紧凑）----
+        exp_group = QGroupBox("刷经验 / 特训")
         exp_layout = QHBoxLayout()
         self.btn_exp_minor_battle = QPushButton("小号对战")
         self.btn_exp_minor_battle.clicked.connect(self.on_run_exp_minor_battle)
+        self.btn_leiyi_training = QPushButton("⚡雷伊")
+        self.btn_leiyi_training.setToolTip("雷伊特训")
+        self.btn_leiyi_training.clicked.connect(self.on_run_leiyi_training)
+        self.leiyi_loop_box = QLineEdit()
+        self.leiyi_loop_box.setPlaceholderText("雷伊循环(默认10)")
+        self.leiyi_loop_box.setFixedWidth(100)
+        self.btn_teixun_loop = QPushButton("🔄特训循环")
+        self.btn_teixun_loop.setToolTip("特训循环（黄=1AND1，白=等待后直接恢复）")
+        self.btn_teixun_loop.clicked.connect(self.on_run_teixun_loop)
         exp_layout.addWidget(self.btn_exp_minor_battle)
+        exp_layout.addWidget(self.btn_leiyi_training)
+        exp_layout.addWidget(self.leiyi_loop_box)
+        exp_layout.addWidget(self.btn_teixun_loop)
         exp_layout.addStretch()
         exp_group.setLayout(exp_layout)
         control_panel.addWidget(exp_group)
@@ -238,6 +243,24 @@ class Dashboard(QWidget):
         nieo_group.setLayout(nieo_layout)
         control_panel.addWidget(nieo_group)
 
+        # ---------- 挂机对战模式 ----------
+        afk_group = QGroupBox("🎮 挂机对战模式")
+        afk_layout = QHBoxLayout()
+        self.btn_afk_normal = QPushButton("普通")
+        self.btn_afk_normal.clicked.connect(lambda: self.start_afk_battle_mode("normal"))
+        afk_layout.addWidget(self.btn_afk_normal)
+        self.btn_afk_defeat = QPushButton("击败")
+        self.btn_afk_defeat.clicked.connect(lambda: self.start_afk_battle_mode("defeat"))
+        afk_layout.addWidget(self.btn_afk_defeat)
+        self.btn_afk_rare = QPushButton("稀有")
+        self.btn_afk_rare.clicked.connect(lambda: self.start_afk_battle_mode("rare"))
+        afk_layout.addWidget(self.btn_afk_rare)
+        self.btn_afk_nieo = QPushButton("尼奥")
+        self.btn_afk_nieo.clicked.connect(lambda: self.start_afk_battle_mode("nieo"))
+        afk_layout.addWidget(self.btn_afk_nieo)
+        afk_group.setLayout(afk_layout)
+        control_panel.addWidget(afk_group)
+
         # ---------- 双塔尼奥轮换模式（已替换原定时任务）----------
         rotation_group = QGroupBox("🔄 双塔尼奥轮换模式（自动切换）")
         rotation_layout = QVBoxLayout()
@@ -252,6 +275,18 @@ class Dashboard(QWidget):
         self.chk_rotation_test_mode = QCheckBox("测试模式（固定时间间隔切换）")
         self.chk_rotation_test_mode.setChecked(False)
         rotation_layout.addWidget(self.chk_rotation_test_mode)
+        
+        self.chk_rotation_capture_ststss = QCheckBox(
+            "捕捉胶囊六循环：超特超超特超（双塔/尼奥；敌方为螳螂时不使用）"
+        )
+        self.chk_rotation_capture_ststss.setChecked(False)
+        rotation_layout.addWidget(self.chk_rotation_capture_ststss)
+        
+        self.chk_rotation_capture_special_only = QCheckBox(
+            "轮换捕捉仅使用特级精灵胶囊（双塔/尼奥；敌方为螳螂时不使用；优先于六循环）"
+        )
+        self.chk_rotation_capture_special_only.setChecked(False)
+        rotation_layout.addWidget(self.chk_rotation_capture_special_only)
         
         # 测试模式参数输入
         row2 = QHBoxLayout()
@@ -326,28 +361,6 @@ class Dashboard(QWidget):
         train_group.setLayout(train_layout)
         control_panel.addWidget(train_group)
 
-        # --- 雷伊特训 ---
-        leiyi_group = QGroupBox("⚡ 雷伊特训")
-        leiyi_layout = QHBoxLayout()
-        self.btn_leiyi_training = QPushButton("⚡ 雷伊特训")
-        self.btn_leiyi_training.clicked.connect(self.on_run_leiyi_training)
-        self.leiyi_loop_box = QLineEdit()
-        self.leiyi_loop_box.setPlaceholderText("循环次数(默认10)")
-        self.leiyi_loop_box.setFixedWidth(120)
-        leiyi_layout.addWidget(self.btn_leiyi_training)
-        leiyi_layout.addWidget(self.leiyi_loop_box)
-        leiyi_group.setLayout(leiyi_layout)
-        control_panel.addWidget(leiyi_group)
-
-        # --- 特训循环 ---
-        teixun_group = QGroupBox("🔄 特训循环")
-        teixun_layout = QHBoxLayout()
-        self.btn_teixun_loop = QPushButton("🔄 特训循环")
-        self.btn_teixun_loop.clicked.connect(self.on_run_teixun_loop)
-        teixun_layout.addWidget(self.btn_teixun_loop)
-        teixun_group.setLayout(teixun_layout)
-        control_panel.addWidget(teixun_group)
-
         # ---------- 停止/内核日志/清空日志 ----------
         btn_row = QHBoxLayout()
 
@@ -405,34 +418,60 @@ class Dashboard(QWidget):
 
     # ------------------ 任务触发 ------------------
     def _load_fix_scripts(self):
-        """加载fix_script目录下的脚本到下拉框"""
+        """加载 fix_script 脚本；首项为扭蛋（默认）"""
         import os
         script_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fix_script")
         self.script_combo.clear()
-        self.script_combo.addItem("-- 选择脚本 --", None)
-        
+        self.script_combo.addItem("🎲 扭蛋", "__gacha__")
+        self.script_combo.addItem("🐾 放生", "放生")
+
         if os.path.exists(script_dir):
             try:
                 files = [f for f in os.listdir(script_dir) if f.endswith('.json')]
                 files.sort()
                 for filename in files:
                     script_name = filename[:-5]  # 去掉.json后缀
+                    if script_name == "放生":
+                        continue
                     self.script_combo.addItem(script_name, script_name)
             except Exception as e:
                 self.log_message(f"❌ 加载脚本列表失败: {e}", "ERROR")
+        self.script_combo.setCurrentIndex(0)
 
-    def on_run_script(self):
-        """执行选中的脚本"""
-        script_name = self.script_combo.currentData()
-        if not script_name:
-            self.log_message("❌ 请先选择一个脚本", "WARN")
-            return
-        
-        tasks = {
-            "run_script": script_name,
-            "use_foreground": self.chk_foreground.isChecked()
-        }
-        self.log_message(f"📜 启动脚本: {script_name}.json", "SYSTEM")
+    def on_run_selected_task(self):
+        """下拉：扭蛋（默认）或 fix 脚本；次数框：执行遍数（默认 1）"""
+        raw = (self.task_repeat_box.text() or "").strip()
+        if raw == "":
+            times = 1
+        else:
+            try:
+                times = int(raw)
+                if times < 1:
+                    raise ValueError()
+            except ValueError:
+                self.log_message("⚠ 次数无效（请输入 ≥1 的整数）", "ERROR")
+                return
+
+        use_fg = self.chk_foreground.isChecked()
+        data = self.script_combo.currentData()
+
+        if data == "__gacha__":
+            tasks = {
+                "gacha": True,
+                "gacha_times": times,
+                "use_foreground": use_fg,
+            }
+            self.log_message(f"🎲 启动扭蛋：{times} 次", "SYSTEM")
+        else:
+            if not data:
+                self.log_message("❌ 请在下拉框中选择扭蛋或脚本", "WARN")
+                return
+            tasks = {
+                "run_script": data,
+                "run_repeat": times,
+                "use_foreground": use_fg,
+            }
+            self.log_message(f"📜 启动脚本 {data}.json × {times}", "SYSTEM")
         self._lock_ui()
         self.start_signal.emit(tasks)
 
@@ -445,25 +484,6 @@ class Dashboard(QWidget):
         self.log_message("📅 启动日常任务", "SYSTEM")
         # ✅ 设置自动启动轮换模式的标志
         self._auto_start_rotation_after_daily = True
-        self._lock_ui()
-        self.start_signal.emit(tasks)
-
-    def on_run_gacha(self):
-        """执行扭蛋"""
-        try:
-            times = int(self.gacha_times_box.text().strip())
-            if times <= 0:
-                raise ValueError()
-        except:
-            self.log_message("⚠ 扭蛋次数无效（请输入正整数）", "ERROR")
-            return
-
-        tasks = {
-            "gacha": True,
-            "gacha_times": times,
-            "use_foreground": self.chk_foreground.isChecked()
-        }
-        self.log_message(f"🎲 启动扭蛋：{times} 次", "SYSTEM")
         self._lock_ui()
         self.start_signal.emit(tasks)
 
@@ -570,16 +590,6 @@ class Dashboard(QWidget):
             self.log_message(f"🖼️ 模板录制器已启动（region: {region_path.strip()}, state: {state_name.strip()}）", "SYSTEM")
         except Exception as e:
             self.log_message(f"❌ 启动模板录制器失败: {e}", "ERROR")
-
-    def on_run_calibration_test(self):
-        tasks = {
-            "calibration_test": True,
-            "use_foreground": self.chk_foreground.isChecked(),
-        }
-        self.log_message("🔧 启动校准测试（纯屏幕检测）：请确保已触发校准（大探针=2FA7EE AND 小探针=FFFFFF）", "SYSTEM")
-        self._lock_ui()
-        self.start_signal.emit(tasks)
-
 
     def on_run_dar_route_test(self):
         tasks = {
@@ -777,10 +787,9 @@ class Dashboard(QWidget):
     def _lock_ui_except_scheduled(self):
         """锁定UI但保持定时任务UI可用（允许定时任务与其他任务共存）"""
         self.btn_run_daily.setEnabled(False)
-        self.btn_run_script.setEnabled(False)
+        self.btn_run_task.setEnabled(False)
         self.script_combo.setEnabled(False)
-        self.btn_gacha.setEnabled(False)
-        self.gacha_times_box.setEnabled(False)
+        self.task_repeat_box.setEnabled(False)
         self.btn_hero_tower.setEnabled(False)
         self.btn_chaos_battle_x2.setEnabled(False)
         self.btn_1v1_x2.setEnabled(False)
@@ -788,6 +797,8 @@ class Dashboard(QWidget):
         self.btn_training_to_100.setEnabled(False)
         if hasattr(self, "btn_leiyi_training"):
             self.btn_leiyi_training.setEnabled(False)
+        if hasattr(self, "leiyi_loop_box"):
+            self.leiyi_loop_box.setEnabled(False)
         if hasattr(self, "btn_teixun_loop"):
             self.btn_teixun_loop.setEnabled(False)
         self.btn_stop.setEnabled(True)
@@ -808,19 +819,15 @@ class Dashboard(QWidget):
         if hasattr(self, "btn_dar_route_test"):
             self.btn_dar_route_test.setEnabled(False)
 
-        if hasattr(self, "btn_calibration_test"):
-            self.btn_calibration_test.setEnabled(False)
-        
         # 录制器按钮保持可用（它们独立运行）
         # 定时任务UI保持可用（允许与其他任务共存）
         # 不锁定定时任务相关UI
     
     def _lock_ui(self):
         self.btn_run_daily.setEnabled(False)
-        self.btn_run_script.setEnabled(False)
+        self.btn_run_task.setEnabled(False)
         self.script_combo.setEnabled(False)
-        self.btn_gacha.setEnabled(False)
-        self.gacha_times_box.setEnabled(False)
+        self.task_repeat_box.setEnabled(False)
         self.btn_hero_tower.setEnabled(False)
         self.btn_chaos_battle_x2.setEnabled(False)
         self.btn_1v1_x2.setEnabled(False)
@@ -828,6 +835,8 @@ class Dashboard(QWidget):
         self.btn_training_to_100.setEnabled(False)
         if hasattr(self, "btn_leiyi_training"):
             self.btn_leiyi_training.setEnabled(False)
+        if hasattr(self, "leiyi_loop_box"):
+            self.leiyi_loop_box.setEnabled(False)
         if hasattr(self, "btn_teixun_loop"):
             self.btn_teixun_loop.setEnabled(False)
         self.btn_stop.setEnabled(True)
@@ -849,9 +858,6 @@ class Dashboard(QWidget):
         # ✅ 旧按钮不存在就别动它
         if hasattr(self, "btn_dar_route_test"):
             self.btn_dar_route_test.setEnabled(False)
-
-        if hasattr(self, "btn_calibration_test"):
-            self.btn_calibration_test.setEnabled(False)
         
         # ✅ 禁用轮换模式和尼奥模式的按钮和勾选框
         if hasattr(self, "btn_start_rotation"):
@@ -869,16 +875,18 @@ class Dashboard(QWidget):
             self.btn_nieo.setEnabled(False)
         if hasattr(self, "chk_skip_nie_77"):
             self.chk_skip_nie_77.setEnabled(False)
+        for _b in ("btn_afk_normal", "btn_afk_defeat", "btn_afk_rare", "btn_afk_nieo"):
+            if hasattr(self, _b):
+                getattr(self, _b).setEnabled(False)
         
         # 录制器按钮保持可用（它们独立运行）
 
 
     def _unlock_ui_stopped(self):
         self.btn_run_daily.setEnabled(True)
-        self.btn_run_script.setEnabled(True)
+        self.btn_run_task.setEnabled(True)
         self.script_combo.setEnabled(True)
-        self.btn_gacha.setEnabled(True)
-        self.gacha_times_box.setEnabled(True)
+        self.task_repeat_box.setEnabled(True)
         self.btn_hero_tower.setEnabled(True)
         self.btn_chaos_battle_x2.setEnabled(True)
         self.btn_1v1_x2.setEnabled(True)
@@ -886,6 +894,8 @@ class Dashboard(QWidget):
         self.btn_training_to_100.setEnabled(True)
         if hasattr(self, "btn_leiyi_training"):
             self.btn_leiyi_training.setEnabled(True)
+        if hasattr(self, "leiyi_loop_box"):
+            self.leiyi_loop_box.setEnabled(True)
         if hasattr(self, "btn_teixun_loop"):
             self.btn_teixun_loop.setEnabled(True)
         self.btn_stop.setEnabled(False)
@@ -905,9 +915,6 @@ class Dashboard(QWidget):
         if hasattr(self, "btn_dar_route_test"):
             self.btn_dar_route_test.setEnabled(True)
 
-        if hasattr(self, "btn_calibration_test"):
-            self.btn_calibration_test.setEnabled(True)
-        
         # ✅ 检查是否需要自动启动轮换模式（日常任务完成后）
         # 注意：如果需要自动启动，不要解锁轮换模式和尼奥模式的UI
         if self._auto_start_rotation_after_daily:
@@ -931,6 +938,9 @@ class Dashboard(QWidget):
                 self.btn_nieo.setEnabled(True)
             if hasattr(self, "chk_skip_nie_77"):
                 self.chk_skip_nie_77.setEnabled(True)
+            for _b in ("btn_afk_normal", "btn_afk_defeat", "btn_afk_rare", "btn_afk_nieo"):
+                if hasattr(self, _b):
+                    getattr(self, _b).setEnabled(True)
         
         # 录制器按钮保持可用（它们独立运行，不需要解锁）
 
@@ -995,11 +1005,9 @@ class Dashboard(QWidget):
         self._lock_ui()
         self.start_signal.emit(tasks)
     
-    def start_rotation_mode(self):
-        """启动双塔尼奥轮换模式"""
+    def _build_rotation_mode_tasks(self) -> dict:
+        """与「启动轮换模式」按钮相同的一份任务字典；一键日常结束后自动轮换也走这里，保证勾选一致。"""
         is_test_mode = self.chk_rotation_test_mode.isChecked()
-        mode_text = "测试模式（固定时间间隔切换）" if is_test_mode else "正式模式（根据北京时间自动切换）"
-        
         interval_minutes_nieo = self._parse_float_with_default(
             self.rotation_interval_minutes_nieo_input.text(), 60.0
         )
@@ -1009,48 +1017,35 @@ class Dashboard(QWidget):
         hard_limit_sec = self._parse_float_with_default(
             self.petswf_hard_limit_sec_input.text(), 8.0
         )
-        
-        tasks = {
-            "rotation_mode": True,  # 新的轮换模式标识
+        return {
+            "rotation_mode": True,
             "use_foreground": self.chk_foreground.isChecked(),
-            "rotation_test_mode": is_test_mode,  # ✅ 传递测试模式标志
+            "rotation_test_mode": is_test_mode,
             "rotation_interval_minutes_nieo": interval_minutes_nieo,
             "rotation_interval_minutes_shuangta": interval_minutes_shuangta,
             "petswf_hard_limit_sec": hard_limit_sec,
+            "rotation_capture_ststss": self.chk_rotation_capture_ststss.isChecked(),
+            "rotation_capture_special_only": self.chk_rotation_capture_special_only.isChecked(),
         }
-        
+
+    def start_rotation_mode(self):
+        """启动双塔尼奥轮换模式"""
+        tasks = self._build_rotation_mode_tasks()
+        is_test_mode = bool(tasks.get("rotation_test_mode"))
+        mode_text = "测试模式（固定时间间隔切换）" if is_test_mode else "正式模式（根据北京时间自动切换）"
         self.log_message(f"🔄 启动双塔尼奥轮换模式（{mode_text}）", "SYSTEM")
         self._lock_ui()
         self.start_signal.emit(tasks)
     
     def _auto_start_rotation_mode(self):
-        """自动启动轮换模式（日常任务完成后自动调用，复用 start_rotation_mode 的逻辑）"""
-        is_test_mode = self.chk_rotation_test_mode.isChecked()
+        """日常任务完成后自动启动轮换：与点击「启动轮换模式」使用同一套勾选与参数。"""
+        tasks = self._build_rotation_mode_tasks()
+        is_test_mode = bool(tasks.get("rotation_test_mode"))
         mode_text = "测试模式（固定时间间隔切换）" if is_test_mode else "正式模式（根据北京时间自动切换）"
-        
-        interval_minutes_nieo = self._parse_float_with_default(
-            self.rotation_interval_minutes_nieo_input.text(), 60.0
-        )
-        interval_minutes_shuangta = self._parse_float_with_default(
-            self.rotation_interval_minutes_shuangta_input.text(), 60.0
-        )
-        hard_limit_sec = self._parse_float_with_default(
-            self.petswf_hard_limit_sec_input.text(), 8.0
-        )
-        
-        tasks = {
-            "rotation_mode": True,  # 新的轮换模式标识
-            "use_foreground": self.chk_foreground.isChecked(),
-            "rotation_test_mode": is_test_mode,  # ✅ 传递测试模式标志
-            "rotation_interval_minutes_nieo": interval_minutes_nieo,
-            "rotation_interval_minutes_shuangta": interval_minutes_shuangta,
-            "petswf_hard_limit_sec": hard_limit_sec,
-        }
-        
         self.log_message(f"🔄 日常任务完成，自动启动轮换模式（{mode_text}）", "SYSTEM")
         # ✅ 日常任务完成后 _unlock_ui_stopped 已执行，UI已解锁，需重新锁定以匹配轮换模式运行状态
         self._lock_ui()
-        self.start_signal.emit(tasks)  # 发送和点击按钮一样的信号
+        self.start_signal.emit(tasks)
 
     def _update_rotation_test_inputs_enabled(self):
         enabled = self.chk_rotation_test_mode.isChecked()
@@ -1094,6 +1089,18 @@ class Dashboard(QWidget):
         self._lock_ui()
         self.start_signal.emit(tasks)
     
+    def start_afk_battle_mode(self, sub_mode: str = "normal"):
+        """启动挂机对战模式"""
+        labels = {"normal": "普通", "defeat": "击败", "rare": "稀有", "nieo": "尼奥"}
+        tasks = {
+            "afk_battle_mode": True,
+            "afk_sub_mode": sub_mode,
+            "use_foreground": self.chk_foreground.isChecked(),
+        }
+        self.log_message(f"🎮 启动挂机{labels.get(sub_mode, sub_mode)}模式", "SYSTEM")
+        self._lock_ui()
+        self.start_signal.emit(tasks)
+
     def start_nieo_mode(self):
         """启动尼奥模式（10/11地图循环）"""
         tasks = {

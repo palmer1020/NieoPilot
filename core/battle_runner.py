@@ -77,6 +77,9 @@ class BattleRunner:
     KEY_SKILL4 = "对战.使用技能四"
     KEY_PROBE = "对战.回合探针"
 
+    # 投胶囊节奏「高超高特高超」（与 UnifiedBattleFramework 一致）
+    _CAPSULE_CYCLE_TIERS = ("high", "high", "super", "special", "high", "super")
+
     # ---------- 人机验证 region key ----------
     KEY_HV_PANEL = "人机验证.人机验证"
     KEY_HV_TEXT = "人机验证.人机验证信息"
@@ -106,6 +109,9 @@ class BattleRunner:
         self.bot = bot
         self.regions = regions
         self.template_root = template_root
+
+        # 螳螂捕捉等独立战斗内的投胶囊循环（与 UBF 同节奏；计数器独立）
+        self._capsule_cycle_index = 0
 
         self._kernel_q = deque(maxlen=6000)
         from config import HV_SAMPLES_PATH
@@ -609,6 +615,26 @@ class BattleRunner:
                     return k
             except Exception:
                 continue
+        return None
+
+    def _resolve_capsule_tier_key(self, tier: str) -> Optional[str]:
+        """按档位解析胶囊 region 键（不含切换面板），与 UnifiedBattleFramework 对齐。"""
+        if tier == "mid":
+            return self._first_existing_key(
+                ["对战.捕捉.中级精灵胶囊", "对战.捕捉.中级胶囊"]
+            )
+        if tier == "high":
+            return self._first_existing_key(
+                ["对战.捕捉.高级精灵胶囊", "对战.捕捉.高级胶囊"]
+            )
+        if tier == "super":
+            return self._first_existing_key(
+                ["对战.捕捉.超级精灵胶囊", "对战.捕捉.超级胶囊"]
+            )
+        if tier == "special":
+            return self._first_existing_key(
+                ["对战.捕捉.特级精灵胶囊", "对战.捕捉.特级胶囊"]
+            )
         return None
 
     def _recover_training_room_once(self, use_foreground: bool):
@@ -1300,14 +1326,17 @@ class BattleRunner:
         map_swf_id: int = 11,
         use_foreground=False,   # bool 或 callable -> bool
         skill1_key: str = "对战.使用技能一",
-        invincible_first_round: bool = False,
+        invincible_first_round: bool = True,
     ):
         """
-        捕捉模式：
-        - 第1回合：点技能1（或 invincible_first_round 直接无敌胶囊）
-        - 第2回合开始：每回合 先切换捕捉面板 -> 0.25s -> 点胶囊（连续点击两次，提升命中率）
-        胶囊节奏：中级(回合2) / 高级(回合3) / 中级(回合4) / 高级...
-        - 结束判定：map(+优先 map/{id}.swf) + newNpc/multi/0.swf
+        独立「螳螂」循环（仅当 DarRouteRunner 无 UnifiedBattleFramework 时使用）。
+
+        与主流程的区别：主流程在 stage2_calibration_and_petitem() 里预处理第一回合，
+        再进 stage3_battle_loop()；本函数则在同一条循环里处理入战、第1回合与后续回合。
+
+        - 第1回合：技能1 或 invincible_first_round 时无敌胶囊
+        - 第2回合起：切换捕捉面板 -> 胶囊（「高超高特高超」6 格循环）
+        - 结束：入战后 map 或 newNpc（与 UBF 一致）
         """
 
         def _uf() -> bool:
@@ -1334,27 +1363,18 @@ class BattleRunner:
             "对战.捕捉.切换捕捉面板+精灵胶囊",
         ])
 
-        mid = self._first_existing_key([
-            "对战.捕捉.中级精灵胶囊",
-            "对战.捕捉.中级胶囊",
-        ])
         high = self._first_existing_key([
             "对战.捕捉.高级精灵胶囊",
             "对战.捕捉.高级胶囊",
-        ])
-
-        combo_mid = self._first_existing_key([
-            "对战.捕捉.切换捕捉面板+中级精灵胶囊",
         ])
         combo_high = self._first_existing_key([
             "对战.捕捉.切换捕捉面板+高级精灵胶囊",
         ])
 
-        has_split = bool(panel and mid and high)
-        has_combo = bool(combo_mid and combo_high)
-        if (not has_split) and (not has_combo):
+        # 至少能点高级：分开展示（面板+高级）或仅 combo 高级
+        if not ((panel and high) or combo_high):
             raise KeyError(
-                "缺少捕捉相关 regions：需要(切换捕捉面板 + 中级/高级胶囊) 或 (切换捕捉面板+中级 / +高级)"
+                "缺少捕捉相关 regions：需要「切换捕捉面板 + 高级精灵胶囊」或「切换捕捉面板+高级精灵胶囊」"
             )
 
         inv_key = "对战.捕捉.无敌精灵胶囊"
@@ -1370,6 +1390,7 @@ class BattleRunner:
         self.bot.emit_and_log(f"🪲 捕捉战斗：启动（map={map_sub}）", "SYSTEM")
 
         self._start_kernel_listen()
+        self._capsule_cycle_index = 0
 
         round_idx = 0
         map_seen_at = None
@@ -1399,29 +1420,52 @@ class BattleRunner:
             if ridx < 2:
                 return
 
-            use_mid = (not ridx % 3 == 0)
+            n_tiers = len(self._CAPSULE_CYCLE_TIERS)
+            cycle_tier = self._CAPSULE_CYCLE_TIERS[self._capsule_cycle_index % n_tiers]
+            self._capsule_cycle_index += 1
+            cap_key = self._resolve_capsule_tier_key(cycle_tier)
+            label_zh = {"high": "高级", "super": "超级", "special": "特级"}.get(
+                cycle_tier, cycle_tier
+            )
+            if cap_key is None:
+                self.bot.emit_and_log(
+                    f"⚠ 循环档位「{label_zh}」区域缺失，回退高级胶囊",
+                    "WARN",
+                )
+                cap_key = high
+                label_zh = "高级(回退)"
+            slot_info = f" [循环{(self._capsule_cycle_index - 1) % n_tiers + 1}/{n_tiers}]"
 
             # split：面板 + 胶囊（胶囊连点2次）
-            if has_split:
-                # 你要求：切换捕捉面板点两次，然后等待约0.5s
+            if panel and cap_key:
                 self._click_region_twice(panel, use_foreground=_uf(), gap=0.10)
                 time.sleep(0.50)
-                cap_key = mid if use_mid else high
                 self._click_region_twice(cap_key, use_foreground=_uf(), gap=0.08)
                 last_action_at = time.time()
                 self.bot.emit_and_log(
-                    f"🎯 回合{ridx} 捕捉：面板 -> {'中级' if use_mid else '高级'}胶囊(×2)",
+                    f"🎯 回合{ridx} 捕捉：面板 -> {label_zh}胶囊(×2){slot_info}",
                     "INFO",
                 )
                 return
 
-            # combo：直接点 combo 两次
-            ck = combo_mid if use_mid else combo_high
-            self._click_region_twice(ck, use_foreground=_uf(), gap=0.50)
-            last_action_at = time.time()
+            if (
+                combo_high
+                and cycle_tier == "high"
+                and cap_key
+                and high
+                and cap_key == high
+            ):
+                self._click_region_twice(combo_high, use_foreground=_uf(), gap=0.50)
+                last_action_at = time.time()
+                self.bot.emit_and_log(
+                    f"🎯 回合{ridx} 捕捉：高级（combo×2）{slot_info}",
+                    "INFO",
+                )
+                return
+
             self.bot.emit_and_log(
-                f"🎯 回合{ridx} 捕捉：{'中级' if use_mid else '高级'}（combo×2）",
-                "INFO",
+                "⚠ 胶囊 region 缺失：特级/超级需「切换捕捉面板」与对应胶囊分开录制；或补全区域",
+                "WARN",
             )
 
         try:
@@ -1467,6 +1511,10 @@ class BattleRunner:
                     # 第一回合入战信号
                     if round_idx == 0 and self._has_peticon(line):
                         round_idx = 1
+                        # 入战后清空「战后」判定，避免战前残留的 map/newNpc 与首回合即结束的对战冲突（否则易卡在等第二回合）
+                        map_seen_at = None
+                        any_map_seen_at = None
+                        npc_seen = False
                         self.bot.emit_and_log("✅ 已入对战：回合1", "INFO")
 
                         if invincible_first_round:
@@ -1489,11 +1537,15 @@ class BattleRunner:
                         armed = False
                         last_action_at = time.time()
 
-                # 结束判定：map + newNpc
-                if npc_seen and (map_seen_at is not None or any_map_seen_at is not None):
+                # 结束判定：与 UnifiedBattleFramework 对齐——入战后检测到 Map 即可（首回合无敌捕获成功时常无 newNpc，若仍要求 map+newNpc 会卡在等第二回合）
+                if round_idx >= 1 and (
+                    map_seen_at is not None
+                    or any_map_seen_at is not None
+                    or npc_seen
+                ):
                     cost = time.time() - t0
                     self.bot.emit_and_log(
-                        f"🏁 对战结束：map + newNpc，用时 {cost:.1f}s，总回合={round_idx}",
+                        f"🏁 对战结束：map/newNpc 信号，用时 {cost:.1f}s，总回合={round_idx}",
                         "SUCCESS",
                     )
                     return
@@ -1515,8 +1567,24 @@ class BattleRunner:
                     state, s_blue, s_gray = self._detect_probe(probe_model)
                     if state == "BLUE" and s_blue >= 0.90:
                         round_idx = 1
+                        map_seen_at = None
+                        any_map_seen_at = None
+                        npc_seen = False
                         self.bot.emit_and_log("✅ 已入对战(fallback探针)：回合1", "INFO")
-                        self._click_region(skill1_key, use_foreground=_uf())
+                        if invincible_first_round:
+                            if inv_panel and self._rs_get(inv_key):
+                                self._click_region_twice(inv_panel, use_foreground=_uf(), gap=0.10)
+                                time.sleep(0.50)
+                                self._click_region_twice(inv_key, use_foreground=_uf(), gap=0.08)
+                                time.sleep(0.55)
+                                self.bot.emit_and_log("🛡 回合1：无敌精灵胶囊(×2)", "INFO")
+                            else:
+                                self.bot.emit_and_log("⚠ 无敌胶囊 region 缺失：回退为技能1", "WARN")
+                                self._click_region(skill1_key, use_foreground=_uf())
+                                time.sleep(0.55)
+                        else:
+                            self._click_region(skill1_key, use_foreground=_uf())
+                            time.sleep(0.55)
                         last_action_at = time.time()
                     time.sleep(0.03)
                     continue

@@ -293,6 +293,7 @@ class BotWorker(QThread):
                 or tasks.get("calibration_test")
                 or tasks.get("nie_family_test")  # ✅ 尼尔家族测试
                 or tasks.get("nieo_mode")  # ✅ 尼奥模式（10/11地图循环）
+                or tasks.get("afk_battle_mode")  # ✅ 挂机对战模式
                 or tasks.get("rotation_mode")  # ✅ 双塔尼奥轮换模式（已替换原定时任务）
                 # or tasks.get("scheduled_task")  # ⚠️ 原定时任务已禁用
             )
@@ -324,8 +325,16 @@ class BotWorker(QThread):
                     # ---- 执行脚本 ----
                     if tasks.get("run_script") and (not self.stop_current):
                         script_name = tasks.get("run_script")
-                        self.emit_and_log(f"📜 开始执行脚本: {script_name}.json（前台={use_foreground}）", "SYSTEM")
-                        self.daily_runner.run_single_script(script_name, bg_mode=use_background)
+                        repeat = self._parse_int(tasks.get("run_repeat", 1), 1)
+                        repeat = max(1, repeat)
+                        self.emit_and_log(
+                            f"📜 开始执行脚本: {script_name}.json × {repeat}（前台={use_foreground}）",
+                            "SYSTEM",
+                        )
+                        for _ in range(repeat):
+                            if self.stop_current:
+                                break
+                            self.daily_runner.run_single_script(script_name, bg_mode=use_background)
 
                     # ---- 扭蛋 ----
                     if tasks.get("gacha") and (not self.stop_current):
@@ -531,10 +540,16 @@ class BotWorker(QThread):
                             self.dar_route_runner.ROTATION_RECONNECT_INTERVAL_MINUTES_SHUANGTA = 60.0
                             self.dar_route_runner.PETSWF_TO_PETITEM_HARD_LIMIT_SEC = 8.0
                         
+                        rotation_capture_ststss = bool(tasks.get("rotation_capture_ststss", False))
+                        rotation_capture_special_only = bool(
+                            tasks.get("rotation_capture_special_only", False)
+                        )
                         self.dar_route_runner.run_rotation_mode(
                             stop_event=self._stop_event,
                             use_foreground=use_foreground,
                             is_test_mode=is_test_mode,  # ✅ 传递测试模式标志
+                            rotation_capture_ststss=rotation_capture_ststss,
+                            rotation_capture_special_only=rotation_capture_special_only,
                         )
                     
                     # ---- 原定时任务（已禁用）----
@@ -825,6 +840,18 @@ class BotWorker(QThread):
                                 skip_nie_77=skip_nie_77,
                             )
                     
+                    # ---- 🎮 挂机对战模式 ----
+                    if tasks.get("afk_battle_mode") and (not self.stop_current):
+                        afk_sub = tasks.get("afk_sub_mode", "normal")
+                        labels = {"normal": "普通", "defeat": "击败", "rare": "稀有", "nieo": "尼奥"}
+                        self.emit_and_log(f"🎮 启动挂机{labels.get(afk_sub, afk_sub)}模式", "SYSTEM")
+                        if not self.stop_current and not self._stop_event.is_set():
+                            self.dar_route_runner.run_afk_battle_mode(
+                                stop_event=self._stop_event,
+                                use_foreground=use_foreground,
+                                sub_mode=afk_sub,
+                            )
+
                     # ---- 🧪 尼尔家族测试 ----
                     if tasks.get("nie_family_test") and (not self.stop_current):
                         try:

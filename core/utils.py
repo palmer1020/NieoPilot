@@ -18,6 +18,8 @@ class WindowManager:
     def __init__(self):
         self.hwnd = 0
         self.content_padding = None
+        # 未扫边时 get_current_viewport 只提示一次（不自动扫边，依赖界面手动校准）
+        self._viewport_zero_pad_logged = False
 
         # 只有通过本程序 launch_game() 启动时才会有
         self._proc = None
@@ -34,6 +36,7 @@ class WindowManager:
             logger.info(f"🔄 检测到新窗口句柄 ({new_hwnd})，清除旧缓存...")
             self.hwnd = new_hwnd
             self.content_padding = None
+            self._viewport_zero_pad_logged = False
 
         self.hwnd = new_hwnd
         return self.hwnd != 0
@@ -62,7 +65,6 @@ class WindowManager:
         if self.find_window():
             logger.info("窗口已存在，正在激活...")
             self.maximize_window()
-            self.scan_boundaries()
             return True
 
         if not os.path.exists(GAME_PATH):
@@ -89,7 +91,6 @@ class WindowManager:
                 if self.find_window():
                     logger.info("✅ 捕获窗口，正在最大化...")
                     self.maximize_window()
-                    self.scan_boundaries()
                     return True
                 time.sleep(0.5)
 
@@ -101,6 +102,10 @@ class WindowManager:
             return False
 
     def maximize_window(self):
+        """
+        前台并最大化游戏窗口。
+        不在此处扫边：最大化动画/未完全铺满时自动扫边易得到错误 padding，改由界面手动校准写入 content_padding。
+        """
         if not self.hwnd:
             return
         win32gui.ShowWindow(self.hwnd, win32con.SW_RESTORE)
@@ -235,9 +240,12 @@ class WindowManager:
         container_x = ox
         container_y = oy
 
-        # 如果没扫过边界，先扫
-        if self.content_padding is None:
-            self.scan_boundaries()
+        # 未手动校准时不自动扫边：按全客户区（等效 padding 全 0），避免未稳定最大化时扫出错误黑边
+        if self.content_padding is None and not self._viewport_zero_pad_logged:
+            logger.info(
+                "📐 尚未执行屏幕校准：暂用全客户区映射坐标。请在界面使用校准/调试功能扫边后再跑脚本。"
+            )
+            self._viewport_zero_pad_logged = True
 
         # 如果有 padding，就扣掉
         if self.content_padding is not None:
@@ -454,6 +462,15 @@ class WindowManager:
 
         return True
 
+
+def screenshots_subdir(project_root: str, category: str) -> str:
+    """
+    返回并确保存在：{project_root}/screenshots/{category}/
+    category 示例：capture（捕捉放回仓库前）、client（全屏调试）、ocr_enemy（对战 OCR）、ocr_training（训练室等级 OCR）
+    """
+    d = os.path.join(project_root, "screenshots", category)
+    os.makedirs(d, exist_ok=True)
+    return d
 
 
 window_manager = WindowManager()
