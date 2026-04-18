@@ -13997,7 +13997,6 @@ class DarRouteRunner:
     PINNACLE_LOGIN_WAIT_SEC = 10.0
     PINNACLE_IP_WAIT_SEC = 15.0
     PINNACLE_MAP_WAIT_SEC = 20.0
-    PINNACLE_1AND1_DETECT_TIMEOUT_SEC = 1.2
     # 三键循环 / 双键循环（中速）
     PINNACLE_LOOP_CLICK_INTERVAL_SEC = 0.25
     PINNACLE_LOOP_SLEEP_SEC = 0.05
@@ -14082,7 +14081,7 @@ class DarRouteRunner:
         if not self._pinnacle_click_server_until_map(use_foreground, stop_event):
             return False
 
-        if not self._pinnacle_measure_and_handle_1and1(use_foreground, stop_event):
+        if not self._pinnacle_handle_1and1_by_time(use_foreground, stop_event):
             return False
         self._emit("🖱️ [巅峰对战] 点击 系统.屏蔽（无条件）", "INFO")
         try:
@@ -14274,16 +14273,42 @@ class DarRouteRunner:
         self._emit("⚠️ [巅峰对战] 三键循环超时，仍未检测到 map 信号", "WARN")
         return False
 
-    def _pinnacle_measure_and_handle_1and1(
+    def _pinnacle_handle_1and1_by_time(
         self, use_foreground: bool, stop_event: threading.Event
     ) -> bool:
-        """测量 map -> 1AND1 首次出现耗时；若出现则点普通确认直到消失。"""
-        start_t = time.time()
+        """
+        按北京时间分支处理 1AND1：
+        - 00:00~05:59：必须等待 1AND1 至少出现一次，并测量 map->1AND1 耗时
+        - 其他时间：仅做屏蔽前 0.8s 检测窗口（检测到则点确认直到消失）
+        """
+        now_bj = self._get_beijing_time()
+        hour = int(now_bj.hour)
+        if 0 <= hour < 6:
+            self._emit(
+                "🌙 [巅峰对战] 当前北京时间在 00:00-06:00，启用「必须等待1AND1并测量耗时」",
+                "INFO",
+            )
+            return self._pinnacle_measure_and_handle_1and1_mandatory(
+                use_foreground, stop_event
+            )
         self._emit(
-            f"⏳ [巅峰对战] 开始测量 map->1AND1（最多 {self.PINNACLE_1AND1_DETECT_TIMEOUT_SEC:.1f}s）",
+            "☀️ [巅峰对战] 当前北京时间不在 00:00-06:00，启用「屏蔽前0.8s 1AND1检测」",
             "INFO",
         )
-        while (time.time() - start_t) < self.PINNACLE_1AND1_DETECT_TIMEOUT_SEC:
+        return self._pinnacle_wait_1and1_window_and_handle(
+            use_foreground, stop_event, timeout_s=0.8
+        )
+
+    def _pinnacle_measure_and_handle_1and1_mandatory(
+        self, use_foreground: bool, stop_event: threading.Event
+    ) -> bool:
+        """必须等待 1AND1 至少出现一次，测量 map->1AND1 首次出现耗时，并点确认直到消失。"""
+        start_t = time.time()
+        self._emit(
+            "⏳ [巅峰对战] 开始测量 map->1AND1（必须等待至少一次出现）",
+            "INFO",
+        )
+        while True:
             if stop_event.is_set() or getattr(self.bot, "stop_current", False):
                 return False
             if self._check_1and1_probes():
@@ -14319,8 +14344,52 @@ class DarRouteRunner:
                 self.PINNACLE_LOOP_SLEEP_SEC,
                 tick=self.PINNACLE_LOOP_SLEEP_SEC,
             )
+
+    def _pinnacle_wait_1and1_window_and_handle(
+        self, use_foreground: bool, stop_event: threading.Event, timeout_s: float = 0.8
+    ) -> bool:
+        """屏蔽前短窗口检测 1AND1；检测到则点普通确认直到消失，未检测到则继续。"""
+        deadline = time.time() + timeout_s
         self._emit(
-            f"ℹ️ [巅峰对战] {self.PINNACLE_1AND1_DETECT_TIMEOUT_SEC:.1f}s 内未检测到 1AND1，继续后续流程",
+            f"⏳ [巅峰对战] 屏蔽前等待 1AND1（{timeout_s:.1f}s 超时）",
+            "INFO",
+        )
+        while time.time() < deadline:
+            if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                return False
+            if self._check_1and1_probes():
+                self._emit(
+                    f"✅ [巅峰对战] {timeout_s:.1f}s 窗口内检测到 1AND1，开始点确认直到消失",
+                    "INFO",
+                )
+                while not stop_event.is_set() and not getattr(self.bot, "stop_current", False):
+                    if not self._check_1and1_probes():
+                        self._emit("✅ [巅峰对战] 1AND1 已消失，继续后续流程", "INFO")
+                        return True
+                    clicked_confirm = False
+                    for key in ("对话框.普通确认按钮", "对话框.普通确认"):
+                        try:
+                            self._click_region(key, use_foreground)
+                            clicked_confirm = True
+                            break
+                        except KeyError:
+                            continue
+                    if not clicked_confirm:
+                        self._emit("⚠️ [巅峰对战] 未找到普通确认 region，跳过1AND1确认流程", "WARN")
+                        return True
+                    self._sleep_abortable(
+                        stop_event,
+                        self.PINNACLE_LOOP_SLEEP_SEC,
+                        tick=self.PINNACLE_LOOP_SLEEP_SEC,
+                    )
+                return False
+            self._sleep_abortable(
+                stop_event,
+                self.PINNACLE_LOOP_SLEEP_SEC,
+                tick=self.PINNACLE_LOOP_SLEEP_SEC,
+            )
+        self._emit(
+            f"ℹ️ [巅峰对战] {timeout_s:.1f}s 内未检测到 1AND1，继续后续流程",
             "INFO",
         )
         return True
