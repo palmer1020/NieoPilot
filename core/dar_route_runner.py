@@ -13968,3 +13968,416 @@ class DarRouteRunner:
         
         # ✅ 返回True表示成功完成
         return True
+
+    # ==================== 巅峰对战模式 ====================
+    #
+    # 一轮流程（_pinnacle_run_once）：
+    #   1) 预刷新：左上角 +5 → ↓（一次）→ Enter，等待 /login/Login.swf
+    #   2) 双击 巅峰对战.系统开始
+    #   3) 双击 巅峰对战.系统登录
+    #   4) 双击登录后，立刻循环点击 巅峰对战.服务器 直到出现 map 信号
+    #   6) 无条件点击一次 对话框.普通确认按钮 + 一次 系统.屏蔽
+    #   7) 若当前 map ≠ 4：点 巅峰对战.地图 → 巅峰对战.船长室，等 map==4
+    #   8) 执行 fix_script/巅峰对战.json
+    #   9) 等 map == 433
+    #  10) 按 mode 点 巅峰对战.进入排位 / 进入娱乐
+    #  11) 点 巅峰对战.开始对战
+    #  12) 等 PetItem（/resource/item/petItem/icon/）
+    #  13) 点 对战.使用技能一
+    #  14) 回到 1)（刷新 → 下一轮；一回合即终止本局）
+
+    PINNACLE_MODE_RANK = "rank"
+    PINNACLE_MODE_FUN = "fun"
+
+    PINNACLE_TARGET_LOBBY_MAP_ID = 4
+    PINNACLE_BATTLE_AREA_MAP_ID = 433
+
+    PINNACLE_IP_TOKEN = "/ip.txt"
+    PINNACLE_LOGIN_WAIT_SEC = 10.0
+    PINNACLE_IP_WAIT_SEC = 15.0
+    PINNACLE_SERVER_CLICK_MAX_SEC = 30.0
+    PINNACLE_MAP_WAIT_SEC = 20.0
+    PINNACLE_PETITEM_WAIT_SEC = 30.0
+
+    def run_pinnacle_mode(
+        self,
+        stop_event: threading.Event,
+        use_foreground: bool,
+        mode: str = "rank",
+    ) -> None:
+        """巅峰对战模式：每轮只打一回合（点技能一后刷新再来）。
+
+        Args:
+            mode: "rank"（排位）或 "fun"（娱乐）
+        """
+        if mode not in (self.PINNACLE_MODE_RANK, self.PINNACLE_MODE_FUN):
+            self._emit(f"⚠️ [巅峰对战] 未知 mode={mode}，默认使用排位", "WARN")
+            mode = self.PINNACLE_MODE_RANK
+
+        mode_label = "排位" if mode == self.PINNACLE_MODE_RANK else "娱乐"
+        self._emit(f"🏆 [巅峰对战] 启动（{mode_label}）", "SYSTEM")
+
+        try:
+            import win32gui
+            if window_manager.find_window() and window_manager.hwnd:
+                try:
+                    window_manager.maximize_window()
+                except Exception:
+                    pass
+                self._sleep_abortable(stop_event, 0.6)
+                try:
+                    win32gui.SetForegroundWindow(window_manager.hwnd)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        round_idx = 0
+        try:
+            while not stop_event.is_set() and not getattr(self.bot, "stop_current", False):
+                round_idx += 1
+                self._emit(
+                    f"🏆 [巅峰对战] —— 第 {round_idx} 轮开始（{mode_label}）——",
+                    "SYSTEM",
+                )
+                try:
+                    ok = self._pinnacle_run_once(mode, use_foreground, stop_event)
+                    if not ok:
+                        self._emit("⚠️ [巅峰对战] 本轮未成功完成，刷新后重试", "WARN")
+                except Exception as e:
+                    self._emit(f"❌ [巅峰对战] 本轮异常：{e}", "ERROR")
+                    import traceback
+                    self._emit(f"📋 异常详情: {traceback.format_exc()}", "ERROR")
+        finally:
+            self._emit(f"🏆 [巅峰对战] 模式退出（共 {round_idx} 轮）", "SYSTEM")
+
+    def _pinnacle_run_once(
+        self, mode: str, use_foreground: bool, stop_event: threading.Event
+    ) -> bool:
+        """一次完整流程（从刷新到点完技能一后再次刷新为止）。"""
+        if not self._pinnacle_refresh_and_wait_login(use_foreground, stop_event):
+            return False
+        if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+            return False
+
+        self._emit("🖱️ [巅峰对战] 双击 巅峰对战.系统开始", "INFO")
+        try:
+            self._click_region_twice("巅峰对战.系统开始", use_foreground, gap=0.15)
+        except KeyError:
+            self._emit("❌ [巅峰对战] 缺少 region：巅峰对战.系统开始", "ERROR")
+            return False
+        self._sleep_abortable(stop_event, 1.0)
+
+        self._emit("🖱️ [巅峰对战] 双击 巅峰对战.系统登录", "INFO")
+        try:
+            self._click_region_twice("巅峰对战.系统登录", use_foreground, gap=0.15)
+        except KeyError:
+            self._emit("❌ [巅峰对战] 缺少 region：巅峰对战.系统登录", "ERROR")
+            return False
+
+        if not self._pinnacle_click_server_until_map(use_foreground, stop_event):
+            return False
+
+        self._emit("ℹ️ [巅峰对战] 已按配置跳过进入后 1AND1 确认流程", "INFO")
+
+        self._emit("🖱️ [巅峰对战] 点击 系统.屏蔽（无条件）", "INFO")
+        try:
+            self._click_region("系统.屏蔽", use_foreground)
+        except KeyError:
+            self._emit("⚠️ [巅峰对战] 未找到 系统.屏蔽 region，跳过", "WARN")
+        self._sleep_abortable(stop_event, 0.6)
+
+        if not self._pinnacle_ensure_lobby_map4(use_foreground, stop_event):
+            return False
+
+        self._emit("📜 [巅峰对战] 执行 fix_script/巅峰对战.json", "SYSTEM")
+        if hasattr(self.bot, "daily_runner"):
+            try:
+                self.bot.daily_runner.run_single_script(
+                    "巅峰对战", bg_mode=(not use_foreground)
+                )
+            except Exception as e:
+                self._emit(f"❌ [巅峰对战] 执行巅峰对战脚本异常：{e}", "ERROR")
+                return False
+        else:
+            self._emit("❌ [巅峰对战] bot 上未挂载 daily_runner，无法执行脚本", "ERROR")
+            return False
+
+        self._sleep_abortable(stop_event, 1.0)
+
+        if not self._pinnacle_wait_for_map(
+            self.PINNACLE_BATTLE_AREA_MAP_ID,
+            self.PINNACLE_MAP_WAIT_SEC,
+            stop_event,
+        ):
+            self._emit(
+                f"⚠️ [巅峰对战] 未在 {self.PINNACLE_MAP_WAIT_SEC:.0f}s 内检测到 map={self.PINNACLE_BATTLE_AREA_MAP_ID}",
+                "WARN",
+            )
+            return False
+
+        enter_key = (
+            "巅峰对战.进入排位"
+            if mode == self.PINNACLE_MODE_RANK
+            else "巅峰对战.进入娱乐"
+        )
+        self._emit(f"🖱️ [巅峰对战] 点击 {enter_key}", "INFO")
+        try:
+            self._click_region(enter_key, use_foreground)
+        except KeyError:
+            self._emit(f"❌ [巅峰对战] 缺少 region：{enter_key}", "ERROR")
+            return False
+        self._sleep_abortable(stop_event, 0.6)
+
+        self._emit("🖱️ [巅峰对战] 点击 巅峰对战.开始对战", "INFO")
+        try:
+            self._click_region("巅峰对战.开始对战", use_foreground)
+        except KeyError:
+            self._emit("❌ [巅峰对战] 缺少 region：巅峰对战.开始对战", "ERROR")
+            return False
+
+        if not self._pinnacle_wait_petitem(stop_event):
+            return False
+
+        self._emit("🖱️ [巅峰对战] 点击 对战.使用技能一", "INFO")
+        try:
+            self._click_region("对战.使用技能一", use_foreground)
+        except KeyError:
+            self._emit("❌ [巅峰对战] 缺少 region：对战.使用技能一", "ERROR")
+            return False
+        self._sleep_abortable(stop_event, 0.3)
+
+        self._emit("🔄 [巅峰对战] 左上角刷新进入下一轮", "INFO")
+        return True
+
+    def _pinnacle_refresh_and_wait_login(
+        self, use_foreground: bool, stop_event: threading.Event
+    ) -> bool:
+        """左上角+5 → ↓（一次）→ Enter，等待 /login/Login.swf。超时则重复直至成功或中止。"""
+        from core.logger import fetch_kernel_since, kernel_cursor
+
+        while not stop_event.is_set() and not getattr(self.bot, "stop_current", False):
+            self._emit("🔄 [巅峰对战] 预刷新：+5 → ↓ → Enter", "INFO")
+            if not window_manager.click_client_origin_offset(offset_x=5, offset_y=5):
+                self._emit("⚠️ [巅峰对战] 左上角点击失败，重试", "WARN")
+                self._sleep_abortable(stop_event, 0.8)
+                continue
+            self._sleep_abortable(stop_event, 0.5)
+
+            if use_foreground:
+                import win32api
+                import win32con
+                win32api.keybd_event(win32con.VK_DOWN, 0, 0, 0)
+                time.sleep(0.1)
+                win32api.keybd_event(win32con.VK_DOWN, 0, win32con.KEYEVENTF_KEYUP, 0)
+            else:
+                window_manager.send_key_arrow_down()
+            self._sleep_abortable(stop_event, 0.4)
+
+            if use_foreground:
+                import win32api
+                import win32con
+                win32api.keybd_event(win32con.VK_RETURN, 0, 0, 0)
+                time.sleep(0.1)
+                win32api.keybd_event(win32con.VK_RETURN, 0, win32con.KEYEVENTF_KEYUP, 0)
+            else:
+                window_manager.send_key_enter()
+
+            self._emit(
+                f"⏳ [巅峰对战] 等待 {self.TOKEN_LOGIN_SWF}（{self.PINNACLE_LOGIN_WAIT_SEC:.0f}s 超时）",
+                "INFO",
+            )
+            cursor = kernel_cursor()
+            t0 = time.time()
+            detected = False
+            while (time.time() - t0) < self.PINNACLE_LOGIN_WAIT_SEC:
+                if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                    return False
+                lines = fetch_kernel_since(cursor)
+                if isinstance(lines, list):
+                    for line in lines:
+                        if self.TOKEN_LOGIN_SWF in str(line):
+                            detected = True
+                            break
+                if detected:
+                    break
+                cursor = kernel_cursor()
+                time.sleep(0.2)
+            if detected:
+                self._emit("✅ [巅峰对战] 已检测到 Login.swf，继续下一步", "SUCCESS")
+                self._sleep_abortable(stop_event, 0.8)
+                return True
+            self._emit("⚠️ [巅峰对战] 未检测到 Login.swf，重新刷新", "WARN")
+        return False
+
+    def _pinnacle_wait_ip_signal(self, stop_event: threading.Event) -> bool:
+        from core.logger import fetch_kernel_since, kernel_cursor
+
+        self._emit(
+            f"⏳ [巅峰对战] 等待 {self.PINNACLE_IP_TOKEN}（{self.PINNACLE_IP_WAIT_SEC:.0f}s 超时）",
+            "INFO",
+        )
+        cursor = kernel_cursor()
+        t0 = time.time()
+        while (time.time() - t0) < self.PINNACLE_IP_WAIT_SEC:
+            if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                return False
+            lines = fetch_kernel_since(cursor)
+            if isinstance(lines, list):
+                for line in lines:
+                    if self.PINNACLE_IP_TOKEN in str(line):
+                        self._emit(
+                            f"✅ [巅峰对战] 已检测到 {self.PINNACLE_IP_TOKEN}",
+                            "SUCCESS",
+                        )
+                        return True
+            cursor = kernel_cursor()
+            time.sleep(0.15)
+        self._emit(f"⚠️ [巅峰对战] 未检测到 {self.PINNACLE_IP_TOKEN}", "WARN")
+        return False
+
+    def _pinnacle_click_server_until_map(
+        self, use_foreground: bool, stop_event: threading.Event
+    ) -> bool:
+        """持续点击 巅峰对战.服务器 直到检测到任意 map swf 信号。"""
+        from core.logger import fetch_kernel_since, kernel_cursor
+
+        self._emit(
+            f"🖱️ [巅峰对战] 持续点击 巅峰对战.服务器，直到出现 map 信号（{self.PINNACLE_SERVER_CLICK_MAX_SEC:.0f}s 上限）",
+            "INFO",
+        )
+        cursor = kernel_cursor()
+        t0 = time.time()
+        last_click = 0.0
+        click_gap = 0.5
+        while (time.time() - t0) < self.PINNACLE_SERVER_CLICK_MAX_SEC:
+            if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                return False
+            now = time.time()
+            if now - last_click >= click_gap:
+                try:
+                    self._click_region("巅峰对战.服务器", use_foreground)
+                except KeyError:
+                    self._emit("❌ [巅峰对战] 缺少 region：巅峰对战.服务器", "ERROR")
+                    return False
+                last_click = now
+            lines = fetch_kernel_since(cursor)
+            if isinstance(lines, list):
+                for line in lines:
+                    if self._MAP_SWF_RE.search(str(line)):
+                        self._emit("✅ [巅峰对战] 已检测到 map 信号", "SUCCESS")
+                        return True
+            cursor = kernel_cursor()
+            time.sleep(0.1)
+        self._emit("⚠️ [巅峰对战] 等待 map 信号超时", "WARN")
+        return False
+
+    def _pinnacle_latest_map_id(self) -> Optional[int]:
+        """从 kernel 日志反向扫描，返回最近一次 /resource/map/<id>.swf 的 id。"""
+        from core.logger import fetch_kernel_since
+        try:
+            lines = fetch_kernel_since(0)
+            if not isinstance(lines, list):
+                return None
+            for line in reversed(lines):
+                m = self._MAP_SWF_RE.search(str(line))
+                if m:
+                    try:
+                        return int(m.group(1))
+                    except Exception:
+                        continue
+        except Exception:
+            return None
+        return None
+
+    def _pinnacle_wait_for_map(
+        self,
+        target_map_id: int,
+        timeout_s: float,
+        stop_event: threading.Event,
+    ) -> bool:
+        """
+        持续扫描 kernel 历史日志（从下往上取最后一个 map#），
+        直到最后 map 等于 target_map_id 或超时。
+        """
+        t0 = time.time()
+        self._emit(
+            f"⏳ [巅峰对战] 扫描最后 map# 是否为 {target_map_id}（{timeout_s:.0f}s 超时）",
+            "INFO",
+        )
+        while (time.time() - t0) < timeout_s:
+            if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                return False
+            last_map_id = self._pinnacle_latest_map_id()
+            if last_map_id == target_map_id:
+                self._emit(
+                    f"✅ [巅峰对战] 最后 map#={target_map_id}，检查通过",
+                    "SUCCESS",
+                )
+                return True
+            time.sleep(0.1)
+        return False
+
+    def _pinnacle_ensure_lobby_map4(
+        self, use_foreground: bool, stop_event: threading.Event
+    ) -> bool:
+        """若当前 map 不是 4，则点 巅峰对战.地图 + 船长室，再等 map==4。"""
+        last_id = self._pinnacle_latest_map_id()
+        self._emit(
+            f"🗺️ [巅峰对战] 当前最后 map={last_id}（期望={self.PINNACLE_TARGET_LOBBY_MAP_ID}）",
+            "INFO",
+        )
+        if last_id == self.PINNACLE_TARGET_LOBBY_MAP_ID:
+            return True
+
+        self._emit("🖱️ [巅峰对战] 点击 巅峰对战.地图", "INFO")
+        try:
+            self._click_region("巅峰对战.地图", use_foreground)
+        except KeyError:
+            self._emit("❌ [巅峰对战] 缺少 region：巅峰对战.地图", "ERROR")
+            return False
+        self._sleep_abortable(stop_event, 0.6)
+
+        self._emit("🖱️ [巅峰对战] 点击 巅峰对战.船长室", "INFO")
+        try:
+            self._click_region("巅峰对战.船长室", use_foreground)
+        except KeyError:
+            self._emit("❌ [巅峰对战] 缺少 region：巅峰对战.船长室", "ERROR")
+            return False
+        self._sleep_abortable(stop_event, 0.6)
+
+        if self._pinnacle_wait_for_map(
+            self.PINNACLE_TARGET_LOBBY_MAP_ID,
+            self.PINNACLE_MAP_WAIT_SEC,
+            stop_event,
+        ):
+            return True
+        self._emit(
+            f"⚠️ [巅峰对战] 未在 {self.PINNACLE_MAP_WAIT_SEC:.0f}s 内进入 map={self.PINNACLE_TARGET_LOBBY_MAP_ID}",
+            "WARN",
+        )
+        return False
+
+    def _pinnacle_wait_petitem(self, stop_event: threading.Event) -> bool:
+        from core.logger import fetch_kernel_since, kernel_cursor
+
+        token = "/resource/item/petItem/icon/"
+        self._emit(
+            f"⏳ [巅峰对战] 等待 PetItem 信号（{self.PINNACLE_PETITEM_WAIT_SEC:.0f}s 超时）",
+            "INFO",
+        )
+        cursor = kernel_cursor()
+        t0 = time.time()
+        while (time.time() - t0) < self.PINNACLE_PETITEM_WAIT_SEC:
+            if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                return False
+            lines = fetch_kernel_since(cursor)
+            if isinstance(lines, list):
+                for line in lines:
+                    if token in str(line):
+                        self._emit("✅ [巅峰对战] 已检测到 PetItem", "SUCCESS")
+                        return True
+            cursor = kernel_cursor()
+            time.sleep(0.1)
+        self._emit("⚠️ [巅峰对战] 未在规定时间内检测到 PetItem", "WARN")
+        return False

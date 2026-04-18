@@ -261,6 +261,18 @@ class Dashboard(QWidget):
         afk_group.setLayout(afk_layout)
         control_panel.addWidget(afk_group)
 
+        # ---------- 🏆 巅峰对战模式 ----------
+        pinnacle_group = QGroupBox("🏆 巅峰对战模式")
+        pinnacle_layout = QHBoxLayout()
+        self.btn_pinnacle_rank = QPushButton("进入排位")
+        self.btn_pinnacle_rank.clicked.connect(lambda: self.start_pinnacle_mode("rank"))
+        pinnacle_layout.addWidget(self.btn_pinnacle_rank)
+        self.btn_pinnacle_fun = QPushButton("进入娱乐")
+        self.btn_pinnacle_fun.clicked.connect(lambda: self.start_pinnacle_mode("fun"))
+        pinnacle_layout.addWidget(self.btn_pinnacle_fun)
+        pinnacle_group.setLayout(pinnacle_layout)
+        control_panel.addWidget(pinnacle_group)
+
         # ---------- 双塔尼奥轮换模式（已替换原定时任务）----------
         rotation_group = QGroupBox("🔄 双塔尼奥轮换模式（自动切换）")
         rotation_layout = QVBoxLayout()
@@ -878,6 +890,9 @@ class Dashboard(QWidget):
         for _b in ("btn_afk_normal", "btn_afk_defeat", "btn_afk_rare", "btn_afk_nieo"):
             if hasattr(self, _b):
                 getattr(self, _b).setEnabled(False)
+        for _b in ("btn_pinnacle_rank", "btn_pinnacle_fun"):
+            if hasattr(self, _b):
+                getattr(self, _b).setEnabled(False)
         
         # 录制器按钮保持可用（它们独立运行）
 
@@ -939,6 +954,9 @@ class Dashboard(QWidget):
             if hasattr(self, "chk_skip_nie_77"):
                 self.chk_skip_nie_77.setEnabled(True)
             for _b in ("btn_afk_normal", "btn_afk_defeat", "btn_afk_rare", "btn_afk_nieo"):
+                if hasattr(self, _b):
+                    getattr(self, _b).setEnabled(True)
+            for _b in ("btn_pinnacle_rank", "btn_pinnacle_fun"):
                 if hasattr(self, _b):
                     getattr(self, _b).setEnabled(True)
         
@@ -1098,6 +1116,20 @@ class Dashboard(QWidget):
             "use_foreground": self.chk_foreground.isChecked(),
         }
         self.log_message(f"🎮 启动挂机{labels.get(sub_mode, sub_mode)}模式", "SYSTEM")
+        self._lock_ui()
+        self.start_signal.emit(tasks)
+
+    def start_pinnacle_mode(self, mode: str = "rank"):
+        """启动巅峰对战模式（排位/娱乐）"""
+        if mode not in ("rank", "fun"):
+            mode = "rank"
+        label = "排位" if mode == "rank" else "娱乐"
+        tasks = {
+            "pinnacle_mode": True,
+            "pinnacle_mode_type": mode,
+            "use_foreground": self.chk_foreground.isChecked(),
+        }
+        self.log_message(f"🏆 启动巅峰对战模式（{label}）", "SYSTEM")
         self._lock_ui()
         self.start_signal.emit(tasks)
 

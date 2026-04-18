@@ -295,6 +295,7 @@ class BotWorker(QThread):
                 or tasks.get("nieo_mode")  # ✅ 尼奥模式（10/11地图循环）
                 or tasks.get("afk_battle_mode")  # ✅ 挂机对战模式
                 or tasks.get("rotation_mode")  # ✅ 双塔尼奥轮换模式（已替换原定时任务）
+                or tasks.get("pinnacle_mode")  # ✅ 巅峰对战模式（排位/娱乐）
                 # or tasks.get("scheduled_task")  # ⚠️ 原定时任务已禁用
             )
 
@@ -850,6 +851,18 @@ class BotWorker(QThread):
                                 stop_event=self._stop_event,
                                 use_foreground=use_foreground,
                                 sub_mode=afk_sub,
+                            )
+
+                    # ---- 🏆 巅峰对战模式（排位/娱乐）----
+                    if tasks.get("pinnacle_mode") and (not self.stop_current):
+                        pinnacle_sub = tasks.get("pinnacle_mode_type", "rank")
+                        label = "排位" if pinnacle_sub == "rank" else "娱乐"
+                        self.emit_and_log(f"🏆 启动巅峰对战模式（{label}）", "SYSTEM")
+                        if not self.stop_current and not self._stop_event.is_set():
+                            self.dar_route_runner.run_pinnacle_mode(
+                                stop_event=self._stop_event,
+                                use_foreground=use_foreground,
+                                mode=pinnacle_sub,
                             )
 
                     # ---- 🧪 尼尔家族测试 ----
