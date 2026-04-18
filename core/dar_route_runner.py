@@ -14000,7 +14000,6 @@ class DarRouteRunner:
     # 三键循环 / 双键循环（中速）
     PINNACLE_LOOP_CLICK_INTERVAL_SEC = 0.25
     PINNACLE_LOOP_SLEEP_SEC = 0.05
-    PINNACLE_LOOP_MAX_SAFETY_SEC = 120.0
 
     def run_pinnacle_mode(
         self,
@@ -14228,7 +14227,7 @@ class DarRouteRunner:
         from core.logger import fetch_kernel_since, kernel_cursor
 
         self._emit(
-            f"🖱️ [巅峰对战] 三键循环（服务器/普通确认/登录）直到出现 map 信号（{self.PINNACLE_LOOP_MAX_SAFETY_SEC:.0f}s 上限）",
+            "🖱️ [巅峰对战] 三键循环（服务器/普通确认/登录）直到出现 map 信号",
             "INFO",
         )
         click_sequence = [
@@ -14238,9 +14237,8 @@ class DarRouteRunner:
         ]
         seq_idx = 0
         cursor = kernel_cursor()
-        t0 = time.time()
         last_click = 0.0
-        while (time.time() - t0) < self.PINNACLE_LOOP_MAX_SAFETY_SEC:
+        while True:
             if stop_event.is_set() or getattr(self.bot, "stop_current", False):
                 return False
             now = time.time()
@@ -14270,8 +14268,6 @@ class DarRouteRunner:
                         return True
             cursor = kernel_cursor()
             time.sleep(self.PINNACLE_LOOP_SLEEP_SEC)
-        self._emit("⚠️ [巅峰对战] 三键循环超时，仍未检测到 map 信号", "WARN")
-        return False
 
     def _pinnacle_handle_1and1_by_time(
         self, use_foreground: bool, stop_event: threading.Event
@@ -14516,16 +14512,15 @@ class DarRouteRunner:
         token = "/resource/item/petItem/icon/"
 
         self._emit(
-            f"🖱️ [巅峰对战] 双键循环（{enter_key} -> {start_key}）直到 PetItem（{self.PINNACLE_LOOP_MAX_SAFETY_SEC:.0f}s 上限）",
+            f"🖱️ [巅峰对战] 双键循环（{enter_key} -> {start_key}）直到 PetItem",
             "INFO",
         )
 
         cursor = kernel_cursor()
-        t0 = time.time()
         last_click = 0.0
         seq = [enter_key, start_key]
         seq_idx = 0
-        while (time.time() - t0) < self.PINNACLE_LOOP_MAX_SAFETY_SEC:
+        while True:
             if stop_event.is_set() or getattr(self.bot, "stop_current", False):
                 return False
 
@@ -14549,9 +14544,3 @@ class DarRouteRunner:
                 last_click = now
 
             time.sleep(self.PINNACLE_LOOP_SLEEP_SEC)
-
-        self._emit(
-            f"⚠️ [巅峰对战] 双键循环 {self.PINNACLE_LOOP_MAX_SAFETY_SEC:.0f}s 内未检测到 PetItem",
-            "WARN",
-        )
-        return False
