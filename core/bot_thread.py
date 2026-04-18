@@ -856,6 +856,9 @@ class BotWorker(QThread):
                     # ---- 🏆 巅峰对战模式（排位/娱乐）----
                     if tasks.get("pinnacle_mode") and (not self.stop_current):
                         pinnacle_sub = tasks.get("pinnacle_mode_type", "rank")
+                        pinnacle_small_account_mode = bool(
+                            tasks.get("pinnacle_small_account_mode", False)
+                        )
                         label = "排位" if pinnacle_sub == "rank" else "娱乐"
                         self.emit_and_log(f"🏆 启动巅峰对战模式（{label}）", "SYSTEM")
                         if not self.stop_current and not self._stop_event.is_set():
@@ -863,6 +866,7 @@ class BotWorker(QThread):
                                 stop_event=self._stop_event,
                                 use_foreground=use_foreground,
                                 mode=pinnacle_sub,
+                                small_account_mode=pinnacle_small_account_mode,
                             )
 
                     # ---- 🧪 尼尔家族测试 ----

@@ -263,13 +263,20 @@ class Dashboard(QWidget):
 
         # ---------- 🏆 巅峰对战模式 ----------
         pinnacle_group = QGroupBox("🏆 巅峰对战模式")
-        pinnacle_layout = QHBoxLayout()
+        pinnacle_layout = QVBoxLayout()
+        pinnacle_btn_row = QHBoxLayout()
         self.btn_pinnacle_rank = QPushButton("进入排位")
         self.btn_pinnacle_rank.clicked.connect(lambda: self.start_pinnacle_mode("rank"))
-        pinnacle_layout.addWidget(self.btn_pinnacle_rank)
+        pinnacle_btn_row.addWidget(self.btn_pinnacle_rank)
         self.btn_pinnacle_fun = QPushButton("进入娱乐")
         self.btn_pinnacle_fun.clicked.connect(lambda: self.start_pinnacle_mode("fun"))
-        pinnacle_layout.addWidget(self.btn_pinnacle_fun)
+        pinnacle_btn_row.addWidget(self.btn_pinnacle_fun)
+        pinnacle_layout.addLayout(pinnacle_btn_row)
+        self.chk_pinnacle_small_account_mode = QCheckBox(
+            "小号模式（检测到PetItem后不点技能一，直接进入下一轮刷新）"
+        )
+        self.chk_pinnacle_small_account_mode.setChecked(False)
+        pinnacle_layout.addWidget(self.chk_pinnacle_small_account_mode)
         pinnacle_group.setLayout(pinnacle_layout)
         control_panel.addWidget(pinnacle_group)
 
@@ -893,6 +900,8 @@ class Dashboard(QWidget):
         for _b in ("btn_pinnacle_rank", "btn_pinnacle_fun"):
             if hasattr(self, _b):
                 getattr(self, _b).setEnabled(False)
+        if hasattr(self, "chk_pinnacle_small_account_mode"):
+            self.chk_pinnacle_small_account_mode.setEnabled(False)
         
         # 录制器按钮保持可用（它们独立运行）
 
@@ -959,6 +968,8 @@ class Dashboard(QWidget):
             for _b in ("btn_pinnacle_rank", "btn_pinnacle_fun"):
                 if hasattr(self, _b):
                     getattr(self, _b).setEnabled(True)
+            if hasattr(self, "chk_pinnacle_small_account_mode"):
+                self.chk_pinnacle_small_account_mode.setEnabled(True)
         
         # 录制器按钮保持可用（它们独立运行，不需要解锁）
 
@@ -1127,6 +1138,10 @@ class Dashboard(QWidget):
         tasks = {
             "pinnacle_mode": True,
             "pinnacle_mode_type": mode,
+            "pinnacle_small_account_mode": bool(
+                getattr(self, "chk_pinnacle_small_account_mode", None)
+                and self.chk_pinnacle_small_account_mode.isChecked()
+            ),
             "use_foreground": self.chk_foreground.isChecked(),
         }
         self.log_message(f"🏆 启动巅峰对战模式（{label}）", "SYSTEM")

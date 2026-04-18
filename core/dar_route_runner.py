@@ -14006,18 +14006,22 @@ class DarRouteRunner:
         stop_event: threading.Event,
         use_foreground: bool,
         mode: str = "rank",
+        small_account_mode: bool = False,
     ) -> None:
         """巅峰对战模式：每轮只打一回合（点技能一后刷新再来）。
 
         Args:
             mode: "rank"（排位）或 "fun"（娱乐）
+            small_account_mode: 小号模式（PetItem后不点技能一，直接进入下一轮刷新）
         """
         if mode not in (self.PINNACLE_MODE_RANK, self.PINNACLE_MODE_FUN):
             self._emit(f"⚠️ [巅峰对战] 未知 mode={mode}，默认使用排位", "WARN")
             mode = self.PINNACLE_MODE_RANK
 
         mode_label = "排位" if mode == self.PINNACLE_MODE_RANK else "娱乐"
+        small_mode_label = "小号模式" if small_account_mode else "标准模式"
         self._emit(f"🏆 [巅峰对战] 启动（{mode_label}）", "SYSTEM")
+        self._emit(f"🏆 [巅峰对战] 对战行为：{small_mode_label}", "INFO")
 
         try:
             import win32gui
@@ -14043,7 +14047,9 @@ class DarRouteRunner:
                     "SYSTEM",
                 )
                 try:
-                    ok = self._pinnacle_run_once(mode, use_foreground, stop_event)
+                    ok = self._pinnacle_run_once(
+                        mode, use_foreground, stop_event, small_account_mode
+                    )
                     if not ok:
                         self._emit("⚠️ [巅峰对战] 本轮未成功完成，刷新后重试", "WARN")
                 except Exception as e:
@@ -14054,7 +14060,11 @@ class DarRouteRunner:
             self._emit(f"🏆 [巅峰对战] 模式退出（共 {round_idx} 轮）", "SYSTEM")
 
     def _pinnacle_run_once(
-        self, mode: str, use_foreground: bool, stop_event: threading.Event
+        self,
+        mode: str,
+        use_foreground: bool,
+        stop_event: threading.Event,
+        small_account_mode: bool = False,
     ) -> bool:
         """一次完整流程（从刷新到点完技能一后再次刷新为止）。"""
         if not self._pinnacle_refresh_and_wait_login(use_foreground, stop_event):
@@ -14122,6 +14132,15 @@ class DarRouteRunner:
             mode, use_foreground, stop_event
         ):
             return False
+
+        if small_account_mode:
+            self._emit(
+                "ℹ️ [巅峰对战] 小号模式：已检测到PetItem，跳过技能一，直接进入下一轮刷新",
+                "INFO",
+            )
+            self._sleep_abortable(stop_event, 0.15)
+            self._emit("🔄 [巅峰对战] 左上角刷新进入下一轮", "INFO")
+            return True
 
         self._emit("🖱️ [巅峰对战] 点击 对战.使用技能一", "INFO")
         try:
