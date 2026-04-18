@@ -13975,8 +13975,9 @@ class DarRouteRunner:
     #   1) 预刷新：左上角 +5 → ↓（一次）→ Enter，等待 /login/Login.swf
     #   2) 双击 巅峰对战.系统开始
     #   3) 双击 巅峰对战.系统登录
-    #   4) 双击登录后，立刻循环点击 巅峰对战.服务器 直到出现 map 信号
-    #   6) 无条件点击一次 对话框.普通确认按钮 + 一次 系统.屏蔽
+    #   4) 双击登录后，按「服务器 → 普通确认 → 登录」三键中速循环，直到出现 map 信号
+    #   5) 记录 map -> 1AND1 首次出现耗时；若出现1AND1则点普通确认直到消失
+    #   6) 点击一次 系统.屏蔽
     #   7) 若当前 map ≠ 4：点 巅峰对战.地图 → 巅峰对战.船长室，等 map==4
     #   8) 执行 fix_script/巅峰对战.json
     #   9) 等 map == 433
@@ -13995,8 +13996,12 @@ class DarRouteRunner:
     PINNACLE_IP_TOKEN = "/ip.txt"
     PINNACLE_LOGIN_WAIT_SEC = 10.0
     PINNACLE_IP_WAIT_SEC = 15.0
-    PINNACLE_SERVER_CLICK_MAX_SEC = 30.0
     PINNACLE_MAP_WAIT_SEC = 20.0
+    PINNACLE_1AND1_DETECT_TIMEOUT_SEC = 1.2
+    # 三键循环 / 双键循环（中速）
+    PINNACLE_LOOP_CLICK_INTERVAL_SEC = 0.25
+    PINNACLE_LOOP_SLEEP_SEC = 0.05
+    PINNACLE_LOOP_MAX_SAFETY_SEC = 120.0
 
     def run_pinnacle_mode(
         self,
@@ -14077,36 +14082,8 @@ class DarRouteRunner:
         if not self._pinnacle_click_server_until_map(use_foreground, stop_event):
             return False
 
-        wait_1and1_deadline = time.time() + 0.8
-        self._emit("⏳ [巅峰对战] 屏蔽前等待 1AND1（0.8s 超时）", "INFO")
-        detected_1and1 = False
-        while time.time() < wait_1and1_deadline:
-            if stop_event.is_set() or getattr(self.bot, "stop_current", False):
-                return False
-            if self._check_1and1_probes():
-                detected_1and1 = True
-                self._emit("✅ [巅峰对战] 0.8s 窗口内检测到 1AND1，开始点确认直到消失", "INFO")
-                break
-            self._sleep_abortable(stop_event, 0.05, tick=0.05)
-        if detected_1and1:
-            while not stop_event.is_set() and not getattr(self.bot, "stop_current", False):
-                if not self._check_1and1_probes():
-                    self._emit("✅ [巅峰对战] 1AND1 已消失，继续后续流程", "INFO")
-                    break
-                clicked_confirm = False
-                for key in ("对话框.普通确认按钮", "对话框.普通确认"):
-                    try:
-                        self._click_region(key, use_foreground)
-                        clicked_confirm = True
-                        break
-                    except KeyError:
-                        continue
-                if not clicked_confirm:
-                    self._emit("⚠️ [巅峰对战] 未找到普通确认 region，结束1AND1确认流程", "WARN")
-                    break
-                self._sleep_abortable(stop_event, 0.05, tick=0.05)
-        else:
-            self._emit("ℹ️ [巅峰对战] 0.8s 内未检测到 1AND1，继续后续流程", "INFO")
+        if not self._pinnacle_measure_and_handle_1and1(use_foreground, stop_event):
+            return False
         self._emit("🖱️ [巅峰对战] 点击 系统.屏蔽（无条件）", "INFO")
         try:
             self._click_region("系统.屏蔽", use_foreground)
@@ -14143,27 +14120,9 @@ class DarRouteRunner:
             )
             return False
 
-        enter_key = (
-            "巅峰对战.进入排位"
-            if mode == self.PINNACLE_MODE_RANK
-            else "巅峰对战.进入娱乐"
-        )
-        self._emit(f"🖱️ [巅峰对战] 点击 {enter_key}", "INFO")
-        try:
-            self._click_region(enter_key, use_foreground)
-        except KeyError:
-            self._emit(f"❌ [巅峰对战] 缺少 region：{enter_key}", "ERROR")
-            return False
-        self._sleep_abortable(stop_event, 0.6)
-
-        self._emit("🖱️ [巅峰对战] 点击 巅峰对战.开始对战", "INFO")
-        try:
-            self._click_region("巅峰对战.开始对战", use_foreground)
-        except KeyError:
-            self._emit("❌ [巅峰对战] 缺少 region：巅峰对战.开始对战", "ERROR")
-            return False
-
-        if not self._pinnacle_wait_petitem(stop_event):
+        if not self._pinnacle_click_entry_and_start_until_petitem(
+            mode, use_foreground, stop_event
+        ):
             return False
 
         self._emit("🖱️ [巅峰对战] 点击 对战.使用技能一", "INFO")
@@ -14266,27 +14225,43 @@ class DarRouteRunner:
     def _pinnacle_click_server_until_map(
         self, use_foreground: bool, stop_event: threading.Event
     ) -> bool:
-        """持续点击 巅峰对战.服务器 直到检测到任意 map swf 信号。"""
+        """登录后按三键循环：服务器 -> 普通确认 -> 系统登录，直到检测到 map 信号。"""
         from core.logger import fetch_kernel_since, kernel_cursor
 
         self._emit(
-            f"🖱️ [巅峰对战] 持续点击 巅峰对战.服务器，直到出现 map 信号（{self.PINNACLE_SERVER_CLICK_MAX_SEC:.0f}s 上限）",
+            f"🖱️ [巅峰对战] 三键循环（服务器/普通确认/登录）直到出现 map 信号（{self.PINNACLE_LOOP_MAX_SAFETY_SEC:.0f}s 上限）",
             "INFO",
         )
+        click_sequence = [
+            ("巅峰对战.服务器",),
+            ("对话框.普通确认按钮", "对话框.普通确认"),
+            ("巅峰对战.系统登录",),
+        ]
+        seq_idx = 0
         cursor = kernel_cursor()
         t0 = time.time()
         last_click = 0.0
-        click_gap = 0.5
-        while (time.time() - t0) < self.PINNACLE_SERVER_CLICK_MAX_SEC:
+        while (time.time() - t0) < self.PINNACLE_LOOP_MAX_SAFETY_SEC:
             if stop_event.is_set() or getattr(self.bot, "stop_current", False):
                 return False
             now = time.time()
-            if now - last_click >= click_gap:
-                try:
-                    self._click_region("巅峰对战.服务器", use_foreground)
-                except KeyError:
-                    self._emit("❌ [巅峰对战] 缺少 region：巅峰对战.服务器", "ERROR")
+            if now - last_click >= self.PINNACLE_LOOP_CLICK_INTERVAL_SEC:
+                current_keys = click_sequence[seq_idx]
+                clicked = False
+                for key in current_keys:
+                    try:
+                        self._click_region(key, use_foreground)
+                        clicked = True
+                        break
+                    except KeyError:
+                        continue
+                if (not clicked) and seq_idx in (0, 2):
+                    self._emit(
+                        f"❌ [巅峰对战] 缺少 region：{current_keys[0]}",
+                        "ERROR",
+                    )
                     return False
+                seq_idx = (seq_idx + 1) % len(click_sequence)
                 last_click = now
             lines = fetch_kernel_since(cursor)
             if isinstance(lines, list):
@@ -14295,9 +14270,60 @@ class DarRouteRunner:
                         self._emit("✅ [巅峰对战] 已检测到 map 信号", "SUCCESS")
                         return True
             cursor = kernel_cursor()
-            time.sleep(0.1)
-        self._emit("⚠️ [巅峰对战] 等待 map 信号超时", "WARN")
+            time.sleep(self.PINNACLE_LOOP_SLEEP_SEC)
+        self._emit("⚠️ [巅峰对战] 三键循环超时，仍未检测到 map 信号", "WARN")
         return False
+
+    def _pinnacle_measure_and_handle_1and1(
+        self, use_foreground: bool, stop_event: threading.Event
+    ) -> bool:
+        """测量 map -> 1AND1 首次出现耗时；若出现则点普通确认直到消失。"""
+        start_t = time.time()
+        self._emit(
+            f"⏳ [巅峰对战] 开始测量 map->1AND1（最多 {self.PINNACLE_1AND1_DETECT_TIMEOUT_SEC:.1f}s）",
+            "INFO",
+        )
+        while (time.time() - start_t) < self.PINNACLE_1AND1_DETECT_TIMEOUT_SEC:
+            if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                return False
+            if self._check_1and1_probes():
+                elapsed = time.time() - start_t
+                self._emit(
+                    f"📊 [巅峰对战] map -> 1AND1 首次耗时: {elapsed:.3f}s",
+                    "INFO",
+                )
+                # 检测到后持续点确认，直到1AND1消失（不受上面的测量窗口限制）
+                while not stop_event.is_set() and not getattr(self.bot, "stop_current", False):
+                    if not self._check_1and1_probes():
+                        self._emit("✅ [巅峰对战] 1AND1 已消失，继续后续流程", "INFO")
+                        return True
+                    clicked_confirm = False
+                    for key in ("对话框.普通确认按钮", "对话框.普通确认"):
+                        try:
+                            self._click_region(key, use_foreground)
+                            clicked_confirm = True
+                            break
+                        except KeyError:
+                            continue
+                    if not clicked_confirm:
+                        self._emit("⚠️ [巅峰对战] 未找到普通确认 region，跳过1AND1确认流程", "WARN")
+                        return True
+                    self._sleep_abortable(
+                        stop_event,
+                        self.PINNACLE_LOOP_SLEEP_SEC,
+                        tick=self.PINNACLE_LOOP_SLEEP_SEC,
+                    )
+                return False
+            self._sleep_abortable(
+                stop_event,
+                self.PINNACLE_LOOP_SLEEP_SEC,
+                tick=self.PINNACLE_LOOP_SLEEP_SEC,
+            )
+        self._emit(
+            f"ℹ️ [巅峰对战] {self.PINNACLE_1AND1_DETECT_TIMEOUT_SEC:.1f}s 内未检测到 1AND1，继续后续流程",
+            "INFO",
+        )
+        return True
 
     def _pinnacle_latest_map_id(self) -> Optional[int]:
         """从 kernel 日志反向扫描，返回最近一次 /resource/map/<id>.swf 的 id。"""
@@ -14405,3 +14431,58 @@ class DarRouteRunner:
                         return True
             cursor = kernel_cursor()
             time.sleep(0.1)
+
+    def _pinnacle_click_entry_and_start_until_petitem(
+        self, mode: str, use_foreground: bool, stop_event: threading.Event
+    ) -> bool:
+        """进入XX + 开始对战双键循环，直到检测到 PetItem。"""
+        from core.logger import fetch_kernel_since, kernel_cursor
+
+        enter_key = (
+            "巅峰对战.进入排位"
+            if mode == self.PINNACLE_MODE_RANK
+            else "巅峰对战.进入娱乐"
+        )
+        start_key = "巅峰对战.开始对战"
+        token = "/resource/item/petItem/icon/"
+
+        self._emit(
+            f"🖱️ [巅峰对战] 双键循环（{enter_key} -> {start_key}）直到 PetItem（{self.PINNACLE_LOOP_MAX_SAFETY_SEC:.0f}s 上限）",
+            "INFO",
+        )
+
+        cursor = kernel_cursor()
+        t0 = time.time()
+        last_click = 0.0
+        seq = [enter_key, start_key]
+        seq_idx = 0
+        while (time.time() - t0) < self.PINNACLE_LOOP_MAX_SAFETY_SEC:
+            if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                return False
+
+            lines = fetch_kernel_since(cursor)
+            if isinstance(lines, list):
+                for line in lines:
+                    if token in str(line):
+                        self._emit("✅ [巅峰对战] 已检测到 PetItem", "SUCCESS")
+                        return True
+            cursor = kernel_cursor()
+
+            now = time.time()
+            if now - last_click >= self.PINNACLE_LOOP_CLICK_INTERVAL_SEC:
+                key = seq[seq_idx]
+                try:
+                    self._click_region(key, use_foreground)
+                except KeyError:
+                    self._emit(f"❌ [巅峰对战] 缺少 region：{key}", "ERROR")
+                    return False
+                seq_idx = (seq_idx + 1) % len(seq)
+                last_click = now
+
+            time.sleep(self.PINNACLE_LOOP_SLEEP_SEC)
+
+        self._emit(
+            f"⚠️ [巅峰对战] 双键循环 {self.PINNACLE_LOOP_MAX_SAFETY_SEC:.0f}s 内未检测到 PetItem",
+            "WARN",
+        )
+        return False
