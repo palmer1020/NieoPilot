@@ -13997,7 +13997,6 @@ class DarRouteRunner:
     PINNACLE_IP_WAIT_SEC = 15.0
     PINNACLE_SERVER_CLICK_MAX_SEC = 30.0
     PINNACLE_MAP_WAIT_SEC = 20.0
-    PINNACLE_PETITEM_WAIT_SEC = 30.0
 
     def run_pinnacle_mode(
         self,
@@ -14078,8 +14077,36 @@ class DarRouteRunner:
         if not self._pinnacle_click_server_until_map(use_foreground, stop_event):
             return False
 
-        self._emit("ℹ️ [巅峰对战] 已按配置跳过进入后 1AND1 确认流程", "INFO")
-
+        wait_1and1_deadline = time.time() + 0.8
+        self._emit("⏳ [巅峰对战] 屏蔽前等待 1AND1（0.8s 超时）", "INFO")
+        detected_1and1 = False
+        while time.time() < wait_1and1_deadline:
+            if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                return False
+            if self._check_1and1_probes():
+                detected_1and1 = True
+                self._emit("✅ [巅峰对战] 0.8s 窗口内检测到 1AND1，开始点确认直到消失", "INFO")
+                break
+            self._sleep_abortable(stop_event, 0.05, tick=0.05)
+        if detected_1and1:
+            while not stop_event.is_set() and not getattr(self.bot, "stop_current", False):
+                if not self._check_1and1_probes():
+                    self._emit("✅ [巅峰对战] 1AND1 已消失，继续后续流程", "INFO")
+                    break
+                clicked_confirm = False
+                for key in ("对话框.普通确认按钮", "对话框.普通确认"):
+                    try:
+                        self._click_region(key, use_foreground)
+                        clicked_confirm = True
+                        break
+                    except KeyError:
+                        continue
+                if not clicked_confirm:
+                    self._emit("⚠️ [巅峰对战] 未找到普通确认 region，结束1AND1确认流程", "WARN")
+                    break
+                self._sleep_abortable(stop_event, 0.05, tick=0.05)
+        else:
+            self._emit("ℹ️ [巅峰对战] 0.8s 内未检测到 1AND1，继续后续流程", "INFO")
         self._emit("🖱️ [巅峰对战] 点击 系统.屏蔽（无条件）", "INFO")
         try:
             self._click_region("系统.屏蔽", use_foreground)
@@ -14363,12 +14390,11 @@ class DarRouteRunner:
 
         token = "/resource/item/petItem/icon/"
         self._emit(
-            f"⏳ [巅峰对战] 等待 PetItem 信号（{self.PINNACLE_PETITEM_WAIT_SEC:.0f}s 超时）",
+            "⏳ [巅峰对战] 等待 PetItem 信号（无限等待，直到检测到或手动停止）",
             "INFO",
         )
         cursor = kernel_cursor()
-        t0 = time.time()
-        while (time.time() - t0) < self.PINNACLE_PETITEM_WAIT_SEC:
+        while True:
             if stop_event.is_set() or getattr(self.bot, "stop_current", False):
                 return False
             lines = fetch_kernel_since(cursor)
@@ -14379,5 +14405,3 @@ class DarRouteRunner:
                         return True
             cursor = kernel_cursor()
             time.sleep(0.1)
-        self._emit("⚠️ [巅峰对战] 未在规定时间内检测到 PetItem", "WARN")
-        return False
