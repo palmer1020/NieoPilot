@@ -10902,15 +10902,57 @@ class DarRouteRunner:
         self._refresh_pipeline_start_perf = time.perf_counter()
 
     def _refresh_trinity_clicks(self, use_foreground: bool, log_prefix: str = "") -> bool:
-        """刷新.设置 → 刷新.刷新 → 刷新.保存（无「确认」）。三步一律前台点击，与是否后台运行无关。"""
+        """
+        刷新.设置 → 刷新.刷新 → 刷新.保存。
+        - 「设置」：后台点在主窗口上，弹出标题为「设置」的子窗口。
+        - 「刷新」「保存」：后台点击必须发到该子窗口（见 window_manager 子 HWND），否则会点空。
+        """
         lp = f"{log_prefix} " if log_prefix else ""
-        seq = ("刷新.设置", "刷新.刷新", "刷新.保存")
-        for key in seq:
-            self._emit(f"🖱️ [{lp}刷新UI] 点击 {key}（前台）", "INFO")
+
+        def _click_trinity_child_or_main(key: str) -> bool:
             try:
-                self._click_region(key, True)
+                reg = self.regions.get(key)
+                if not reg:
+                    raise KeyError(key)
+                gx, gy = reg.sample_click_point()
             except KeyError:
                 self._emit(f"❌ [{lp}刷新UI] 缺少 region：{key}", "ERROR")
+                return False
+            if window_manager.click_background_settings_dialog(gx, gy):
+                self._emit(
+                    f"🖱️ [{lp}刷新UI] 已后台点击 {key}（目标：设置子窗口）",
+                    "INFO",
+                )
+                return True
+            window_manager.click_background(gx, gy)
+            self._emit(
+                f"⚠️ [{lp}刷新UI] 未找到「设置」子窗口，{key} 已回退为「主窗口后台」",
+                "WARN",
+            )
+            return True
+
+        # 1) 只开子窗：主窗口后台点「设置」
+        self._emit(f"🖱️ [{lp}刷新UI] 点击 刷新.设置（主窗口后台）", "INFO")
+        try:
+            self._click_region("刷新.设置", False)
+        except KeyError:
+            self._emit(f"❌ [{lp}刷新UI] 缺少 region：刷新.设置", "ERROR")
+            return False
+        time.sleep(0.45)
+
+        # 2) 等弹层出现（与游戏同进程、窗口标题「设置」）
+        dlg = window_manager.wait_settings_dialog_hwnd(1.5)
+        if dlg:
+            self._emit(f"✅ [{lp}刷新UI] 已检测到「设置」子窗口 HWND={dlg}", "INFO")
+        else:
+            self._emit(
+                f"⚠️ [{lp}刷新UI] 1.5s 内未检测到「设置」子窗口，后续将尝试点击并可能回退主窗口",
+                "WARN",
+            )
+
+        for key in ("刷新.刷新", "刷新.保存"):
+            self._emit(f"🖱️ [{lp}刷新UI] 点击 {key}", "INFO")
+            if not _click_trinity_child_or_main(key):
                 return False
             time.sleep(0.2)
         return True

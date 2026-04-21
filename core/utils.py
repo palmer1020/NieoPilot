@@ -8,6 +8,7 @@ import math
 import win32gui
 import win32api
 import win32con
+import win32process
 from PIL import ImageGrab
 
 from config import WINDOW_TITLE, GAME_LOGIC_W, GAME_LOGIC_H, GAME_PATH, FIXED_RATIO
@@ -344,6 +345,82 @@ class WindowManager:
             win32gui.PostMessage(self.hwnd, win32con.WM_LBUTTONUP, 0, l_param)
         except Exception:
             pass
+
+    # 刷新 UI：点击「刷新.设置」后主窗口会弹出独立子窗口（标题通常为「设置」），
+    # 「刷新」「保存」必须 PostMessage 到该 HWND，否则会点到主窗口客户区而无效。
+    SETTINGS_DIALOG_TITLE = "设置"
+
+    def find_settings_dialog_hwnd(self) -> int:
+        """与游戏同进程、标题精确的「设置」顶层/弹窗句柄；找不到返回 0。"""
+        if not self.hwnd and not self.find_window():
+            return 0
+        try:
+            _, game_pid = win32process.GetWindowThreadProcessId(self.hwnd)
+        except Exception:
+            return 0
+        found: list[int] = []
+
+        def _enum(h, _):
+            try:
+                if not win32gui.IsWindowVisible(h):
+                    return True
+                title = win32gui.GetWindowText(h)
+                if title != self.SETTINGS_DIALOG_TITLE:
+                    return True
+                _, pid = win32process.GetWindowThreadProcessId(h)
+                if pid == game_pid:
+                    found.append(h)
+            except Exception:
+                pass
+            return True
+
+        try:
+            win32gui.EnumWindows(_enum, None)
+        except Exception:
+            return 0
+        return found[0] if found else 0
+
+    def wait_settings_dialog_hwnd(self, timeout_s: float = 1.5) -> int:
+        t0 = time.time()
+        while time.time() - t0 < float(timeout_s):
+            h = self.find_settings_dialog_hwnd()
+            if h:
+                return h
+            time.sleep(0.05)
+        return 0
+
+    def click_background_on_dialog_hwnd(self, target_hwnd: int, gx: float, gy: float) -> bool:
+        """
+        将逻辑坐标 (gx,gy) 转为屏幕坐标后，再映射到 target_hwnd 的 **client** 坐标并后台点击。
+        用于设置子窗口内的按钮；屏幕位置与主视口映射一致（录制区域仍按 1200×700）。
+        """
+        if not target_hwnd:
+            return False
+        coords = self.game_to_screen(gx, gy)
+        if not coords:
+            return False
+        sx, sy = coords
+        try:
+            cx, cy = win32gui.ScreenToClient(target_hwnd, (int(sx), int(sy)))
+            rel_x = int(cx) & 0xFFFF
+            rel_y = int(cy) & 0xFFFF
+            l_param = (rel_y << 16) | rel_x
+            win32gui.PostMessage(
+                target_hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, l_param
+            )
+            time.sleep(0.03)
+            win32gui.PostMessage(target_hwnd, win32con.WM_LBUTTONUP, 0, l_param)
+            return True
+        except Exception as e:
+            logger.warning(f"click_background_on_dialog_hwnd 失败: {e}")
+            return False
+
+    def click_background_settings_dialog(self, gx: float, gy: float) -> bool:
+        """优先找「设置」子窗口并点击；找不到返回 False（调用方可回退主窗口）。"""
+        h = self.find_settings_dialog_hwnd()
+        if not h:
+            return False
+        return self.click_background_on_dialog_hwnd(h, gx, gy)
     
     def send_key(self, vk_code: int):
         """
