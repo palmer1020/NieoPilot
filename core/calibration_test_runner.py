@@ -1,12 +1,12 @@
 # core/calibration_test_runner.py
 import logging
-import re
 import threading
 import time
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple
 
 from core.logger import fetch_kernel_since, kernel_cursor, wait_kernel_contains
+from core.kernel_log_match import RE_NEWNPC_MULTI, first_map_id_in_line, re_map_swf_exact_id
 from core.region_store import Region, RegionStore
 from core.utils import window_manager
 
@@ -74,10 +74,12 @@ class CalibrationTestRunner:
             f"⏳ 等待进入地图：/resource/map/{self.cfg.expected_map_id}.swf + {self.cfg.newnpc_substr}",
             "SYSTEM",
         )
-        if not self._wait_kernel_contains_compat(f"/resource/map/{self.cfg.expected_map_id}.swf", timeout_s=90.0, poll=0.05):
+        if not self._wait_kernel_contains_compat(
+            re_map_swf_exact_id(self.cfg.expected_map_id), timeout_s=90.0, poll=0.05
+        ):
             self._emit("⛔ 等待 map 超时/已停止", "WARN")
             return
-        if not self._wait_kernel_contains_compat(self.cfg.newnpc_substr, timeout_s=90.0, poll=0.05):
+        if not self._wait_kernel_contains_compat(RE_NEWNPC_MULTI, timeout_s=90.0, poll=0.05):
             self._emit("⛔ 等待 newNpc 超时/已停止", "WARN")
             return
         self._emit("✅ 已进入测试地图：开始高强度点击 + 探针触发校准", "SUCCESS")
@@ -217,7 +219,7 @@ class CalibrationTestRunner:
     # ---------------------------
     # wait/pause/log helpers
     # ---------------------------
-    def _wait_kernel_contains_compat(self, substr: str, timeout_s: float, poll: float) -> bool:
+    def _wait_kernel_contains_compat(self, substr, timeout_s: float, poll: float) -> bool:
         try:
             return bool(wait_kernel_contains(substr, timeout_s=timeout_s, poll=poll, cursor=None))
         except TypeError:
@@ -268,7 +270,6 @@ class _KernelMapGuard:
     - 任何时刻发现 /resource/map/{id}.swf 且 id != expected -> bad_map_id 置位
     - abort_fn(): stop_event/stop_current/bad_map -> True
     """
-    _MAP_SWF_RE = re.compile(r"/resource/map/(\d+)\.swf")
 
     def __init__(self, expected_map_id: int, bot, stop_event: threading.Event, poll_sec: float = 0.05):
         self.expected_map_id = int(expected_map_id)
@@ -300,12 +301,8 @@ class _KernelMapGuard:
             lines = self._coerce_lines(res)
 
         for ln in lines or []:
-            m = self._MAP_SWF_RE.search(str(ln))
-            if not m:
-                continue
-            try:
-                mid = int(m.group(1))
-            except Exception:
+            mid = first_map_id_in_line(str(ln))
+            if mid is None:
                 continue
             if mid != self.expected_map_id:
                 self.bad_map_id = mid

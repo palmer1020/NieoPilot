@@ -138,6 +138,9 @@ def wait_kernel_contains(substr: str, *args, **kwargs) -> Union[bool, Tuple[bool
 
 
 def _wait_kernel_contains_by_cursor(substr: str, cursor: int, timeout: float, poll: float) -> Tuple[bool, int, Optional[str]]:
+    """substr 可为「子串」或已编译正则；与 path= 新格式兼容见 core.kernel_log_match.line_matches。"""
+    from core.kernel_log_match import line_matches
+
     deadline = time.time() + float(timeout)
     matched_line: Optional[str] = None
 
@@ -146,7 +149,7 @@ def _wait_kernel_contains_by_cursor(substr: str, cursor: int, timeout: float, po
         for seq, _ts, line in rows:
             if seq > cursor:
                 cursor = seq
-            if substr in line:
+            if line_matches(substr, line):
                 matched_line = line
                 return True, cursor, matched_line
 

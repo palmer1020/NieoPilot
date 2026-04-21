@@ -318,6 +318,12 @@ class BotWorker(QThread):
                     use_foreground = bool(tasks.get("use_foreground", False))
                     use_background = (not use_foreground)
 
+                    cap_super = bool(tasks.get("non_mantis_use_super_capsule", False))
+                    try:
+                        self.dar_route_runner.set_non_mantis_use_super_capsule(cap_super)
+                    except Exception:
+                        pass
+
                     # ---- 日常 ----
                     if tasks.get("daily_chain") and (not self.stop_current):
                         self.emit_and_log(f"▶ 开始一键日常（前台={use_foreground}）", "SYSTEM")
@@ -541,16 +547,10 @@ class BotWorker(QThread):
                             self.dar_route_runner.ROTATION_RECONNECT_INTERVAL_MINUTES_SHUANGTA = 60.0
                             self.dar_route_runner.PETSWF_TO_PETITEM_HARD_LIMIT_SEC = 8.0
                         
-                        rotation_capture_ststss = bool(tasks.get("rotation_capture_ststss", False))
-                        rotation_capture_special_only = bool(
-                            tasks.get("rotation_capture_special_only", False)
-                        )
                         self.dar_route_runner.run_rotation_mode(
                             stop_event=self._stop_event,
                             use_foreground=use_foreground,
                             is_test_mode=is_test_mode,  # ✅ 传递测试模式标志
-                            rotation_capture_ststss=rotation_capture_ststss,
-                            rotation_capture_special_only=rotation_capture_special_only,
                         )
                     
                     # ---- 原定时任务（已禁用）----

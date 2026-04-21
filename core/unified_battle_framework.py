@@ -23,6 +23,15 @@ import numpy as np
 from PIL import Image
 
 from core.logger import fetch_kernel_since, kernel_cursor, wait_kernel_contains
+from core.kernel_log_match import (
+    line_matches,
+    first_map_id_in_line,
+    RE_MAP_PATH_LOOSE,
+    RE_NEWNPC_MULTI,
+    RE_PETITEM,
+    RE_FIGHT_SKILL_SWF,
+    RE_FIGHT_PET,
+)
 from core.logger import add_kernel_log_callback, remove_kernel_log_callback
 from core.region_store import Region, RegionStore
 from core.utils import window_manager
@@ -235,8 +244,8 @@ class UnifiedBattleFramework:
                 continue
         return None
 
-    # 节奏「高超高特高超」：高级 → 超级 → 高级 → 特级 → 高级 → 超级
-    _CAPSULE_CYCLE_TIERS: Tuple[str, ...] = ("high", "high", "super", "special", "high", "super")
+    # 默认胶囊循环：特级单档（螳螂对战敌方 122 等仍可在 DarRouteRunner 侧覆盖为 legacy 六档）
+    _CAPSULE_CYCLE_TIERS: Tuple[str, ...] = ("special",)
 
     def _resolve_capsule_tier_key(self, tier: str) -> Optional[str]:
         """按档位解析胶囊 region 键（不含切换面板）。"""
@@ -321,10 +330,11 @@ class UnifiedBattleFramework:
             # 反向遍历队列（从最新到最旧）
             for line in reversed(list(self._kernel_q)):
                 line_str = str(line)
-                if "/resource/map/10.swf" in line_str:
+                mid = first_map_id_in_line(line_str)
+                if mid == 10:
                     recent_map = 10
                     break
-                elif "/resource/map/11.swf" in line_str:
+                if mid == 11:
                     recent_map = 11
                     break
             
@@ -423,23 +433,23 @@ class UnifiedBattleFramework:
     
     def _has_petitem(self, line: str) -> bool:
         """检查是否包含PetItem信号"""
-        return self.TOKEN_PETITEM in line
+        return line_matches(RE_PETITEM, line)
     
     def _has_map(self, line: str) -> bool:
-        """检查是否包含map信号"""
-        return self.TOKEN_MAP in line
+        """检查是否包含map信号（含 path=resource\\map\\ 格式）"""
+        return bool(first_map_id_in_line(line)) or line_matches(RE_MAP_PATH_LOOSE, line)
     
     def _has_newnpc(self, line: str) -> bool:
         """检查是否包含newNpc信号（/resource/newNpc/multi/0.swf）"""
-        return self.TOKEN_NEWNPC in line
+        return line_matches(RE_NEWNPC_MULTI, line)
     
     def _has_fight_skill(self, line: str) -> bool:
         """检查是否包含fightResource/skill/swf信号（点击成功且未出现校准）"""
-        return self.TOKEN_FIGHT_SKILL in line
+        return line_matches(RE_FIGHT_SKILL_SWF, line) or line_matches(self.TOKEN_FIGHT_SKILL, line)
     
     def _has_fight_pet(self, line: str) -> bool:
         """检查是否包含fightResource/pet/swf信号"""
-        return self.TOKEN_FIGHT_PET in line
+        return line_matches(RE_FIGHT_PET, line)
     
     def _check_battle_end(self) -> Tuple[bool, bool]:
         """
@@ -487,20 +497,14 @@ class UnifiedBattleFramework:
         Returns:
             如果检测到非目标地图，返回该地图ID；否则返回None
         """
-        MAP_SWF_RE = re.compile(r"/resource/map/(\d+)\.swf")
-        
         exp = int(expected_map_id)
         
         # 从内核队列检查（实时检测，不消费队列）
         temp_q = list(self._kernel_q)  # 使用list复制，不消费队列
         for line in temp_q:
             line_str = str(line)
-            m = MAP_SWF_RE.search(line_str)
-            if not m:
-                continue
-            try:
-                mid = int(m.group(1))
-            except Exception:
+            mid = first_map_id_in_line(line_str)
+            if mid is None:
                 continue
             if mid != exp:
                 return mid

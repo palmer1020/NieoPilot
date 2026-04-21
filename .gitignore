@@ -58,7 +58,7 @@ regions_structure.json
 regions_structure.txt
 core/test
 
-#Config (如果需要保留模板，可以注释掉这一行)
+# 本地配置（提交 config.template.py；本文件不提交）
 config.py
 
 # Batch files (用户本地启动脚本)

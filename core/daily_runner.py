@@ -10,6 +10,13 @@ from core.utils import window_manager
 from core.post_battle_cleaner import PostBattleCleaner
 from core.unified_battle_framework import UnifiedBattleFramework, BattleConfig, BattleMode
 from core.fixed_mode_adapter import FixedModeAdapter
+from core.kernel_log_match import (
+    line_matches,
+    first_map_id_in_line,
+    RE_PETITEM,
+    RE_NEWNPC_MULTI,
+    RE_MAP_PATH_LOOSE,
+)
 
 # 优先用 config 里的 BASE_PATH / DAILY_SEQUENCE（如果没有也能兜底）
 try:
@@ -17,6 +24,15 @@ try:
 except Exception:
     BASE_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     DAILY_SEQUENCE = []
+
+
+def _kernel_line_has_any_map(line: str) -> bool:
+    s = str(line)
+    return bool(first_map_id_in_line(s)) or line_matches(RE_MAP_PATH_LOOSE, s)
+
+
+def _kernel_line_has_map_id(line: str, map_id: int) -> bool:
+    return first_map_id_in_line(str(line)) == map_id
 
 
 class DailyRunner:
@@ -468,7 +484,6 @@ class DailyRunner:
             return False
 
         probe_model = battle_runner._load_probe_templates()
-        map_signal = "/resource/map/"
         cursor = kernel_cursor()
 
         switch_sequence = [
@@ -495,7 +510,7 @@ class DailyRunner:
                 if isinstance(lines, list):
                     for line in lines:
                         line_str = str(line)
-                        if map_signal in line_str:
+                        if _kernel_line_has_any_map(line_str):
                             self._emit("🏁 战斗结束（检测到 map 信号）", "SUCCESS")
                             return True
                 cursor = kernel_cursor()
@@ -541,10 +556,7 @@ class DailyRunner:
     def _wait_for_map_and_npc(self, map_id: int, timeout_s: float = 30.0) -> bool:
         """等待进入指定地图（map信号 + newNPC信号）"""
         from core.logger import fetch_kernel_since, kernel_cursor
-        
-        map_signal = f"/resource/map/{map_id}.swf"
-        newnpc_signal = "/resource/newNpc/multi/0.swf"
-        
+
         start_time = time.time()
         cursor = kernel_cursor()
         map_seen = False
@@ -559,10 +571,10 @@ class DailyRunner:
                 if isinstance(lines, list):
                     for line in lines:
                         line_str = str(line)
-                        if map_signal in line_str:
+                        if _kernel_line_has_map_id(line_str, map_id):
                             map_seen = True
-                            self._emit(f"🗺 检测到map信号：{map_signal}", "INFO")
-                        if newnpc_signal in line_str:
+                            self._emit(f"🗺 检测到map信号：map_id={map_id}", "INFO")
+                        if line_matches(RE_NEWNPC_MULTI, line_str):
                             npc_seen = True
                             self._emit(f"📡 检测到newNPC信号", "INFO")
                         
@@ -580,10 +592,7 @@ class DailyRunner:
     def _wait_for_map_and_npc_any(self, timeout_s: float = 30.0) -> bool:
         """等待进入任意地图（map信号 + newNPC信号）"""
         from core.logger import fetch_kernel_since, kernel_cursor
-        
-        map_signal = "/resource/map/"
-        newnpc_signal = "/resource/newNpc/multi/0.swf"
-        
+
         start_time = time.time()
         cursor = kernel_cursor()
         map_seen = False
@@ -598,10 +607,10 @@ class DailyRunner:
                 if isinstance(lines, list):
                     for line in lines:
                         line_str = str(line)
-                        if map_signal in line_str:
+                        if _kernel_line_has_any_map(line_str):
                             map_seen = True
                             self._emit("🗺 检测到map信号", "INFO")
-                        if newnpc_signal in line_str:
+                        if line_matches(RE_NEWNPC_MULTI, line_str):
                             npc_seen = True
                             self._emit("📡 检测到newNPC信号", "INFO")
                         
@@ -619,8 +628,7 @@ class DailyRunner:
     def _wait_for_petitem_unlimited(self) -> bool:
         """等待PetItem信号（无超时限制，但会响应中止）"""
         from core.logger import fetch_kernel_since, kernel_cursor
-        
-        token = "/resource/item/petItem/icon/"
+
         cursor = kernel_cursor()
         
         while True:
@@ -631,7 +639,7 @@ class DailyRunner:
                 lines = fetch_kernel_since(cursor)
                 if isinstance(lines, list):
                     for line in lines:
-                        if token in str(line):
+                        if line_matches(RE_PETITEM, str(line)):
                             self._emit("✅ 检测到PetItem信号", "SUCCESS")
                             return True
                 
@@ -655,8 +663,7 @@ class DailyRunner:
         if battle_runner is None:
             self._emit("❌ 缺少battle_runner，无法执行第一回合技能", "ERROR")
             return False
-        
-        token = "/resource/item/petItem/icon/"
+
         cursor = kernel_cursor()
         probe_model = battle_runner._load_probe_templates()
         last_probe_state = "UNKNOWN"
@@ -679,7 +686,7 @@ class DailyRunner:
                     lines = fetch_kernel_since(cursor)
                     if isinstance(lines, list):
                         for line in lines:
-                            if token in str(line):
+                            if line_matches(RE_PETITEM, str(line)):
                                 self._emit("✅ 检测到PetItem信号，使用第一回合技能", "SUCCESS")
                                 petitem_detected = True
                                 skill_key = "对战.使用技能一"
@@ -732,8 +739,6 @@ class DailyRunner:
         probe_model = battle_runner._load_probe_templates()
         
         # 检测Map+NewNPC信号（战斗结束）
-        map_signal = "/resource/map/"
-        newnpc_signal = "/resource/newNpc/multi/0.swf"
         cursor = kernel_cursor()
         map_seen = False
         npc_seen = False
@@ -768,10 +773,10 @@ class DailyRunner:
                 if isinstance(lines, list):
                     for line in lines:
                         line_str = str(line)
-                        if map_signal in line_str:
+                        if _kernel_line_has_any_map(line_str):
                             map_seen = True
                             self._emit("🗺 检测到map信号", "INFO")
-                        if newnpc_signal in line_str:
+                        if line_matches(RE_NEWNPC_MULTI, line_str):
                             npc_seen = True
                             self._emit("📡 检测到newNPC信号", "INFO")
                         
@@ -1467,7 +1472,6 @@ class DailyRunner:
         teixun_switch_interval = 0.5
         skill_four_after_round10 = False  # 第十回合使用技能四后为True，灰期做切换
 
-        map_signal = "/resource/map/"
         cursor = kernel_cursor()
         map_seen = False
 
@@ -1497,7 +1501,7 @@ class DailyRunner:
                 if isinstance(lines, list):
                     for line in lines:
                         line_str = str(line)
-                        if map_signal in line_str:
+                        if _kernel_line_has_any_map(line_str):
                             map_seen = True
                             self._emit(f"🏁 战斗结束（检测到 map，第 {round_idx} 回合后）", "SUCCESS")
                             return round_idx
@@ -1567,8 +1571,6 @@ class DailyRunner:
         skill_order = [4, 2, 1, 3]
         skill_names = ["一", "二", "三", "四"]
 
-        map_signal = "/resource/map/"
-        newnpc_signal = "/resource/newNpc/multi/0.swf"
         cursor = kernel_cursor()
         map_seen = False
         npc_seen = False
@@ -1590,9 +1592,9 @@ class DailyRunner:
                 if isinstance(lines, list):
                     for line in lines:
                         line_str = str(line)
-                        if map_signal in line_str:
+                        if _kernel_line_has_any_map(line_str):
                             map_seen = True
-                        if newnpc_signal in line_str:
+                        if line_matches(RE_NEWNPC_MULTI, line_str):
                             npc_seen = True
                         if map_seen and npc_seen:
                             self._emit(f"🏁 战斗结束（第 {round_idx} 回合后）", "SUCCESS")

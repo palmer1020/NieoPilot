@@ -4,7 +4,7 @@
 SWF 文件批量替换与补齐脚本
 
 功能：
-1. 查找模板文件（优先本目录下的 254.swf 等，其次 nieoasset/resource/pet 下）
+1. 查找模板文件（优先本目录下的 254.swf 等，其次游戏 NieoData/resource/pet 下）
 2. 步骤1：将游戏 pet/swf 目录下每个已有文件的内容替换为模板内容
 3. 步骤2：补齐 1.swf ~ 5000.swf（缺失的创建，已有的覆盖）
 
@@ -19,14 +19,22 @@ import sys
 import shutil
 from pathlib import Path
 
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from config_bootstrap import ensure_config_py
+
+ensure_config_py(str(_PROJECT_ROOT))
+
 try:
     from config import GAME_SWF_FOLDER, GAME_ASSET_BASE_PATH
 except ImportError:
-    GAME_ASSET_BASE_PATH = r"E:\1\nieoasset"
-    GAME_SWF_FOLDER = os.path.join(GAME_ASSET_BASE_PATH, "resource", "pet", "swf")
+    GAME_ASSET_BASE_PATH = r"E:\1\NieoGame\NieoData\resource"
+    GAME_SWF_FOLDER = os.path.join(GAME_ASSET_BASE_PATH, "pet", "swf")
 
 DST_DIR = Path(GAME_SWF_FOLDER)
-PET_BASE = Path(GAME_ASSET_BASE_PATH) / "resource" / "pet"
+PET_BASE = Path(GAME_ASSET_BASE_PATH) / "pet"
 _SCRIPT_DIR = Path(__file__).resolve().parent
 
 

@@ -24,6 +24,8 @@ class WindowManager:
         # 只有通过本程序 launch_game() 启动时才会有
         self._proc = None
         self._log_thread_started = False
+        # launch_game 最近一次失败原因（供界面展示，避免误报「仅路径错误」）
+        self.last_launch_error = ""
 
     # ===============================
     # Window / Process
@@ -62,12 +64,15 @@ class WindowManager:
         ⚠ 只有“通过这里启动”的进程，才能稳定读到 stdout 内核日志。
         如果游戏已手动打开，这里只会激活窗口，不会产生 stdout 内核日志。
         """
+        self.last_launch_error = ""
+
         if self.find_window():
             logger.info("窗口已存在，正在激活...")
             self.maximize_window()
             return True
 
         if not os.path.exists(GAME_PATH):
+            self.last_launch_error = f"找不到游戏 exe：{GAME_PATH}"
             logger.error(f"❌ 路径错误: {GAME_PATH}")
             return False
 
@@ -86,7 +91,7 @@ class WindowManager:
                 ).start()
                 self._log_thread_started = True
 
-            # 等窗口出现
+            # 等窗口出现（FindWindow 按窗口标题精确匹配，须与 config.WINDOW_TITLE 一致）
             for _ in range(40):
                 if self.find_window():
                     logger.info("✅ 捕获窗口，正在最大化...")
@@ -94,10 +99,18 @@ class WindowManager:
                     return True
                 time.sleep(0.5)
 
-            logger.error("❌ 启动超时：未捕获到窗口")
+            self.last_launch_error = (
+                "进程已启动，但在约 20 秒内未匹配到游戏窗口。"
+                f"请把 config 里的 WINDOW_TITLE 改为与游戏主窗口标题完全一致（当前为 {WINDOW_TITLE!r}）。"
+                "微端若改过窗口名，任务栏悬停即可看到标题。"
+            )
+            logger.error(
+                f"❌ 启动超时：未捕获到标题为 {WINDOW_TITLE!r} 的窗口（FindWindow 精确匹配）"
+            )
             return False
 
         except Exception as e:
+            self.last_launch_error = str(e)
             logger.error(f"启动异常: {e}")
             return False
 
@@ -114,7 +127,8 @@ class WindowManager:
             win32gui.SetForegroundWindow(self.hwnd)
         except Exception:
             pass
-        time.sleep(0.6)
+        # 最大化动画与布局稳定后再点击，避免 region 偏移
+        time.sleep(0.8)
 
     # ===============================
     # Calibration / Debug

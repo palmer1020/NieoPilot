@@ -14,6 +14,25 @@ from PIL import Image
 import numpy as np
 
 from core.logger import fetch_kernel_since, kernel_cursor, wait_kernel_contains
+from core.kernel_log_match import (
+    line_matches,
+    first_map_id_in_line,
+    line_has_login_swf,
+    finditer_kernel_line,
+    re_map_swf_exact_id,
+    RE_NEWNPC_MULTI,
+    RE_PETITEM,
+    RE_FIGHT_PET,
+    RE_FIGHT_SKILL_SWF,
+    RE_FIGHT_SKILL_DIR,
+    RE_PET_SWF,
+    RE_PET_SOUND,
+    RE_MAP_SWF_ID,
+    RE_IP_TXT,
+    RE_FIGHT_PET_ID,
+    RE_PET_ID_CALIB,
+    RE_PET_SOUND_ID,
+)
 from core.region_store import Region, RegionStore
 from core.utils import window_manager, screenshots_subdir
 
@@ -68,18 +87,16 @@ RARE_MODE_BASE_PET_IDS = {1100000, 166, 197, 418, 77, 310, 416}
 
 log = logging.getLogger(__name__)
 
-# 轮换模式可选：捕捉胶囊「超特超超特超」6 格（仅双塔/尼奥；敌方含 122 螳螂时不启用）
-ROTATION_CAPTURE_CYCLE_STSTSS: Tuple[str, ...] = (
+MANTIS_PET_ID = 122
+# 敌方含 122（螳螂）时保留原「高超高特高超」六档循环，与无敌首回合逻辑独立
+LEGACY_CAPSULE_CYCLE_TIERS: Tuple[str, ...] = (
+    "high",
+    "high",
     "super",
     "special",
-    "super",
-    "super",
-    "special",
+    "high",
     "super",
 )
-MANTIS_PET_ID = 122
-# 轮换模式「仅特级」：单档循环，每次投胶囊均为特级
-ROTATION_CAPTURE_CYCLE_SPECIAL_ONLY: Tuple[str, ...] = ("special",)
 
 
 @dataclass(frozen=True)
@@ -202,23 +219,24 @@ class DarRouteRunner:
     KEY_NORMAL_CONFIRM = "对话框.普通确认"
 
     # 进入地图的通用 npc 探针
-    KEY_NEWNPC_MULTI = "/resource/newNpc/multi/0.swf"
-    
     # Login.swf token（用于检测断线重连）
     TOKEN_LOGIN_SWF = "/login/Login.swf"
+    # 新内核示例：time=... level=INFO msg=从主目录提供文件 path=login\Login.swf
 
     # 登录后的期望 map ID（向上的第一个map，与检测315逻辑相同）
     MAP_ID_AFTER_LOGIN = 500001
 
-    # fightResource pet swf
-    _FIGHT_PET_SWF_RE = re.compile(r"/resource/fightResource/pet/swf/(\d+)\.swf")
-    # pet swf and sound (for detecting target pet after fightresources)
-    _PET_SWF_RE = re.compile(r"/resource/pet/swf/(\d+)\.swf")
-    _PET_SOUND_RE = re.compile(r"/resource/pet/sound/(\d+)\.mp3")
-    _MAP_SWF_RE = re.compile(r"/resource/map/(\d+)\.swf")
+    # fightResource pet swf / pet 校准 / map：与 kernel_log_match 中正则一致（含 path= 反斜杠格式）
+    _FIGHT_PET_SWF_RE = RE_FIGHT_PET_ID
+    _PET_SWF_RE = RE_PET_ID_CALIB
+    _PET_SOUND_RE = RE_PET_SOUND_ID
+    _MAP_SWF_RE = RE_MAP_SWF_ID
 
     # kernel poll 节流
     KERNEL_POLL_SEC = 0.05
+
+    def _kernel_line_indicates_login_swf(self, line) -> bool:
+        return line_has_login_swf(str(line))
 
     def __init__(self, bot, regions: RegionStore, battle_runner, map_swf_id: int = 11):
         self.bot = bot
@@ -291,6 +309,9 @@ class DarRouteRunner:
         self._should_restart_after_reconnect = False  # 重连后是否应该重新启动任务（用于所有模式）
         self._reconnect_scripts_executing = False  # 是否正在执行重连脚本
         self._refresh_reconnect_executing = False  # 是否正在执行标准刷新重连流程（防重入）
+        # 刷新管线：从点击「设置」起计时（map/1AND1 耗时以此为起点）
+        self._refresh_pipeline_start_perf: Optional[float] = None
+        self._pinnacle_round_refresh_start: Optional[float] = None
         # ✅ 记录当前运行的模式（用于重连时选择正确的脚本）
         # 可选值: "nieo"（尼奥模式）, "shuangta"（双塔模式）, "dugulu"（嘟咕噜模式）, None（其他模式）
         self._current_mode: Optional[str] = None
@@ -312,10 +333,8 @@ class DarRouteRunner:
         self._rotation_time_check_window_active: bool = False  # 轮换模式时间检测窗口是否激活（双塔模式用）
         self._rotation_reconnect_executing: bool = False  # 是否正在执行轮换重连流程（防重入）
         self._rotation_total_stats: Optional[Dict[str, Any]] = None  # 轮换模式总统计
-        # 轮换模式 UI：勾选后对双塔/尼奥捕捉使用「超特超超特超」胶囊循环（见 ROTATION_CAPTURE_CYCLE_STSTSS）
-        self._rotation_capture_ststss_cycle: bool = False
-        # 轮换模式 UI：勾选后双塔/尼奥捕捉只使用特级胶囊（优先于六循环）
-        self._rotation_capture_special_only: bool = False
+        # Dashboard：勾选则非螳螂对战使用超级胶囊单档；不勾选则特级单档（敌方 122 仍走 legacy 六档）
+        self._non_mantis_use_super_capsule: bool = False
         
         # ✅ 轮换模式测试常量（可更改）
         self.ROTATION_TEST_MODE: bool = True  # ✅ 统一开关：False=正式模式（基于北京时间），True=测试模式（固定间隔）
@@ -583,7 +602,7 @@ class DarRouteRunner:
                         for idx, line in enumerate(lines):
                             line_str = str(line)
                             # 检查PetItem信号（最高优先级）
-                            if TOKEN_PETITEM in line_str:
+                            if line_matches(RE_PETITEM, line_str):
                                 self._emit(f"✅ 检测到PetItem信号（已入战），开始执行测试流程\n日志行: {line_str[:200]}", "SUCCESS")
                                 battle_triggered = True
                                 petitem_already_detected = True  # 标记已检测到PetItem
@@ -593,7 +612,7 @@ class DarRouteRunner:
                                     self._immediate_collected_pet_ids = collected_pet_ids
                                 break
                             # 检查fightResource/pet/swf/信号
-                            elif TOKEN_FIGHT_PET in line_str and not battle_triggered:
+                            elif line_matches(RE_FIGHT_PET, line_str) and not battle_triggered:
                                 # 检测到fightResource/pet/swf/，说明对战已经开始，退出循环进入Stage 2等待PetItem
                                 self._emit(f"✅ 检测到fightResource/pet/swf/信号（对战已开始），退出循环，将在Stage 2等待PetItem\n日志行: {line_str[:200]}", "INFO")
                                 battle_triggered = True
@@ -685,7 +704,7 @@ class DarRouteRunner:
                         return "capsule_high"
                 
                 # 创建配置
-                cycle_ov = self._rotation_capture_cycle_tiers_for_current_battle(nieo_capture=True)
+                cycle_ov = self._capsule_cycle_tiers_for_current_battle()
                 config = BattleConfig(
                     mode=BattleMode.WILD,
                     use_foreground=use_foreground,
@@ -792,17 +811,18 @@ class DarRouteRunner:
         if stop_event.is_set() or getattr(self.bot, "stop_current", False):
             return False
         
-        map_signal = f"/resource/map/{map_id}.swf"
+        map_needle = re_map_swf_exact_id(map_id)
+        map_hint = f"/resource/map/{map_id}.swf"
         
         # 特殊处理：地图10不会输出newNPC信号，需要使用白色探针代替
         if map_id == 10:
-            self._emit(f"⏳ 等待进入地图{map_id}：{map_signal} + 白色探针检测...", "SYSTEM")
+            self._emit(f"⏳ 等待进入地图{map_id}：{map_hint} + 白色探针检测...", "SYSTEM")
         else:
-            self._emit(f"⏳ 等待进入地图{map_id}：{map_signal} + newNpc...", "SYSTEM")
+            self._emit(f"⏳ 等待进入地图{map_id}：{map_hint} + newNpc...", "SYSTEM")
         
         # 等待map信号
         if not self._wait_kernel_contains_with_abort(
-            map_signal,
+            map_needle,
             timeout_s=timeout_s,
             poll=0.05,
             stop_event=stop_event
@@ -821,7 +841,7 @@ class DarRouteRunner:
         else:
             # 等待newNpc信号
             if not self._wait_kernel_contains_with_abort(
-                self.KEY_NEWNPC_MULTI,
+                RE_NEWNPC_MULTI,
                 timeout_s=timeout_s,
                 poll=0.05,
                 stop_event=stop_event
@@ -1417,7 +1437,7 @@ class DarRouteRunner:
                                 for idx, line in enumerate(lines):
                                     line_str = str(line)
                                     # 优先检测PetItem（进入对战的直接信号）
-                                    if TOKEN_PETITEM in line_str:
+                                    if line_matches(RE_PETITEM, line_str):
                                         petitem_detected = True
                                         
                                         # ✅ 如果已记录swf时间，计算时间差并更新最小值
@@ -1455,7 +1475,7 @@ class DarRouteRunner:
                                         break
                                     # 检测fightResource/pet/swf/信号（注意：不要被/resource/pet/swf/混淆）
                                     # 只检测/resource/fightResource/pet/swf/，不检测/resource/pet/swf/
-                                    if TOKEN_FIGHT_PET in line_str and result is None:
+                                    if line_matches(RE_FIGHT_PET, line_str) and result is None:
                                         # ✅ 记录fightpetswf检测时间（用于时间测量）
                                         self._nieo_swf_to_petitem_swf_time = time.time()
                                         
@@ -1468,7 +1488,6 @@ class DarRouteRunner:
                                         # 继续循环，收集所有pet IDs直到检测到skill信号或PetItem信号
                                         collect_start_time = time.time()
                                         collect_timeout = 3.0  # 最多收集3秒
-                                        skill_token = "/resource/fightResource/skill/swf/"
                                         found_skill = False
                                         found_petitem = False
                                         collect_cursor = kernel_cursor()  # 记录收集开始时的cursor
@@ -1483,7 +1502,7 @@ class DarRouteRunner:
                                                     collect_line_str = str(collect_line)
                                                     
                                                     # ✅ 检测PetItem信号（优先于skill信号）
-                                                    if TOKEN_PETITEM in collect_line_str:
+                                                    if line_matches(RE_PETITEM, collect_line_str):
                                                         found_petitem = True
                                                         # ✅ 计算时间差并更新最小值
                                                         if self._nieo_swf_to_petitem_swf_time is not None:
@@ -1506,12 +1525,12 @@ class DarRouteRunner:
                                                         break
                                                     
                                                     # 检测skill信号，收集完成
-                                                    if skill_token in collect_line_str:
+                                                    if line_matches(RE_FIGHT_SKILL_SWF, collect_line_str):
                                                         found_skill = True
                                                         break
                                                     
                                                     # 收集pet IDs（使用finditer确保收集一行中的所有pet IDs）
-                                                    for m in self._FIGHT_PET_SWF_RE.finditer(collect_line_str):
+                                                    for m in finditer_kernel_line(RE_FIGHT_PET_ID, collect_line_str):
                                                         try:
                                                             pet_id = int(m.group(1))
                                                             if pet_id not in pet_ids:
@@ -1984,7 +2003,7 @@ class DarRouteRunner:
                                     else:
                                         self._emit(f"📊 [时间测量] petswf到PetItem: {current_duration:.3f}s (最小值: {self._petswf_to_petitem_min_duration:.3f}s)", "INFO")
                         
-                        cycle_ov_rare = self._rotation_capture_cycle_tiers_for_current_battle(nieo_capture=True)
+                        cycle_ov_rare = self._capsule_cycle_tiers_for_current_battle()
                         config = BattleConfig(
                                 mode=BattleMode.WILD,
                                 use_foreground=use_foreground,
@@ -2187,7 +2206,7 @@ class DarRouteRunner:
                                     else:
                                         self._emit(f"📊 [时间测量] petswf到PetItem: {current_duration:.3f}s (最小值: {self._petswf_to_petitem_min_duration:.3f}s)", "INFO")
                         
-                        cycle_ov_nie = self._rotation_capture_cycle_tiers_for_current_battle(nieo_capture=True)
+                        cycle_ov_nie = self._capsule_cycle_tiers_for_current_battle()
                         config = BattleConfig(
                                 mode=BattleMode.WILD,
                                 use_foreground=use_foreground,
@@ -3710,7 +3729,7 @@ class DarRouteRunner:
                     for idx, line in enumerate(lines):
                         line_str = str(line)
                         # 优先检测PetItem（进入对战的直接信号）
-                        if TOKEN_PETITEM in line_str:
+                        if line_matches(RE_PETITEM, line_str):
                             self._emit("✅ 检测到PetItem信号（已入战），停止点击", "SUCCESS")
                             # 立即开始收集pet IDs（从当前行开始向后搜索）
                             pet_ids = self._collect_fight_pet_ids_immediate(stop_event, current_lines=lines, start_index=idx)
@@ -3718,14 +3737,13 @@ class DarRouteRunner:
                                 self._emit(f"📋 [立即收集] 检测到PetItem时收集到的pet IDs: {sorted(pet_ids)}", "INFO")
                             return (tx, ty, pet_ids)
                         # 检测fightResource/pet/swf/信号（点击成功且未出现校准）
-                        if TOKEN_FIGHT_PET in line_str:
+                        if line_matches(RE_FIGHT_PET, line_str):
                             self._emit(f"✅ 检测到fightResource/pet/swf/信号（已入战），停止点击，开始收集所有pet IDs\n日志行: {line_str[:200]}", "INFO")
                             
                             # 继续循环，收集所有pet IDs直到检测到skill信号
                             pet_ids = set()
                             collect_start_time = time.time()
                             collect_timeout = 3.0  # 最多收集3秒
-                            skill_token = "/resource/fightResource/skill/swf/"
                             found_skill = False
                             collect_cursor = kernel_cursor()  # 记录收集开始时的cursor
                             
@@ -3745,13 +3763,13 @@ class DarRouteRunner:
                                         for collect_line in collect_lines:
                                             collect_line_str = str(collect_line)
                                             # 检测skill信号（停止收集）
-                                            if skill_token in collect_line_str:
+                                            if line_matches(RE_FIGHT_SKILL_SWF, collect_line_str):
                                                 found_skill = True
                                                 self._emit("✅ 检测到skill信号，停止收集pet IDs", "INFO")
                                                 break
                                             
                                             # 收集fightResource/pet/swf/
-                                            for m in self._FIGHT_PET_SWF_RE.finditer(collect_line_str):
+                                            for m in finditer_kernel_line(RE_FIGHT_PET_ID, collect_line_str):
                                                 try:
                                                     pid = int(m.group(1))
                                                     if pid not in pet_ids:
@@ -3874,6 +3892,7 @@ class DarRouteRunner:
                 action_callback=action_callback,
                 invincible_first_round=invincible_first_round,
                 on_petitem_detected=on_petitem_detected,  # 直接传递PetItem检测回调
+                capsule_cycle_tiers_override=self._capsule_cycle_tiers_for_current_battle(),
             )
             
             success, calib_result = self._unified_framework.stage2_calibration_and_petitem(
@@ -4879,13 +4898,10 @@ class DarRouteRunner:
             last_map_id = None
             for line in reversed(all_lines):  # 从最新到最旧
                 line_str = str(line)
-                m = self._MAP_SWF_RE.search(line_str)
-                if m:
-                    try:
-                        last_map_id = int(m.group(1))
-                        break  # 找到最新的map就停止
-                    except Exception:
-                        continue
+                mid = first_map_id_in_line(line_str)
+                if mid is not None:
+                    last_map_id = mid
+                    break  # 找到最新的map就停止
             
             if last_map_id is not None:
                 self._emit(f"🔍 找到最后一个map ID: {last_map_id}", "DEBUG")
@@ -4907,7 +4923,7 @@ class DarRouteRunner:
         # 使用较短的超时时间，因为toXXX.json脚本执行完后通常已经在地图中
         # _wait_kernel_contains_with_abort 会先检查历史日志，所以通常能立即返回
         if not self._wait_kernel_contains_with_abort(
-            f"/resource/map/{profile.map_swf_id}.swf", 
+            re_map_swf_exact_id(profile.map_swf_id),
             timeout_s=10.0,  # 缩短超时时间，因为脚本执行后通常已经在地图中
             poll=0.05,
             stop_event=stop_event
@@ -4919,7 +4935,7 @@ class DarRouteRunner:
             
         # 等待newNpc信号，也使用较短的超时时间
         if not self._wait_kernel_contains_with_abort(
-            self.KEY_NEWNPC_MULTI, 
+            RE_NEWNPC_MULTI,
             timeout_s=10.0,  # 缩短超时时间
             poll=0.05,
             stop_event=stop_event
@@ -4927,9 +4943,10 @@ class DarRouteRunner:
             return False
         return True
 
-    def _wait_kernel_contains_with_abort(self, substr: str, timeout_s: float, poll: float, stop_event: threading.Event) -> bool:
+    def _wait_kernel_contains_with_abort(self, needle, timeout_s: float, poll: float, stop_event: threading.Event) -> bool:
         """
-        等待内核日志包含指定字符串，但在等待过程中频繁检查停止信号
+        等待内核日志命中子串或正则（与 path= 新格式兼容见 line_matches），
+        等待过程中频繁检查停止信号。
         不从历史日志中查找，只等待新的日志出现（确保是地图进入脚本执行后的结果）
         """
         start_time = time.time()
@@ -4949,7 +4966,7 @@ class DarRouteRunner:
                 lines = fetch_kernel_since(cursor)
                 if isinstance(lines, list):
                     for line in lines:
-                        if substr in str(line):
+                        if line_matches(needle, str(line)):
                             return True
                     # 更新cursor
                     cursor = kernel_cursor()
@@ -5084,12 +5101,8 @@ class DarRouteRunner:
     def _detect_unexpected_map(self, lines: Sequence[str], expected_map_id: int) -> Optional[int]:
         exp = int(expected_map_id)
         for ln in lines or []:
-            m = self._MAP_SWF_RE.search(str(ln))
-            if not m:
-                continue
-            try:
-                mid = int(m.group(1))
-            except Exception:
+            mid = first_map_id_in_line(str(ln))
+            if mid is None:
                 continue
             if mid != exp:
                 return mid
@@ -6396,6 +6409,7 @@ class DarRouteRunner:
                 action_callback=action_callback,
                 invincible_first_round=invincible_first_round,
                 on_petitem_detected=on_petitem_detected_callback,  # 使用新的回调
+                capsule_cycle_tiers_override=self._capsule_cycle_tiers_for_current_battle(),
             )
             
             # 调用stage2等待PetItem（skill后很快就是PetItem，必须立即开始监听）
@@ -6470,7 +6484,15 @@ class DarRouteRunner:
                                 for line in lines[-30:]:  # 检查最近30条
                                     line_str = str(line)
                                     # 检查是否有战斗相关的其他信号
-                                    if any(keyword in line_str for keyword in ["/fightResource/", "/pet/swf/", "/skill/swf/", "/resource/item/petItem/icon/"]):
+                                    if any(
+                                        line_matches(p, line_str)
+                                        for p in (
+                                            RE_FIGHT_PET,
+                                            RE_PET_SWF,
+                                            RE_FIGHT_SKILL_SWF,
+                                            RE_PETITEM,
+                                        )
+                                    ):
                                         in_battle = True
                                         self._emit("✅ 检测到战斗相关日志信号，确认已进入战斗，继续战斗流程", "SUCCESS")
                                         break
@@ -7011,7 +7033,7 @@ class DarRouteRunner:
                         self._dugulu_ocr_failed = True
             
             # 创建配置
-            cycle_ov = self._rotation_capture_cycle_tiers_for_current_battle(wild_profile=profile)
+            cycle_ov = self._capsule_cycle_tiers_for_current_battle()
             config = BattleConfig(
                 mode=BattleMode.WILD,
                 use_foreground=use_foreground,
@@ -8841,8 +8863,7 @@ class DarRouteRunner:
         
         self._emit("🔍 [敌方信息监控] 开始监控流程", "INFO")
         
-        # 1. 等待第一个 /resource/fightResource/skill/ 出现（作为检测深蓝色探针的开始标志）
-        skill_token = "/resource/fightResource/skill/"
+        # 1. 等待第一个 fightResource/skill 出现（作为检测深蓝色探针的开始标志）
         start_cursor = kernel_cursor()
         skill_detected = False
         skill_detected_time = None
@@ -8854,7 +8875,7 @@ class DarRouteRunner:
             lines = fetch_kernel_since(start_cursor)
             if isinstance(lines, list):
                 for line in lines:
-                    if skill_token in str(line):
+                    if line_matches(RE_FIGHT_SKILL_DIR, str(line)):
                         skill_detected = True
                         skill_detected_time = time.time()
                         self._emit("✅ [敌方信息监控] 检测到 /resource/fightResource/skill/ 信号", "SUCCESS")
@@ -8877,7 +8898,7 @@ class DarRouteRunner:
                     lines = fetch_kernel_since(start_cursor)
                     if isinstance(lines, list):
                         for line in lines:
-                            if skill_token in str(line):
+                            if line_matches(RE_FIGHT_SKILL_DIR, str(line)):
                                 skill_detected = True
                                 skill_detected_time = time.time()
                                 self._emit("✅ [敌方信息监控] 检测到 /resource/fightResource/skill/ 信号", "SUCCESS")
@@ -8973,7 +8994,6 @@ class DarRouteRunner:
                 saved_ocr_images = False
                 battle_num = self._battle_count + 1
                 
-                petitem_token = "/resource/item/petItem/icon/"
                 petitem_cursor = kernel_cursor()
                 petitem_detected = False
                 
@@ -8999,7 +9019,7 @@ class DarRouteRunner:
                         lines = fetch_kernel_since(petitem_cursor)
                         if isinstance(lines, list):
                             for line in lines:
-                                if petitem_token in str(line):
+                                if line_matches(RE_PETITEM, str(line)):
                                     petitem_detected = True
                                     self._emit("✅ [敌方信息监控] 检测到PetItem信号，停止OCR扫描", "SUCCESS")
                                     break
@@ -9074,7 +9094,7 @@ class DarRouteRunner:
                     lines = fetch_kernel_since(petitem_cursor)
                     if isinstance(lines, list):
                         for line in lines:
-                            if petitem_token in str(line):
+                            if line_matches(RE_PETITEM, str(line)):
                                 self._emit("✅ [敌方信息监控] 检测到PetItem信号", "SUCCESS")
                                 if self._last_enemy_level is not None or self._last_enemy_hp is not None:
                                     self._emit(f"📊 [敌方信息监控] 最终结果 - 等级: {self._last_enemy_level}, 血量: {self._last_enemy_hp}", "INFO")
@@ -9946,8 +9966,7 @@ class DarRouteRunner:
             收集到的pet IDs集合，如果失败返回None
         """
         pet_ids = []
-        skill_token = "/resource/fightResource/skill/swf/"
-        
+
         self._emit("📋 开始从已存在的日志中收集fightResource/pet/swf/的pet IDs（从第一个pet/swf开始向下扫所有行直到skill）...", "INFO")
         
         # 如果提供了current_lines，从这些行中搜索
@@ -9959,7 +9978,7 @@ class DarRouteRunner:
             # 第一步：从start_index开始，找到第一个包含pet/swf的行（不要求是166）
             for i in range(start_index, max_lines):
                 line_str = str(current_lines[i])
-                matches = list(self._FIGHT_PET_SWF_RE.finditer(line_str))
+                matches = list(finditer_kernel_line(RE_FIGHT_PET_ID, line_str))
                 if matches:
                     # 找到第一个pet/swf，从这一行开始收集
                     start_collecting_index = i
@@ -9972,12 +9991,12 @@ class DarRouteRunner:
                     line_str = str(current_lines[i])
                     
                     # 检查是否出现skill（停止收集）
-                    if skill_token in line_str:
+                    if line_matches(RE_FIGHT_SKILL_SWF, line_str):
                         self._emit("✅ 检测到skill信号，停止收集pet IDs", "INFO")
                         break
                     
                     # 检查这一行是否包含pet/swf（一行可能包含多个pet ID）
-                    matches = list(self._FIGHT_PET_SWF_RE.finditer(line_str))
+                    matches = list(finditer_kernel_line(RE_FIGHT_PET_ID, line_str))
                     if matches:
                         for m in matches:
                             try:
@@ -10027,7 +10046,6 @@ class DarRouteRunner:
         pet_ids = set()
         last_log_time = 0.0
         found_fightresources_trigger = False  # 是否找到了/resource/pet/swf/或/resource/pet/sound/
-        skill_token = "/resource/fightResource/skill/swf/"
 
         while time.time() - t0 < timeout:
             if stop_event.is_set() or getattr(self.bot, "stop_current", False):
@@ -10042,19 +10060,19 @@ class DarRouteRunner:
                 
                 # 检查是否出现了/resource/pet/swf/或/resource/pet/sound/（fightresources触发）
                 if not found_fightresources_trigger:
-                    if self._PET_SWF_RE.search(line_str) or self._PET_SOUND_RE.search(line_str):
+                    if line_matches(RE_PET_SWF, line_str) or line_matches(RE_PET_SOUND, line_str):
                         found_fightresources_trigger = True
                         self._emit("✅ 检测到fightresources触发（/resource/pet/swf/或/resource/pet/sound/），开始收集fightResource/pet/swf/", "INFO")
                 
                 # 如果已经找到fightresources触发，开始收集fightResource/pet/swf/
                 if found_fightresources_trigger:
                     # 检查是否出现skill（停止收集）
-                    if skill_token in line_str:
+                    if line_matches(RE_FIGHT_SKILL_SWF, line_str):
                         self._emit("✅ 检测到skill信号，停止收集pet IDs", "INFO")
                         break
                     
                     # 收集fightResource/pet/swf/
-                    for m in self._FIGHT_PET_SWF_RE.finditer(line_str):
+                    for m in finditer_kernel_line(RE_FIGHT_PET_ID, line_str):
                         try:
                             pid = int(m.group(1))
                             if pid not in pet_ids:
@@ -10161,40 +10179,27 @@ class DarRouteRunner:
             beijing_tz = timezone(beijing_offset)
             return utc_now.astimezone(beijing_tz)
 
-    def _rotation_capture_cycle_tiers_for_current_battle(
-        self,
-        *,
-        wild_profile: Optional[WildCaptureProfile] = None,
-        nieo_capture: bool = False,
-    ) -> Optional[Tuple[str, ...]]:
+    def set_non_mantis_use_super_capsule(self, value: bool) -> None:
+        """Dashboard：勾选则非螳螂对战用超级单档，否则特级单档（敌方 122 仍走 legacy 六档）。"""
+        self._non_mantis_use_super_capsule = bool(value)
+
+    def _capsule_cycle_tiers_for_current_battle(self) -> Optional[Tuple[str, ...]]:
         """
-        轮换模式且勾选「仅特级」或「超特超超特超」时，为双塔 / 尼奥捕捉战覆盖胶囊循环。
-        「仅特级」优先于六循环。若已识别敌方 pet ID 且含螳螂(122)，不覆盖（沿用默认循环）。
+        敌方含螳螂(122)：沿用 legacy 六档循环（无敌首回合逻辑不变）。
+        其余：特级或超级单档（由 _non_mantis_use_super_capsule 决定）。
         """
-        if not self._is_rotation_mode:
-            return None
-        if not (
-            self._rotation_capture_special_only
-            or self._rotation_capture_ststss_cycle
-        ):
-            return None
-        if wild_profile is not None:
-            if "双塔" not in (wild_profile.name or "").lower():
-                return None
-        elif not nieo_capture:
-            return None
         ids = getattr(self, "_immediate_collected_pet_ids", None)
         if ids is None:
-            pet_set = set()
+            pet_set: set = set()
         elif isinstance(ids, set):
             pet_set = set(ids)
         else:
             pet_set = set(ids)
         if MANTIS_PET_ID in pet_set:
-            return None
-        if self._rotation_capture_special_only:
-            return ROTATION_CAPTURE_CYCLE_SPECIAL_ONLY
-        return ROTATION_CAPTURE_CYCLE_STSTSS
+            return LEGACY_CAPSULE_CYCLE_TIERS
+        if self._non_mantis_use_super_capsule:
+            return ("super",)
+        return ("special",)
 
     def _capsule_cycle_log_fields(self) -> Tuple[str, str]:
         """
@@ -10215,11 +10220,13 @@ class DarRouteRunner:
         except Exception:
             return ("custom", "")
 
-        if t == ROTATION_CAPTURE_CYCLE_SPECIAL_ONLY:
-            return ("special_only", ",".join(t))
-        if t == ROTATION_CAPTURE_CYCLE_STSTSS:
-            return ("ststss", ",".join(t))
-        return ("custom", ",".join(t))
+        if t == LEGACY_CAPSULE_CYCLE_TIERS:
+            return ("mantis_legacy", ",".join(t))
+        if t == ("special",):
+            return ("special_only", "special")
+        if t == ("super",):
+            return ("super_only", "super")
+        return ("custom", ",".join(str(x) for x in t))
     
     def _check_rotation_switch_time(self) -> bool:
         """
@@ -10592,9 +10599,8 @@ class DarRouteRunner:
             if isinstance(lines, list):
                 for line in lines:
                     line_str = str(line)
-                    # ✅ 检查是否包含/login/Login.swf（支持带参数的情况，如 /login/Login.swf?g4fphljs）
-                    if self.TOKEN_LOGIN_SWF in line_str:
-                        self._emit(f"⚠️ 检测到/login/Login.swf信号（断线重连）", "WARN")
+                    if self._kernel_line_indicates_login_swf(line_str):
+                        self._emit(f"⚠️ 检测到 Login.swf 内核信号（断线重连）", "WARN")
                         return True, new_cursor
             return False, new_cursor
         except Exception as e:
@@ -10813,7 +10819,9 @@ class DarRouteRunner:
         self._1and1_monitoring_stop_event = monitor_thread_stop
         self._emit("✅ 常态1AND1监控线程已启动", "INFO")
     
-    def _check_last_map_and_newnpc(self, map_id: int, timeout_s: float = 10.0) -> Tuple[Optional[int], bool]:
+    def _check_last_map_and_newnpc(
+        self, map_id: int, timeout_s: float = 10.0, initial_pause_s: float = 2.0
+    ) -> Tuple[Optional[int], bool]:
         """
         检测最后的map序号和newNPC信号
         
@@ -10825,6 +10833,7 @@ class DarRouteRunner:
         Args:
             map_id: 要检测的map ID（例如315）
             timeout_s: 超时时间（秒，未使用，保留用于兼容）
+            initial_pause_s: 扫描前等待日志落盘的时间
         
         Returns:
             (检测到的map_id, 是否检测到newNPC) - 如果检测到map 315且上面有newNPC，返回(315, True)
@@ -10835,7 +10844,7 @@ class DarRouteRunner:
             self._emit(f"🔍 [地图检测] 从已出现的日志中扫描：找到第一个NewNPC，然后在其上方找到第一个map序号（目标map={map_id}）", "INFO")
             
             # 等待一段时间，确保to脚本执行后的日志都被收集
-            time.sleep(2.0)
+            time.sleep(initial_pause_s)
             
             # 获取所有历史日志（从cursor=0开始）
             all_lines = fetch_kernel_since(0)
@@ -10850,7 +10859,7 @@ class DarRouteRunner:
             newnpc_line_idx = -1
             for i in range(len(all_lines) - 1, -1, -1):  # 从最新到最旧
                 line_str = str(all_lines[i])
-                if self.KEY_NEWNPC_MULTI in line_str:
+                if line_matches(RE_NEWNPC_MULTI, line_str):
                     newnpc_line_idx = i
                     self._emit(f"✅ [地图检测] 找到第一个NewNPC信号（行索引：{i}）", "SUCCESS")
                     break
@@ -10863,14 +10872,11 @@ class DarRouteRunner:
             found_map_id = None
             for i in range(newnpc_line_idx - 1, -1, -1):  # 从NewNPC的上一行开始，向前扫描
                 line_str = str(all_lines[i])
-                m = self._MAP_SWF_RE.search(line_str)
-                if m:
-                    try:
-                        found_map_id = int(m.group(1))
-                        self._emit(f"✅ [地图检测] 在NewNPC上方找到map ID: {found_map_id}（行索引：{i}）", "SUCCESS")
-                        break
-                    except Exception:
-                        continue
+                mid = first_map_id_in_line(line_str)
+                if mid is not None:
+                    found_map_id = mid
+                    self._emit(f"✅ [地图检测] 在NewNPC上方找到map ID: {found_map_id}（行索引：{i}）", "SUCCESS")
+                    break
             
             if found_map_id is None:
                 self._emit("⚠️ [地图检测] 在NewNPC上方未找到任何map信号", "WARN")
@@ -10889,7 +10895,292 @@ class DarRouteRunner:
             import traceback
             self._emit(f"📋 异常详情: {traceback.format_exc()}", "ERROR")
             return (None, False)
-    
+
+    # ---------- 刷新 UI 登录管线（替代 fix_script/登录.json） ----------
+
+    def _mark_refresh_pipeline_start(self) -> None:
+        self._refresh_pipeline_start_perf = time.perf_counter()
+
+    def _refresh_trinity_clicks(self, use_foreground: bool, log_prefix: str = "") -> bool:
+        """刷新.设置 → 刷新.刷新 → 刷新.保存（无「确认」）。三步一律前台点击，与是否后台运行无关。"""
+        lp = f"{log_prefix} " if log_prefix else ""
+        seq = ("刷新.设置", "刷新.刷新", "刷新.保存")
+        for key in seq:
+            self._emit(f"🖱️ [{lp}刷新UI] 点击 {key}（前台）", "INFO")
+            try:
+                self._click_region(key, True)
+            except KeyError:
+                self._emit(f"❌ [{lp}刷新UI] 缺少 region：{key}", "ERROR")
+                return False
+            time.sleep(0.2)
+        return True
+
+    def _click_shield_preferred(self, use_foreground: bool, log_tag: str = "") -> None:
+        for key in ("刷新.屏蔽", "系统.屏蔽"):
+            try:
+                self._click_region(key, use_foreground)
+                self._emit(f"🖱️ [{log_tag}] 已点击 {key}", "INFO")
+                return
+            except KeyError:
+                continue
+        self._emit(f"⚠️ [{log_tag}] 未找到 刷新.屏蔽 / 系统.屏蔽", "WARN")
+
+    def _beijing_is_day_shield_window(self) -> bool:
+        """北京时间 06:00–17:55（含）：等待 1s 后点屏蔽。"""
+        t = self._get_beijing_time()
+        minutes = t.hour * 60 + t.minute + t.second / 60.0
+        return 360.0 <= minutes <= (17 * 60 + 55)
+
+    def _shield_schedule_after_map_signal(
+        self,
+        use_foreground: bool,
+        stop_event: threading.Event,
+        log_tag: str,
+    ) -> bool:
+        """
+        出现 map 后：
+        - 白天 06:00–17:55：等 1s → 单击屏蔽（刷新.屏蔽 优先）
+        - 夜间：1.5s 内若出现 1AND1 则点确认至消失 → 再单击屏蔽
+        测量起点为 _refresh_pipeline_start_perf / _pinnacle_round_refresh_start（非首次 map 时刻）。
+        """
+        if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+            return False
+        if "巅峰" in log_tag:
+            t0_meas = getattr(self, "_pinnacle_round_refresh_start", None)
+        else:
+            t0_meas = getattr(self, "_refresh_pipeline_start_perf", None)
+        if self._beijing_is_day_shield_window():
+            self._emit(f"☀️ [{log_tag}] 白天窗口：等待 1s 后单击屏蔽", "INFO")
+            self._sleep_abortable(stop_event, 1.0)
+            self._click_shield_preferred(use_foreground, log_tag)
+        else:
+            self._emit(f"🌙 [{log_tag}] 夜间窗口：1.5s 内探测 1AND1，处理后单击屏蔽", "INFO")
+            deadline = time.time() + 1.5
+            seen = False
+            while time.time() < deadline:
+                if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                    return False
+                if self._check_1and1_probes():
+                    seen = True
+                    break
+                self._sleep_abortable(stop_event, 0.05, tick=0.05)
+            if seen:
+                elapsed = (
+                    (time.perf_counter() - t0_meas) if t0_meas is not None else None
+                )
+                if elapsed is not None:
+                    self._emit(
+                        f"📊 [{log_tag}] 刷新起点 -> 1AND1 首次: {elapsed:.3f}s",
+                        "INFO",
+                    )
+                while not stop_event.is_set() and not getattr(
+                    self.bot, "stop_current", False
+                ):
+                    if not self._check_1and1_probes():
+                        self._emit(f"✅ [{log_tag}] 1AND1 已消失", "INFO")
+                        break
+                    clicked = False
+                    for key in (
+                        "对话框.普通确认按钮",
+                        "对话框.普通确认",
+                        "刷新.普通确认",
+                    ):
+                        try:
+                            self._click_region(key, use_foreground)
+                            clicked = True
+                            break
+                        except KeyError:
+                            continue
+                    if not clicked:
+                        break
+                    self._sleep_abortable(stop_event, 0.05, tick=0.05)
+            self._click_shield_preferred(use_foreground, log_tag)
+        return True
+
+    def _click_three_keys_until_map_refresh(
+        self,
+        use_foreground: bool,
+        stop_event: threading.Event,
+        log_tag: str,
+    ) -> bool:
+        """刷新.服务器 → 普通确认 → 刷新.登录 循环，直到 kernel 出现 map。"""
+        from core.logger import fetch_kernel_since, kernel_cursor
+
+        click_sequence = [
+            ("刷新.服务器",),
+            ("刷新.普通确认", "对话框.普通确认按钮", "对话框.普通确认"),
+            ("刷新.登录",),
+        ]
+        seq_idx = 0
+        cursor = kernel_cursor()
+        last_click = 0.0
+        interval = getattr(self, "PINNACLE_LOOP_CLICK_INTERVAL_SEC", 0.25)
+        poll = getattr(self, "PINNACLE_LOOP_SLEEP_SEC", 0.05)
+        while True:
+            if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                return False
+            now = time.time()
+            if now - last_click >= interval:
+                current_keys = click_sequence[seq_idx]
+                clicked = False
+                for key in current_keys:
+                    try:
+                        self._click_region(key, use_foreground)
+                        clicked = True
+                        break
+                    except KeyError:
+                        continue
+                if not clicked and current_keys:
+                    need = current_keys[0]
+                    if need.startswith("刷新."):
+                        self._emit(f"❌ [{log_tag}] 缺少 region：{need}", "ERROR")
+                        return False
+                seq_idx = (seq_idx + 1) % len(click_sequence)
+                last_click = now
+            lines = fetch_kernel_since(cursor)
+            if isinstance(lines, list):
+                for line in lines:
+                    if first_map_id_in_line(str(line)) is not None:
+                        self._emit(f"✅ [{log_tag}] 已检测到 map 信号", "SUCCESS")
+                        return True
+            cursor = kernel_cursor()
+            time.sleep(poll)
+
+    def _post_login_swf_programmatic_clicks(
+        self, use_foreground: bool, stop_event: threading.Event, log_tag: str
+    ) -> bool:
+        """Login.swf 后：四下单击 刷新.开始(0.05s) → 快速双击 刷新.登录 → 三键至 map。"""
+        self._emit(f"🖱️ [{log_tag}] 连点四下 刷新.开始（间隔 0.05s）", "INFO")
+        for _ in range(4):
+            if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                return False
+            try:
+                self._click_region("刷新.开始", use_foreground)
+            except KeyError:
+                self._emit(f"❌ [{log_tag}] 缺少 region：刷新.开始", "ERROR")
+                return False
+            self._sleep_abortable(stop_event, 0.05, tick=0.05)
+        self._emit(f"🖱️ [{log_tag}] 快速双击 刷新.登录", "INFO")
+        try:
+            self._click_region_twice("刷新.登录", use_foreground, gap=0.08)
+        except KeyError:
+            self._emit(f"❌ [{log_tag}] 缺少 region：刷新.登录", "ERROR")
+            return False
+        return self._click_three_keys_until_map_refresh(
+            use_foreground, stop_event, log_tag
+        )
+
+    def _gate_map500001_after_refresh_base(
+        self, use_foreground: bool, stop_event: threading.Event, log_tag: str
+    ) -> bool:
+        """
+        点击 刷新.基地 后：只认「基地点击之后」的内核新行；
+        若最后一条 map# ≠ 500001 则失败；须同时出现 map=500001 与 NewNPC 后双击普通确认。
+        不得用全缓冲尾扫（否则会误用登录前残留的 map/newnpc）。
+        """
+        from core.logger import fetch_kernel_since, kernel_cursor
+
+        # 基地已由调用方点过：从此刻 cursor 起只扫后续日志，避免 stale map / newnpc
+        gate_start_cursor = kernel_cursor()
+        time.sleep(0.35)
+
+        def _segment_last_map_and_npc() -> Tuple[Optional[int], bool, int]:
+            seg = fetch_kernel_since(gate_start_cursor)
+            if not isinstance(seg, list):
+                return None, False, 0
+            last_map: Optional[int] = None
+            for line in reversed(seg):
+                mid = first_map_id_in_line(str(line))
+                if mid is not None:
+                    last_map = mid
+                    break
+            has_npc = any(line_matches(RE_NEWNPC_MULTI, str(ln)) for ln in seg)
+            return last_map, has_npc, len(seg)
+
+        def _double_confirm() -> bool:
+            self._emit(f"🖱️ [{log_tag}] 双击普通确认（基地后进图）", "INFO")
+            for _ in range(2):
+                clicked = False
+                for key in (
+                    "对话框.普通确认按钮",
+                    "对话框.普通确认",
+                    "刷新.普通确认",
+                ):
+                    try:
+                        self._click_region(key, use_foreground)
+                        clicked = True
+                        break
+                    except KeyError:
+                        continue
+                if not clicked:
+                    self._emit(f"⚠️ [{log_tag}] 缺少普通确认 region", "WARN")
+                    return False
+                time.sleep(0.12)
+            return True
+
+        self._emit(
+            f"⏳ [{log_tag}] 缓冲：等待基地后内核 map={self.MAP_ID_AFTER_LOGIN} 且 newNPC…",
+            "INFO",
+        )
+        t0 = time.time()
+        while time.time() - t0 < 32.0:
+            if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                return False
+            last_map, has_npc, nlines = _segment_last_map_and_npc()
+            if last_map is not None and last_map != self.MAP_ID_AFTER_LOGIN:
+                self._emit(
+                    f"⚠️ [{log_tag}] 基地后日志中最后 map={last_map}，期望 {self.MAP_ID_AFTER_LOGIN}，将重新刷新",
+                    "WARN",
+                )
+                return False
+            if last_map == self.MAP_ID_AFTER_LOGIN and has_npc:
+                self._emit(
+                    f"✅ [{log_tag}] 基地后进图：map={last_map} + newNPC（新日志 {nlines} 行）",
+                    "SUCCESS",
+                )
+                if not _double_confirm():
+                    return False
+                time.sleep(0.25)
+                self._emit(
+                    f"✅ [{log_tag}] 门控完成，可打开精灵背包等后续步骤",
+                    "INFO",
+                )
+                return True
+            self._sleep_abortable(stop_event, 0.12, tick=0.12)
+        self._emit(
+            f"⚠️ [{log_tag}] 基地后 map={self.MAP_ID_AFTER_LOGIN} / newNPC 缓冲超时（32s）",
+            "WARN",
+        )
+        return False
+
+    def _run_full_refresh_login_pipeline(
+        self,
+        use_foreground: bool,
+        stop_event: threading.Event,
+        log_prefix: str,
+        *,
+        include_base_and_map_gate: bool = True,
+    ) -> bool:
+        """Login.swf 之后：程序化点击 → 屏蔽策略 →（可选）基地 → map500001 门控。"""
+        tag = log_prefix or "刷新登录"
+        if not self._post_login_swf_programmatic_clicks(
+            use_foreground, stop_event, tag
+        ):
+            return False
+        if not self._shield_schedule_after_map_signal(use_foreground, stop_event, tag):
+            return False
+        if not include_base_and_map_gate:
+            return True
+        self._emit(f"🖱️ [{tag}] 点击 刷新.基地", "INFO")
+        try:
+            self._click_region("刷新.基地", use_foreground)
+        except KeyError:
+            self._emit(f"❌ [{tag}] 缺少 region：刷新.基地", "ERROR")
+            return False
+        return self._gate_map500001_after_refresh_base(
+            use_foreground, stop_event, tag
+        )
+
     def _execute_refresh_flow_and_wait_login(self, profile: WildCaptureProfile, use_foreground: bool, stop_event: threading.Event, retry_count: int = 0, max_retries: Optional[int] = None) -> None:
         """
         执行刷新流程，然后等待login信号后重新执行脚本（重试调用）
@@ -10972,11 +11263,10 @@ class DarRouteRunner:
         执行标准刷新重连流程（统一函数，供地图不一致、8秒/2倍时间重连和重连脚本内部重试使用）
         
         流程：
-        1. 点击client左上角+5位置
-        2. 按向下箭头键
-        3. 按Enter键
-        4. 等待/login/Login.swf信号
-        5. 执行重连脚本（根据模式选择）
+        1. 点击 刷新.设置 → 刷新.刷新 → 刷新.保存（计时起点在第一步前）
+        2. 等待 /login/Login.swf
+        3. 程序化登录（连点/三键/屏蔽/基地/map500001 门控）
+        4. 执行重连脚本（不再跑 fix_script/登录.json）
         
         Args:
             profile: 当前捕捉配置
@@ -11026,76 +11316,32 @@ class DarRouteRunner:
                     window_manager.maximize_window()
                 except Exception:
                     pass
-                time.sleep(0.6)
                 try:
                     win32gui.SetForegroundWindow(window_manager.hwnd)
                 except Exception:
                     pass
             
-            # ✅ 普通重连（含稀有精灵模式与尼奥模式）：最大化后先执行预刷新（点击+5、两次↓、一次Enter），不等待login
-            #    捕捉验证四触发的重连（is_capture_verify_four）不预刷新
-            should_pre_refresh = profile is not None and not is_capture_verify_four
-            if should_pre_refresh:
-                self._emit(f"🔄 [{reason}] 普通重连：执行预刷新（点击+5、两次↓、一次Enter）", "INFO")
-                if not self._login_pre_refresh(use_foreground, stop_event, reason):
-                    self._emit(f"⚠️ [{reason}] 预刷新点击失败，等待2秒后重试刷新流程（第{retry_count + 1}次）", "WARN")
-                    time.sleep(2.0)
-                    self._execute_refresh_reconnect(
-                        profile, use_foreground, stop_event,
-                        is_capture_verify_four=is_capture_verify_four,
-                        reason=reason,
-                        retry_count=retry_count + 1,
-                        max_retries=max_retries,
-                        is_retry=True
-                    )
-                    return
-            
-            # 1. 点击client左上角原始坐标x y各自+5
-            self._emit(f"🖱️ [{reason}] 点击client左上角+5位置（屏幕坐标）", "INFO")
-            if not window_manager.click_client_origin_offset(offset_x=5, offset_y=5):
-                self._emit(f"⚠️ [{reason}] 点击client左上角失败，等待2秒后重试刷新流程（第{retry_count + 1}次）", "WARN")
+            # ✅ 新版：刷新.设置 → 刷新.刷新 → 刷新.保存（无确认）；计时起点在第一次点击前
+            self._mark_refresh_pipeline_start()
+            self._emit(f"🖱️ [{reason}] 刷新 UI：设置 → 刷新 → 保存", "INFO")
+            if not self._refresh_trinity_clicks(use_foreground, log_prefix=reason):
+                self._emit(f"⚠️ [{reason}] 刷新 UI 点击失败，2s 后重试", "WARN")
                 time.sleep(2.0)
                 self._execute_refresh_reconnect(
-                    profile, use_foreground, stop_event,
+                    profile,
+                    use_foreground,
+                    stop_event,
                     is_capture_verify_four=is_capture_verify_four,
                     reason=reason,
                     retry_count=retry_count + 1,
                     max_retries=max_retries,
-                    is_retry=True
+                    is_retry=True,
                 )
                 return
-            
-            time.sleep(0.5)
-            
-            # 2. 按向下箭头⬇
-            self._emit(f"⌨️ [{reason}] 按下向下箭头键", "INFO")
-            if use_foreground:
-                import win32api
-                import win32con
-                win32api.keybd_event(win32con.VK_DOWN, 0, 0, 0)
-                time.sleep(0.1)
-                win32api.keybd_event(win32con.VK_DOWN, 0, win32con.KEYEVENTF_KEYUP, 0)
-            else:
-                window_manager.send_key_arrow_down()
-            
-            time.sleep(0.5)
-            
-            # 3. 按enter
-            self._emit(f"⌨️ [{reason}] 按下Enter键", "INFO")
-            if use_foreground:
-                import win32api
-                import win32con
-                win32api.keybd_event(win32con.VK_RETURN, 0, 0, 0)
-                time.sleep(0.1)
-                win32api.keybd_event(win32con.VK_RETURN, 0, win32con.KEYEVENTF_KEYUP, 0)
-            else:
-                window_manager.send_key_enter()
-            
-            self._emit(f"✅ [{reason}] 刷新操作完成，等待client重启", "SUCCESS")
-            time.sleep(2.0)  # 等待client重启
+            time.sleep(0.45)
             
             # 4. 等待login信号（统一10秒超时）
-            self._emit(f"⏳ [{reason}] 等待/login/Login.swf信号（10秒超时）...", "INFO")
+            self._emit(f"⏳ [{reason}] 等待 Login.swf 内核行（旧 /login/ 与新 path= 格式，10s）...", "INFO")
             from core.logger import fetch_kernel_since, kernel_cursor
             
             # ✅ 在开始等待前，先获取一次cursor，确保从刷新操作后的日志开始检测
@@ -11116,9 +11362,8 @@ class DarRouteRunner:
                 lines = fetch_kernel_since(start_cursor)
                 if isinstance(lines, list):
                     for line in lines:
-                        # ✅ 使用常量TOKEN_LOGIN_SWF，与重连脚本刷新流程保持一致
-                        if self.TOKEN_LOGIN_SWF in str(line):
-                            self._emit(f"✅ [{reason}] 检测到/login/Login.swf信号，执行重连脚本", "SUCCESS")
+                        if self._kernel_line_indicates_login_swf(line):
+                            self._emit(f"✅ [{reason}] 检测到 Login.swf 内核行，执行重连脚本", "SUCCESS")
                             login_detected = True
                             break
                 
@@ -11143,6 +11388,25 @@ class DarRouteRunner:
                     reconnect_stop_event = threading.Event()
                     actual_retry_count = 0
                     actual_max_retries = None
+                
+                if not self._run_full_refresh_login_pipeline(
+                    use_foreground,
+                    reconnect_stop_event,
+                    reason,
+                    include_base_and_map_gate=True,
+                ):
+                    self._emit(f"⚠️ [{reason}] 程序化登录/基地门控失败，重新刷新", "WARN")
+                    self._execute_refresh_reconnect(
+                        profile,
+                        use_foreground,
+                        stop_event,
+                        is_capture_verify_four=is_capture_verify_four,
+                        reason=reason,
+                        retry_count=retry_count + 1,
+                        max_retries=max_retries,
+                        is_retry=True,
+                    )
+                    return
                 
                 # ✅ 根据当前模式选择正确的重连方法（优先使用_current_mode，如果没有则使用profile.name）
                 current_mode = getattr(self, '_current_mode', None)
@@ -11314,7 +11578,7 @@ class DarRouteRunner:
         self._reconnect_scripts_executing = True
         
         try:
-            self._emit(f"🔄 [重连脚本-尼奥] 开始执行：登录.json + to尼奥.json", "SYSTEM")
+            self._emit(f"🔄 [重连脚本-尼奥] 开始执行：程序化登录已完成 → to尼奥.json", "SYSTEM")
             
             # 检查是否有daily_runner
             if not hasattr(self.bot, "daily_runner"):
@@ -11324,15 +11588,7 @@ class DarRouteRunner:
             daily_runner = self.bot.daily_runner
             bg_mode = not use_foreground
             
-            # ✅ 注意：刷新操作（左上角+5、↓、Enter、等待login）已由 _execute_refresh_reconnect 统一处理
-            # 这里只执行登录脚本和to脚本
-            
-            # 1. 执行登录.json
-            if daily_runner.run_single_script("登录", bg_mode=bg_mode):
-                self._emit("✅ [重连脚本-尼奥] 登录.json执行完成", "SUCCESS")
-            else:
-                self._emit("⚠️ [重连脚本-尼奥] 登录.json执行失败，继续执行后续步骤", "WARN")
-            
+            # 登录已由 _execute_refresh_reconnect 内程序化流程完成
             # ✅ 1.4. 登录后检查向上的第一个map是否为500001（与检测315逻辑相同），否则刷新重连
             login_map_id, login_has_newNPC = self._check_last_map_and_newnpc(self.MAP_ID_AFTER_LOGIN, timeout_s=10.0)
             if login_map_id != self.MAP_ID_AFTER_LOGIN or not login_has_newNPC:
@@ -11505,7 +11761,7 @@ class DarRouteRunner:
         self._reconnect_scripts_executing = True
 
         try:
-            self._emit(f"🔄 [重连脚本-{mode_name}] 开始执行：登录.json + {to_script_name}.json", "SYSTEM")
+            self._emit(f"🔄 [重连脚本-{mode_name}] 开始执行：程序化登录已完成 → {to_script_name}.json", "SYSTEM")
 
             if not hasattr(self.bot, "daily_runner"):
                 self._emit(f"⚠️ [重连脚本-{mode_name}] bot.daily_runner不存在，无法执行脚本", "WARN")
@@ -11513,11 +11769,6 @@ class DarRouteRunner:
 
             daily_runner = self.bot.daily_runner
             bg_mode = not use_foreground
-
-            if daily_runner.run_single_script("登录", bg_mode=bg_mode):
-                self._emit(f"✅ [重连脚本-{mode_name}] 登录.json执行完成", "SUCCESS")
-            else:
-                self._emit(f"⚠️ [重连脚本-{mode_name}] 登录.json执行失败，继续执行后续步骤", "WARN")
 
             login_map_id, login_has_newNPC = self._check_last_map_and_newnpc(self.MAP_ID_AFTER_LOGIN, timeout_s=10.0)
             if login_map_id != self.MAP_ID_AFTER_LOGIN or not login_has_newNPC:
@@ -11634,7 +11885,7 @@ class DarRouteRunner:
                 self._emit(f"⚠️ [重连脚本] 无法确定to脚本名称（profile={profile.name}），跳过", "WARN")
                 return
             
-            self._emit(f"🔄 [重连脚本] 开始执行：登录.json + {to_script_name}.json", "SYSTEM")
+            self._emit(f"🔄 [重连脚本] 开始执行：程序化登录已完成 → {to_script_name}.json", "SYSTEM")
             
             # 检查是否有daily_runner
             if not hasattr(self.bot, "daily_runner"):
@@ -11644,12 +11895,7 @@ class DarRouteRunner:
             daily_runner = self.bot.daily_runner
             bg_mode = not use_foreground
             
-            # 1. 执行登录.json
-            if daily_runner.run_single_script("登录", bg_mode=bg_mode):
-                self._emit("✅ [重连脚本] 登录.json执行完成", "SUCCESS")
-            else:
-                self._emit("⚠️ [重连脚本] 登录.json执行失败，继续执行后续步骤", "WARN")
-            
+            # 登录已由 _execute_refresh_reconnect 内程序化流程替代 fix_script/登录.json
             # ✅ 1.4. 登录后检查向上的第一个map是否为500001（与检测315逻辑相同），否则刷新重连
             login_map_id, login_has_newNPC = self._check_last_map_and_newnpc(self.MAP_ID_AFTER_LOGIN, timeout_s=10.0)
             if login_map_id != self.MAP_ID_AFTER_LOGIN or not login_has_newNPC:
@@ -12005,7 +12251,7 @@ class DarRouteRunner:
         Returns: True=已移动/已触发对战, False=未移动
         """
         try:
-            if wait_kernel_contains("/resource/item/petItem/icon/", timeout=timeout, poll=0.05):
+            if wait_kernel_contains(RE_PETITEM, timeout=timeout, poll=0.05):
                 return True
         except Exception:
             pass
@@ -12430,7 +12676,7 @@ class DarRouteRunner:
 
                 for idx, line in enumerate(lines):
                     s = str(line)
-                    if TOKEN_PETITEM in s:
+                    if line_matches(RE_PETITEM, s):
                         collected = self._collect_fight_pet_ids_immediate(
                             stop_event, current_lines=lines, start_index=idx,
                         )
@@ -12439,7 +12685,7 @@ class DarRouteRunner:
                         petitem_already = True
                         battle_found = True
                         break
-                    elif TOKEN_FIGHT_PET in s:
+                    elif line_matches(RE_FIGHT_PET, s):
                         collected = self._collect_fight_pet_ids_immediate(
                             stop_event, current_lines=lines, start_index=idx,
                         )
@@ -12498,6 +12744,7 @@ class DarRouteRunner:
                 action_callback=action_callback,
                 abort_check=lambda: stop_event.is_set() or getattr(self.bot, "stop_current", False),
                 round_timeout_sec=60.0,
+                capsule_cycle_tiers_override=self._capsule_cycle_tiers_for_current_battle(),
             )
 
             # ---------- 4. Stage 2 ----------
@@ -12588,8 +12835,6 @@ class DarRouteRunner:
         stop_event: threading.Event,
         use_foreground: bool,
         is_test_mode: bool = False,  # ✅ 新增参数：是否是测试模式
-        rotation_capture_ststss: bool = False,  # 双塔/尼奥捕捉使用「超特超超特超」胶囊 6 循环（非螳螂）
-        rotation_capture_special_only: bool = False,  # 双塔/尼奥捕捉只使用特级胶囊（优先于六循环）
     ) -> None:
         """
         双塔尼奥轮换模式：根据北京时间自动切换模式（无限循环）
@@ -12604,8 +12849,6 @@ class DarRouteRunner:
         """
         # ✅ 设置轮换模式标志
         self._is_rotation_mode = True
-        self._rotation_capture_ststss_cycle = rotation_capture_ststss
-        self._rotation_capture_special_only = rotation_capture_special_only
         
         # ✅ 初始化轮换模式总统计
         self._rotation_total_stats = {
@@ -12637,16 +12880,6 @@ class DarRouteRunner:
             self._emit("🧪 [轮换模式] 测试模式已启用（固定时间间隔切换）", "SYSTEM")
         else:
             self._emit("🔄 [轮换模式] 正式模式已启用（根据北京时间自动切换）", "SYSTEM")
-        if rotation_capture_special_only:
-            self._emit(
-                "🔄 [轮换模式] 捕捉胶囊：仅使用特级（双塔/尼奥；敌方含螳螂则不使用；优先于六循环）",
-                "SYSTEM",
-            )
-        elif rotation_capture_ststss:
-            self._emit(
-                "🔄 [轮换模式] 捕捉胶囊六循环：超特超超特超（双塔/尼奥；敌方含螳螂则不使用）",
-                "SYSTEM",
-            )
         
         try:
             # ✅ 无限循环，确保轮换可以持续进行
@@ -13244,50 +13477,20 @@ class DarRouteRunner:
                 window_manager.maximize_window()
             except Exception:
                 pass
-            self._sleep_abortable(stop_event, 0.6)
             try:
                 win32gui.SetForegroundWindow(window_manager.hwnd)
             except Exception:
                 pass
         
-        # ✅ 与标准刷新重连一致：先预刷新（点击+5、两次↓、一次Enter），再进入正式流程
-        self._emit("🔄 [轮换模式-步骤1] 执行预刷新（与双塔/尼奥普通重连一致）", "INFO")
-        if not self._login_pre_refresh(use_foreground, stop_event, "轮换模式-步骤1"):
-            self._emit("⚠️ [轮换模式-步骤1] 预刷新点击失败", "WARN")
+        self._mark_refresh_pipeline_start()
+        self._emit("🔄 [轮换模式-步骤1] 刷新 UI：设置 → 刷新 → 保存", "INFO")
+        if not self._refresh_trinity_clicks(use_foreground, log_prefix="轮换模式-步骤1"):
+            self._emit("⚠️ [轮换模式-步骤1] 刷新 UI 点击失败", "WARN")
             return
+        self._sleep_abortable(stop_event, 0.45)
         
-        # 1. 左上角 +5（坐标偏移）
-        self._emit("🖱️ [轮换模式-步骤1] 点击client左上角+5位置", "INFO")
-        if not window_manager.click_client_origin_offset(offset_x=5, offset_y=5):
-            self._emit("⚠️ [轮换模式-步骤1] 点击client左上角失败", "WARN")
-            return
-        self._sleep_abortable(stop_event, 0.5)
-        
-        # 2. ⬇（向下键）+ Enter
-        self._emit("⌨️ [轮换模式-步骤1] 按下向下箭头键", "INFO")
-        if use_foreground:
-            import win32api
-            import win32con
-            win32api.keybd_event(win32con.VK_DOWN, 0, 0, 0)
-            time.sleep(0.1)
-            win32api.keybd_event(win32con.VK_DOWN, 0, win32con.KEYEVENTF_KEYUP, 0)
-        else:
-            window_manager.send_key_arrow_down()
-        self._sleep_abortable(stop_event, 0.5)
-        
-        self._emit("⌨️ [轮换模式-步骤1] 按下Enter键", "INFO")
-        if use_foreground:
-            import win32api
-            import win32con
-            win32api.keybd_event(win32con.VK_RETURN, 0, 0, 0)
-            time.sleep(0.1)
-            win32api.keybd_event(win32con.VK_RETURN, 0, win32con.KEYEVENTF_KEYUP, 0)
-        else:
-            window_manager.send_key_enter()
-        self._sleep_abortable(stop_event, 2.0)
-        
-        # 3. 等待 /login/Login.swf 信号（统一10秒超时）
-        self._emit("⏳ [轮换模式-步骤1] 等待/login/Login.swf信号（10秒超时）...", "INFO")
+        # 等待 /login/Login.swf 信号（统一10秒超时）
+        self._emit("⏳ [轮换模式-步骤1] 等待 Login.swf 内核行（10秒超时）...", "INFO")
         from core.logger import fetch_kernel_since, kernel_cursor
         
         start_cursor = kernel_cursor()
@@ -13303,8 +13506,8 @@ class DarRouteRunner:
             lines = fetch_kernel_since(start_cursor)
             if isinstance(lines, list):
                 for line in lines:
-                    if "/login/Login.swf" in str(line):
-                        self._emit("✅ [轮换模式-步骤1] 检测到/login/Login.swf信号", "SUCCESS")
+                    if self._kernel_line_indicates_login_swf(line):
+                        self._emit("✅ [轮换模式-步骤1] 检测到 Login.swf 内核行", "SUCCESS")
                         login_detected = True
                         break
             
@@ -13314,12 +13517,18 @@ class DarRouteRunner:
             start_cursor = kernel_cursor()
             time.sleep(0.5)
         
-        # 如果检测到login信号，执行登录脚本
         if login_detected:
-                        if hasattr(self.bot, "daily_runner"):
-                            self._emit("📜 [轮换模式-步骤1] 执行登录脚本", "INFO")
-                            self.bot.daily_runner.run_single_script("登录", bg_mode=(not use_foreground))
-                        return
+            if not self._run_full_refresh_login_pipeline(
+                use_foreground,
+                stop_event,
+                "轮换模式-步骤1",
+                include_base_and_map_gate=True,
+            ):
+                self._emit("⚠️ [轮换模式-步骤1] 程序化登录/基地门控失败，重试", "WARN")
+                if getattr(self.bot, "stop_current", False):
+                    return
+                self._rotation_step1_login(use_foreground, stop_event)
+            return
             
         # 等待login信号超时（10秒内未检测到），重复刷新
         self._emit("⚠️ [轮换模式-步骤1] 10秒内未检测到login信号，重复刷新", "WARN")
@@ -13972,20 +14181,18 @@ class DarRouteRunner:
     # ==================== 巅峰对战模式 ====================
     #
     # 一轮流程（_pinnacle_run_once）：
-    #   1) 预刷新：左上角 +5 → ↓（一次）→ Enter，等待 /login/Login.swf
-    #   2) 双击 巅峰对战.系统开始
-    #   3) 双击 巅峰对战.系统登录
-    #   4) 双击登录后，按「服务器 → 普通确认 → 登录」三键中速循环，直到出现 map 信号
-    #   5) 记录 map -> 1AND1 首次出现耗时；若出现1AND1则点普通确认直到消失
-    #   6) 点击一次 系统.屏蔽
-    #   7) 若当前 map ≠ 4：点 巅峰对战.地图 → 巅峰对战.船长室，等 map==4
-    #   8) 执行 fix_script/巅峰对战.json
-    #   9) 等 map == 433
-    #  10) 按 mode 点 巅峰对战.进入排位 / 进入娱乐
-    #  11) 点 巅峰对战.开始对战
-    #  12) 等 PetItem（/resource/item/petItem/icon/）
-    #  13) 点 对战.使用技能一
-    #  14) 回到 1)（刷新 → 下一轮；一回合即终止本局）
+    #   1) 预刷新：左上角 +5 → ↓（一次）→ Enter，等待 /login/Login.swf（计时起点）
+    #   2) 四连击 刷新.开始 → 双击 刷新.登录 → 刷新.* 三键至 map（无阶段间 1.0s sleep）
+    #   3) 白天/夜间 屏蔽策略（非 map 后出现时刻起算）
+    #   4) （无基地/map500001，巅峰直入大厅）
+    #   5) 若当前 map ≠ 4：点 巅峰对战.地图 → 巅峰对战.船长室，等 map==4
+    #   6) 执行 fix_script/巅峰对战.json
+    #   7) 等 map == 433
+    #   8) 按 mode 点 巅峰对战.进入排位 / 进入娱乐
+    #   9) 点 巅峰对战.开始对战
+    #  10) 等 PetItem（/resource/item/petItem/icon/）
+    #  11) 点 对战.使用技能一
+    #  12) 回到 1)（刷新 → 下一轮；一回合即终止本局）
 
     PINNACLE_MODE_RANK = "rank"
     PINNACLE_MODE_FUN = "fun"
@@ -14030,7 +14237,6 @@ class DarRouteRunner:
                     window_manager.maximize_window()
                 except Exception:
                     pass
-                self._sleep_abortable(stop_event, 0.6)
                 try:
                     win32gui.SetForegroundWindow(window_manager.hwnd)
                 except Exception:
@@ -14072,32 +14278,16 @@ class DarRouteRunner:
         if stop_event.is_set() or getattr(self.bot, "stop_current", False):
             return False
 
-        self._emit("🖱️ [巅峰对战] 双击 巅峰对战.系统开始", "INFO")
-        try:
-            self._click_region_twice("巅峰对战.系统开始", use_foreground, gap=0.15)
-        except KeyError:
-            self._emit("❌ [巅峰对战] 缺少 region：巅峰对战.系统开始", "ERROR")
+        self._emit("🖱️ [巅峰对战] 连点四下 刷新.开始 → 双击 刷新.登录 → 三键至 map", "INFO")
+        if not self._post_login_swf_programmatic_clicks(
+            use_foreground, stop_event, "巅峰对战"
+        ):
             return False
-        self._sleep_abortable(stop_event, 1.0)
-
-        self._emit("🖱️ [巅峰对战] 双击 巅峰对战.系统登录", "INFO")
-        try:
-            self._click_region_twice("巅峰对战.系统登录", use_foreground, gap=0.15)
-        except KeyError:
-            self._emit("❌ [巅峰对战] 缺少 region：巅峰对战.系统登录", "ERROR")
+        if not self._shield_schedule_after_map_signal(
+            use_foreground, stop_event, "巅峰对战"
+        ):
             return False
-
-        if not self._pinnacle_click_server_until_map(use_foreground, stop_event):
-            return False
-
-        if not self._pinnacle_handle_1and1_by_time(use_foreground, stop_event):
-            return False
-        self._emit("🖱️ [巅峰对战] 点击 系统.屏蔽（无条件）", "INFO")
-        try:
-            self._click_region("系统.屏蔽", use_foreground)
-        except KeyError:
-            self._emit("⚠️ [巅峰对战] 未找到 系统.屏蔽 region，跳过", "WARN")
-        self._sleep_abortable(stop_event, 0.6)
+        self._sleep_abortable(stop_event, 0.35)
 
         if not self._pinnacle_ensure_lobby_map4(use_foreground, stop_event):
             return False
@@ -14160,6 +14350,7 @@ class DarRouteRunner:
         from core.logger import fetch_kernel_since, kernel_cursor
 
         while not stop_event.is_set() and not getattr(self.bot, "stop_current", False):
+            self._pinnacle_round_refresh_start = time.perf_counter()
             self._emit("🔄 [巅峰对战] 预刷新：+5 → ↓ → Enter", "INFO")
             if not window_manager.click_client_origin_offset(offset_x=5, offset_y=5):
                 self._emit("⚠️ [巅峰对战] 左上角点击失败，重试", "WARN")
@@ -14187,7 +14378,7 @@ class DarRouteRunner:
                 window_manager.send_key_enter()
 
             self._emit(
-                f"⏳ [巅峰对战] 等待 {self.TOKEN_LOGIN_SWF}（{self.PINNACLE_LOGIN_WAIT_SEC:.0f}s 超时）",
+                f"⏳ [巅峰对战] 等待 Login.swf 内核行（{self.PINNACLE_LOGIN_WAIT_SEC:.0f}s 超时）",
                 "INFO",
             )
             cursor = kernel_cursor()
@@ -14199,7 +14390,7 @@ class DarRouteRunner:
                 lines = fetch_kernel_since(cursor)
                 if isinstance(lines, list):
                     for line in lines:
-                        if self.TOKEN_LOGIN_SWF in str(line):
+                        if self._kernel_line_indicates_login_swf(line):
                             detected = True
                             break
                 if detected:
@@ -14228,7 +14419,7 @@ class DarRouteRunner:
             lines = fetch_kernel_since(cursor)
             if isinstance(lines, list):
                 for line in lines:
-                    if self.PINNACLE_IP_TOKEN in str(line):
+                    if line_matches(RE_IP_TXT, str(line)):
                         self._emit(
                             f"✅ [巅峰对战] 已检测到 {self.PINNACLE_IP_TOKEN}",
                             "SUCCESS",
@@ -14282,7 +14473,7 @@ class DarRouteRunner:
             lines = fetch_kernel_since(cursor)
             if isinstance(lines, list):
                 for line in lines:
-                    if self._MAP_SWF_RE.search(str(line)):
+                    if first_map_id_in_line(str(line)) is not None:
                         self._emit("✅ [巅峰对战] 已检测到 map 信号", "SUCCESS")
                         return True
             cursor = kernel_cursor()
@@ -14417,12 +14608,9 @@ class DarRouteRunner:
             if not isinstance(lines, list):
                 return None
             for line in reversed(lines):
-                m = self._MAP_SWF_RE.search(str(line))
-                if m:
-                    try:
-                        return int(m.group(1))
-                    except Exception:
-                        continue
+                mid = first_map_id_in_line(str(line))
+                if mid is not None:
+                    return mid
         except Exception:
             return None
         return None
@@ -14498,7 +14686,6 @@ class DarRouteRunner:
     def _pinnacle_wait_petitem(self, stop_event: threading.Event) -> bool:
         from core.logger import fetch_kernel_since, kernel_cursor
 
-        token = "/resource/item/petItem/icon/"
         self._emit(
             "⏳ [巅峰对战] 等待 PetItem 信号（无限等待，直到检测到或手动停止）",
             "INFO",
@@ -14510,7 +14697,7 @@ class DarRouteRunner:
             lines = fetch_kernel_since(cursor)
             if isinstance(lines, list):
                 for line in lines:
-                    if token in str(line):
+                    if line_matches(RE_PETITEM, str(line)):
                         self._emit("✅ [巅峰对战] 已检测到 PetItem", "SUCCESS")
                         return True
             cursor = kernel_cursor()
@@ -14528,7 +14715,6 @@ class DarRouteRunner:
             else "巅峰对战.进入娱乐"
         )
         start_key = "巅峰对战.开始对战"
-        token = "/resource/item/petItem/icon/"
 
         self._emit(
             f"🖱️ [巅峰对战] 双键循环（{enter_key} -> {start_key}）直到 PetItem",
@@ -14546,7 +14732,7 @@ class DarRouteRunner:
             lines = fetch_kernel_since(cursor)
             if isinstance(lines, list):
                 for line in lines:
-                    if token in str(line):
+                    if line_matches(RE_PETITEM, str(line)):
                         self._emit("✅ [巅峰对战] 已检测到 PetItem", "SUCCESS")
                         return True
             cursor = kernel_cursor()

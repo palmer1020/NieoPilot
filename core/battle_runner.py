@@ -13,6 +13,15 @@ from PIL import Image
 
 from core.logger import add_kernel_log_callback, remove_kernel_log_callback
 from core.logger import fetch_kernel_since, kernel_cursor, wait_kernel_contains
+from core.kernel_log_match import (
+    line_matches,
+    first_map_id_in_line,
+    first_pet_swf_id_in_line,
+    RE_PETITEM,
+    RE_NEWNPC_MULTI,
+    RE_MAP_PATH_LOOSE,
+    RE_FIGHT_PET,
+)
 from core.utils import window_manager
 from core.human_verify_watcher import HumanVerifyWatcher
 
@@ -77,8 +86,8 @@ class BattleRunner:
     KEY_SKILL4 = "对战.使用技能四"
     KEY_PROBE = "对战.回合探针"
 
-    # 投胶囊节奏「高超高特高超」（与 UnifiedBattleFramework 一致）
-    _CAPSULE_CYCLE_TIERS = ("high", "high", "super", "special", "high", "super")
+    # 与 UnifiedBattleFramework 默认一致：非螳螂野外以特级为主（螳螂/覆盖由 DarRouteRunner 注入）
+    _CAPSULE_CYCLE_TIERS = ("special",)
 
     # ---------- 人机验证 region key ----------
     KEY_HV_PANEL = "人机验证.人机验证"
@@ -101,9 +110,6 @@ class BattleRunner:
     HV_SAVE_ROOT_REL = os.path.join("assets", "human_verify")
     HV_UNLABELED = "未处理"
     HV_LABELED = "已处理"
-
-    # ---------- pet swf burst 判定 ----------
-    _PET_SWF_RE = re.compile(r"/resource/pet/swf/(\d+)\.swf", re.IGNORECASE)
 
     def __init__(self, bot, regions, template_root: str):
         self.bot = bot
@@ -455,24 +461,18 @@ class BattleRunner:
     # -------------------------
     @staticmethod
     def _has_peticon(line: str) -> bool:
-        return "/resource/item/petItem/icon/" in line
+        return line_matches(RE_PETITEM, line)
 
     @staticmethod
     def _has_map(line: str) -> bool:
-        return "/resource/map/" in line
+        return bool(first_map_id_in_line(line)) or line_matches(RE_MAP_PATH_LOOSE, line)
 
     @staticmethod
     def _has_newnpc(line: str) -> bool:
-        return "/resource/newNpc/multi/0.swf" in line
+        return line_matches(RE_NEWNPC_MULTI, line)
 
     def _extract_pet_swf_id(self, line: str) -> Optional[int]:
-        m = self._PET_SWF_RE.search(line)
-        if not m:
-            return None
-        try:
-            return int(m.group(1))
-        except Exception:
-            return None
+        return first_pet_swf_id_in_line(line)
 
     # -------------------------
     # OCR (可选：没装 pytesseract 也不崩)
@@ -882,9 +882,6 @@ class BattleRunner:
         ("游戏.4a", "游戏.4b"),
     )
 
-    _PETITEM_TOKEN = "/resource/item/petItem/icon/"
-    _FIGHT_PET_SWF_TOKEN = "/resource/fightResource/pet/swf/"
-
     def _emit(self, text: str, level: str = "INFO") -> None:
         if hasattr(self.bot, "emit_and_log") and callable(getattr(self.bot, "emit_and_log")):
             try:
@@ -1275,9 +1272,9 @@ class BattleRunner:
             cursor, lines = self._fetch_kernel_lines(cursor)
             for ln in lines:
                 s = str(ln)
-                if self._PETITEM_TOKEN in s:
+                if line_matches(RE_PETITEM, s):
                     return True
-                if (not saw_any_output) and (self._FIGHT_PET_SWF_TOKEN in s):
+                if (not saw_any_output) and line_matches(RE_FIGHT_PET, s):
                     saw_any_output = True
 
             # 3) 如果什么也没输出（且没触发校准），就每 0.1s 复点一次
@@ -1500,7 +1497,7 @@ class BattleRunner:
                 while self._kernel_q:
                     line = self._kernel_q.popleft()
 
-                    if map_sub in line:
+                    if first_map_id_in_line(str(line)) == int(map_swf_id):
                         map_seen_at = time.time()
                     elif self._has_map(line):
                         any_map_seen_at = time.time()

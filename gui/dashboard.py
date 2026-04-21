@@ -76,6 +76,76 @@ class Dashboard(QWidget):
         base_group.setLayout(base_layout)
         control_panel.addWidget(base_group)
 
+        # ---------- 资源模板（SWF → 微端） ----------
+        swf_res_group = QGroupBox("资源模板（写入微端；覆盖前自动生成 OG 备份）")
+        swf_res_outer = QVBoxLayout()
+        swf_res_layout = QHBoxLayout()
+        self.btn_swf_petstorage = QPushButton("📦 PetStorage")
+        self.btn_swf_petstorage.setToolTip(
+            "宠物仓库：assets/PetStorage.swf → 微端 "
+            "NieoData\\module\\com\\robot\\module\\app\\PetStorage.swf；"
+            "覆盖前若无则生成同目录 PetStorage.og.swf"
+        )
+        self.btn_swf_petstorage.clicked.connect(
+            lambda: self._on_swf_sync("PetStorage", "sync_petstorage")
+        )
+        self.btn_swf_pet254 = QPushButton("🐾 Pet SWF (254)")
+        self.btn_swf_pet254.setToolTip(
+            "swf/254.swf 覆盖 resource\\pet\\swf 下全部 .swf（同名备份到 pet\\swf_og）"
+        )
+        self.btn_swf_pet254.clicked.connect(
+            lambda: self._on_swf_sync("Pet 254", "sync_pet_254")
+        )
+        self.btn_swf_fight_pet = QPushButton("⚔ Fight pet")
+        self.btn_swf_fight_pet.setToolTip(
+            "swf/fightpet.swf 覆盖 fightResource/pet/swf 下全部 .swf（备份至 swf_og）"
+        )
+        self.btn_swf_fight_pet.clicked.connect(
+            lambda: self._on_swf_sync("Fight pet", "sync_fight_pet")
+        )
+        self.btn_swf_fight_skill = QPushButton("✨ Fight skill")
+        self.btn_swf_fight_skill.setToolTip(
+            "swf/fightskill.swf 覆盖 fightResource/skill/swf 下全部 .swf（备份至 swf_og）"
+        )
+        self.btn_swf_fight_skill.clicked.connect(
+            lambda: self._on_swf_sync("Fight skill", "sync_fight_skill")
+        )
+        swf_res_layout.addWidget(self.btn_swf_petstorage)
+        swf_res_layout.addWidget(self.btn_swf_pet254)
+        swf_res_layout.addWidget(self.btn_swf_fight_pet)
+        swf_res_layout.addWidget(self.btn_swf_fight_skill)
+
+        swf_restore_layout = QHBoxLayout()
+        self.btn_restore_petstorage = QPushButton("↩ PetStorage OG")
+        self.btn_restore_petstorage.setToolTip("从 PetStorage.og.swf 还原到插件目录（见 config GAME_PETSTORAGE_*）")
+        self.btn_restore_petstorage.clicked.connect(
+            lambda: self._on_swf_restore("PetStorage OG", "restore_petstorage_from_og")
+        )
+        self.btn_restore_pet254 = QPushButton("↩ Pet SWF OG")
+        self.btn_restore_pet254.setToolTip("从 resource\\pet\\swf_og 还原同名文件到 pet\\swf")
+        self.btn_restore_pet254.clicked.connect(
+            lambda: self._on_swf_restore("Pet SWF OG", "restore_pet_254_from_og")
+        )
+        self.btn_restore_fight_pet = QPushButton("↩ Fight pet OG")
+        self.btn_restore_fight_pet.setToolTip("从 fightResource\\pet\\swf_og 还原到 pet\\swf（对战）")
+        self.btn_restore_fight_pet.clicked.connect(
+            lambda: self._on_swf_restore("Fight pet OG", "restore_fight_pet_from_og")
+        )
+        self.btn_restore_fight_skill = QPushButton("↩ Fight skill OG")
+        self.btn_restore_fight_skill.setToolTip("从 fightResource\\skill\\swf_og 还原到 skill\\swf（对战）")
+        self.btn_restore_fight_skill.clicked.connect(
+            lambda: self._on_swf_restore("Fight skill OG", "restore_fight_skill_from_og")
+        )
+        swf_restore_layout.addWidget(self.btn_restore_petstorage)
+        swf_restore_layout.addWidget(self.btn_restore_pet254)
+        swf_restore_layout.addWidget(self.btn_restore_fight_pet)
+        swf_restore_layout.addWidget(self.btn_restore_fight_skill)
+
+        swf_res_outer.addLayout(swf_res_layout)
+        swf_res_outer.addLayout(swf_restore_layout)
+        swf_res_group.setLayout(swf_res_outer)
+        control_panel.addWidget(swf_res_group)
+
         # ---------- 日常 ----------
         daily_group = QGroupBox("📅 日常任务")
         daily_layout = QVBoxLayout()
@@ -231,7 +301,7 @@ class Dashboard(QWidget):
         nieo_layout.addLayout(row1)
         
         # 不捕捉尼尔勾选框（仅用于尼奥模式）
-        self.chk_skip_nie_77 = QCheckBox("不捕捉尼尔（77执行逃跑，310/416正常捕捉）")
+        self.chk_skip_nie_77 = QCheckBox("不捕捉尼尔（77 逃跑；310/416 正常）")
         self.chk_skip_nie_77.setChecked(False)
         nieo_layout.addWidget(self.chk_skip_nie_77)
 
@@ -273,7 +343,7 @@ class Dashboard(QWidget):
         pinnacle_btn_row.addWidget(self.btn_pinnacle_fun)
         pinnacle_layout.addLayout(pinnacle_btn_row)
         self.chk_pinnacle_small_account_mode = QCheckBox(
-            "小号模式（检测到PetItem后不点技能一，直接进入下一轮刷新）"
+            "小号：PetItem 后不点技能一，直接刷新下一轮"
         )
         self.chk_pinnacle_small_account_mode.setChecked(False)
         pinnacle_layout.addWidget(self.chk_pinnacle_small_account_mode)
@@ -294,18 +364,15 @@ class Dashboard(QWidget):
         self.chk_rotation_test_mode = QCheckBox("测试模式（固定时间间隔切换）")
         self.chk_rotation_test_mode.setChecked(False)
         rotation_layout.addWidget(self.chk_rotation_test_mode)
-        
-        self.chk_rotation_capture_ststss = QCheckBox(
-            "捕捉胶囊六循环：超特超超特超（双塔/尼奥；敌方为螳螂时不使用）"
+
+        self.chk_non_mantis_super_capsule = QCheckBox(
+            "勾选：除螳螂外全程用「超级胶囊」（不勾选：特级；螳螂仍无敌+六档）"
         )
-        self.chk_rotation_capture_ststss.setChecked(False)
-        rotation_layout.addWidget(self.chk_rotation_capture_ststss)
-        
-        self.chk_rotation_capture_special_only = QCheckBox(
-            "轮换捕捉仅使用特级精灵胶囊（双塔/尼奥；敌方为螳螂时不使用；优先于六循环）"
+        self.chk_non_mantis_super_capsule.setChecked(False)
+        self.chk_non_mantis_super_capsule.setToolTip(
+            "非敌方 122 时：勾选→仅超级；不勾选→仅特级。敌方含螳螂(122)→仍无敌首回合+原六档循环。"
         )
-        self.chk_rotation_capture_special_only.setChecked(False)
-        rotation_layout.addWidget(self.chk_rotation_capture_special_only)
+        rotation_layout.addWidget(self.chk_non_mantis_super_capsule)
         
         # 测试模式参数输入
         row2 = QHBoxLayout()
@@ -336,7 +403,7 @@ class Dashboard(QWidget):
         self._update_rotation_test_inputs_enabled()
         
         # 说明文字
-        info_label = QLabel("说明：根据北京时间自动切换模式\n尼奥模式：19:55-00:00 | 双塔模式：00:00-19:55")
+        info_label = QLabel("北京时间切换：尼奥 19:55–00:00 | 双塔 00:00–19:55")
         info_label.setWordWrap(True)
         info_label.setStyleSheet("color: gray; font-size: 10px;")
         rotation_layout.addWidget(info_label)
@@ -422,8 +489,55 @@ class Dashboard(QWidget):
 
     def _launch_worker(self):
         success = window_manager.launch_game()
-        self.log_message("✅ 游戏窗口已就绪" if success else "❌ 启动失败，请检查路径", "SUCCESS" if success else "ERROR")
+        if success:
+            self.log_message("✅ 游戏窗口已就绪", "SUCCESS")
+        else:
+            detail = getattr(window_manager, "last_launch_error", "") or ""
+            msg = detail if detail else "启动失败（未知原因）"
+            self.log_message(f"❌ {msg}", "ERROR")
         QMetaObject.invokeMethod(self.btn_launch, "setEnabled", Qt.ConnectionType.QueuedConnection, Q_ARG(bool, True))
+
+    def _on_swf_sync(self, label: str, op_name: str):
+        self.log_message(f"⏳ [{label}] 正在同步…", "SYSTEM")
+        threading.Thread(
+            target=self._swf_sync_worker,
+            args=(label, op_name),
+            daemon=True,
+        ).start()
+
+    def _swf_sync_worker(self, label: str, op_name: str):
+        try:
+            from core import swf_resource_ops
+
+            fn = getattr(swf_resource_ops, op_name)
+            ok, msg = fn()
+            self.log_message(
+                f"{'✅' if ok else '❌'} [{label}] {msg}",
+                "SUCCESS" if ok else "ERROR",
+            )
+        except Exception as e:
+            self.log_message(f"❌ [{label}] {e}", "ERROR")
+
+    def _on_swf_restore(self, label: str, op_name: str):
+        self.log_message(f"⏳ [{label}] 正在从 OG 还原…", "SYSTEM")
+        threading.Thread(
+            target=self._swf_restore_worker,
+            args=(label, op_name),
+            daemon=True,
+        ).start()
+
+    def _swf_restore_worker(self, label: str, op_name: str):
+        try:
+            from core import swf_resource_ops
+
+            fn = getattr(swf_resource_ops, op_name)
+            ok, msg = fn()
+            self.log_message(
+                f"{'✅' if ok else '❌'} [{label}] {msg}",
+                "SUCCESS" if ok else "ERROR",
+            )
+        except Exception as e:
+            self.log_message(f"❌ [{label}] {e}", "ERROR")
 
     def on_debug_screen(self):
         self.btn_debug.setEnabled(False)
@@ -619,7 +733,8 @@ class Dashboard(QWidget):
             "training_until_level": False,
 
             "dar_route_test": True,
-            "use_foreground": self.chk_foreground.isChecked()
+            "use_foreground": self.chk_foreground.isChecked(),
+            **self._capsule_task_kv(),
         }
         self.log_message("启动螳螂捕捉(TEST)：请先切到克洛斯星二层", "SYSTEM")
         self._lock_ui()
@@ -883,6 +998,8 @@ class Dashboard(QWidget):
             self.btn_start_rotation.setEnabled(False)
         if hasattr(self, "chk_rotation_test_mode"):
             self.chk_rotation_test_mode.setEnabled(False)
+        if hasattr(self, "chk_non_mantis_super_capsule"):
+            self.chk_non_mantis_super_capsule.setEnabled(False)
         if hasattr(self, "rotation_interval_minutes_nieo_input"):
             self.rotation_interval_minutes_nieo_input.setEnabled(False)
         if hasattr(self, "rotation_interval_minutes_shuangta_input"):
@@ -957,6 +1074,8 @@ class Dashboard(QWidget):
                 # 根据测试模式复选框状态更新输入框状态
                 if hasattr(self, "_update_rotation_test_inputs_enabled"):
                     self._update_rotation_test_inputs_enabled()
+            if hasattr(self, "chk_non_mantis_super_capsule"):
+                self.chk_non_mantis_super_capsule.setEnabled(True)
             
             if hasattr(self, "btn_nieo"):
                 self.btn_nieo.setEnabled(True)
@@ -987,6 +1106,14 @@ class Dashboard(QWidget):
         self.log_box.clear()
         self.log_message("日志已清空", "SYSTEM")
 
+    def _capsule_task_kv(self) -> dict:
+        """非螳螂对战的胶囊档位：勾选→超级，不勾选→特级（敌方 122 由 runner 单独处理）。"""
+        v = bool(
+            getattr(self, "chk_non_mantis_super_capsule", None)
+            and self.chk_non_mantis_super_capsule.isChecked()
+        )
+        return {"non_mantis_use_super_capsule": v}
+
     def _update_flash_pipi_pre_rotation_checkbox_state(self):
         """仅当选中闪光皮皮时解锁轮换重连前置勾选框"""
         if hasattr(self, "chk_flash_pipi_pre_rotation") and hasattr(self, "rare_combo"):
@@ -1001,6 +1128,7 @@ class Dashboard(QWidget):
             "wild_capture": True,
             "wild_capture_profile": "mantis",
             "use_foreground": self.chk_foreground.isChecked(),
+            **self._capsule_task_kv(),
         }
         self.log_message("🪲 启动螳螂模式（122）", "SYSTEM")
         self._lock_ui()
@@ -1017,6 +1145,7 @@ class Dashboard(QWidget):
         # 闪光皮皮专用：轮换重连前置（仅当勾选且选中闪光皮皮时传递）
         if profile == "flash_pipi" and self.chk_flash_pipi_pre_rotation.isChecked():
             tasks["rare_rotation_reconnect_first"] = True
+        tasks.update(self._capsule_task_kv())
         self.log_message(f"🧿 启动稀有精灵捕捉：{profile}", "SYSTEM")
         self._lock_ui()
         self.start_signal.emit(tasks)
@@ -1029,6 +1158,7 @@ class Dashboard(QWidget):
             "wild_capture_profile": profile,
             "use_foreground": self.chk_foreground.isChecked(),
             "wild_battle_test_mode": False,  # 测试模式不使用声音触发
+            **self._capsule_task_kv(),
         }
         self.log_message(f"🧪 启动智能追踪测试：{profile}（请确保已进入目标地图）", "SYSTEM")
         self._lock_ui()
@@ -1053,8 +1183,7 @@ class Dashboard(QWidget):
             "rotation_interval_minutes_nieo": interval_minutes_nieo,
             "rotation_interval_minutes_shuangta": interval_minutes_shuangta,
             "petswf_hard_limit_sec": hard_limit_sec,
-            "rotation_capture_ststss": self.chk_rotation_capture_ststss.isChecked(),
-            "rotation_capture_special_only": self.chk_rotation_capture_special_only.isChecked(),
+            **self._capsule_task_kv(),
         }
 
     def start_rotation_mode(self):
@@ -1100,6 +1229,7 @@ class Dashboard(QWidget):
             "nie_family_test": True,
             "nie_family_test_type": "nie",  # 尼尔模式（77/310）
             "use_foreground": self.chk_foreground.isChecked(),
+            **self._capsule_task_kv(),
         }
         self.log_message("🧪 启动尼尔测试（77/310，第二回合切精灵三）", "SYSTEM")
         self.log_message("📝 请手动发起一次对战，程序将自动检测并执行对战流程", "INFO")
@@ -1112,6 +1242,7 @@ class Dashboard(QWidget):
             "nie_family_test": True,
             "nie_family_test_type": "ni",  # 尼奥模式（416）
             "use_foreground": self.chk_foreground.isChecked(),
+            **self._capsule_task_kv(),
         }
         self.log_message("🧪 启动尼奥测试（416，第二回合切精灵二）", "SYSTEM")
         self.log_message("📝 请手动发起一次对战，程序将自动检测并执行对战流程", "INFO")
@@ -1125,6 +1256,7 @@ class Dashboard(QWidget):
             "afk_battle_mode": True,
             "afk_sub_mode": sub_mode,
             "use_foreground": self.chk_foreground.isChecked(),
+            **self._capsule_task_kv(),
         }
         self.log_message(f"🎮 启动挂机{labels.get(sub_mode, sub_mode)}模式", "SYSTEM")
         self._lock_ui()
@@ -1143,6 +1275,7 @@ class Dashboard(QWidget):
                 and self.chk_pinnacle_small_account_mode.isChecked()
             ),
             "use_foreground": self.chk_foreground.isChecked(),
+            **self._capsule_task_kv(),
         }
         self.log_message(f"🏆 启动巅峰对战模式（{label}）", "SYSTEM")
         self._lock_ui()
@@ -1157,6 +1290,7 @@ class Dashboard(QWidget):
             "test_nie": False,
             "skip_nie_77": self.chk_skip_nie_77.isChecked() if hasattr(self, "chk_skip_nie_77") else False,
             "nieo_pre_rotation_first": self.chk_nieo_pre_rotation.isChecked() if hasattr(self, "chk_nieo_pre_rotation") else False,
+            **self._capsule_task_kv(),
         }
         test_msg = ""
         if tasks.get("skip_nie_77"):
