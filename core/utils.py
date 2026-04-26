@@ -9,9 +9,19 @@ import win32gui
 import win32api
 import win32con
 import win32process
-from PIL import ImageGrab
+from datetime import datetime
+from PIL import ImageDraw, ImageGrab
 
-from config import WINDOW_TITLE, GAME_LOGIC_W, GAME_LOGIC_H, GAME_PATH, FIXED_RATIO
+from config import (
+    BASE_PATH,
+    WINDOW_TITLE,
+    GAME_LOGIC_W,
+    GAME_LOGIC_H,
+    GAME_PATH,
+    FIXED_RATIO,
+    SETTINGS_DIALOG_LOGIC_W,
+    SETTINGS_DIALOG_LOGIC_H,
+)
 from core.logger import logger, emit_kernel_log
 
 
@@ -136,17 +146,23 @@ class WindowManager:
     # ===============================
     def visual_debug(self) -> bool:
         """
-        校准/可视化调试：
-        1) 强制重扫边界
-        2) 打印 viewport
-        3) 鼠标依次指向几个关键点（左上/右上/右下/左下/中心）
+        屏幕校准/可视化调试（不扫边）：
+        1) 整段客户区 + FIXED_RATIO(12:7) 由 get_current_viewport 推算
+        2) 输出 viewport 与逻辑坐标到屏幕坐标对应关系
+        3) 保存：screenshots/calibration/ 下全 client 截图 + 带细白框标出 12:7 内容区
         """
         if not self.find_window():
             logger.error("❌ 校准失败：未找到游戏窗口")
             return False
 
+        try:
+            win32gui.SetForegroundWindow(self.hwnd)
+            time.sleep(0.2)
+        except Exception:
+            pass
+
+        # 不调用 scan_boundaries；映射仅用整段 client 与 12:7
         self.content_padding = None
-        self.scan_boundaries()
 
         vp = self.get_current_viewport()
         if not vp:
@@ -175,6 +191,41 @@ class WindowManager:
             # ✅ 暂时禁用：不移动鼠标指针
             # win32api.SetCursorPos((sx, sy))
             logger.info(f"👉 {name} ({gx:.0f},{gy:.0f}) -> ({sx},{sy})")
+
+        # 全客户区截图 + 带细白框标出 12:7 内容区（与 viewport 一致）
+        try:
+            l, t, r, b = win32gui.GetClientRect(self.hwnd)
+            ox, oy = win32gui.ClientToScreen(self.hwnd, (0, 0))
+            cw, ch = r - l, b - t
+            full_img = ImageGrab.grab((ox, oy, ox + cw, oy + ch), all_screens=True)
+            if full_img.mode != "RGB":
+                full_img = full_img.convert("RGB")
+
+            out_dir = os.path.join(BASE_PATH, "screenshots", "calibration")
+            os.makedirs(out_dir, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            path_full = os.path.join(out_dir, f"client_full_{ts}.png")
+            full_img.save(path_full)
+            logger.info(f"📷 已保存全 client: {path_full}")
+
+            # 视口在客户区中的像素包络（与 get_current_viewport 一致，含 12:7 letterbox 内区）
+            left = max(0, min(cw - 1, int(math.floor(vx - ox + 0.01))))
+            top = max(0, min(ch - 1, int(math.floor(vy - oy + 0.01))))
+            right = max(left, min(cw - 1, int(math.ceil(vx + vw - ox - 0.01)) - 1))
+            bottom = max(top, min(ch - 1, int(math.ceil(vy + vh - oy - 0.01)) - 1))
+
+            framed = full_img.copy()
+            dr = ImageDraw.Draw(framed)
+            wcol = (255, 255, 255)
+            dr.line([left, top, right, top], fill=wcol, width=1)
+            dr.line([left, bottom, right, bottom], fill=wcol, width=1)
+            dr.line([left, top, left, bottom], fill=wcol, width=1)
+            dr.line([right, top, right, bottom], fill=wcol, width=1)
+            path_framed = os.path.join(out_dir, f"client_viewport_{ts}.png")
+            framed.save(path_framed)
+            logger.info(f"📷 已保存白框标出 12:7 内容区: {path_framed}")
+        except Exception as e:
+            logger.error(f"📷 校准截图保存失败: {e}")
 
         logger.info("✅ 已校准")
         return True
@@ -258,7 +309,7 @@ class WindowManager:
         # 未手动校准时不自动扫边：按全客户区（等效 padding 全 0），避免未稳定最大化时扫出错误黑边
         if self.content_padding is None and not self._viewport_zero_pad_logged:
             logger.info(
-                "📐 尚未执行屏幕校准：暂用全客户区映射坐标。请在界面使用校准/调试功能扫边后再跑脚本。"
+                "📐 视口由整段客户区 + 12:7（FIXED_RATIO）推算，未使用扫边。可用界面「校准屏幕」检查截图。"
             )
             self._viewport_zero_pad_logged = True
 
@@ -346,6 +397,40 @@ class WindowManager:
         except Exception:
             pass
 
+    def click_background_client_left_x(self, gx, gy, offset_x: int = 4) -> bool:
+        """
+        特殊后台点击：
+        - X 不使用逻辑坐标换算，固定为主窗口 client 左边界 + offset_x
+        - Y 使用逻辑坐标换算后的屏幕 y（仅参考转换出来的纵坐标）
+        """
+        if not self.hwnd:
+            return False
+        coords = self.game_to_screen(gx, gy)
+        if not coords:
+            return False
+        _, sy = coords
+        try:
+            client_x, client_y = win32gui.ClientToScreen(self.hwnd, (0, 0))
+            click_x = int(client_x + int(offset_x))
+            click_y = int(sy)
+
+            rel_x = int(click_x - client_x)
+            rel_y = int(click_y - client_y)
+            l_param = (rel_y << 16) | (rel_x & 0xFFFF)
+
+            win32gui.PostMessage(
+                self.hwnd,
+                win32con.WM_LBUTTONDOWN,
+                win32con.MK_LBUTTON,
+                l_param,
+            )
+            time.sleep(0.03)
+            win32gui.PostMessage(self.hwnd, win32con.WM_LBUTTONUP, 0, l_param)
+            return True
+        except Exception as e:
+            logger.warning(f"click_background_client_left_x 失败: {e}")
+            return False
+
     # 刷新 UI：点击「刷新.设置」后主窗口会弹出独立子窗口（标题通常为「设置」），
     # 「刷新」「保存」必须 PostMessage 到该 HWND，否则会点到主窗口客户区而无效。
     SETTINGS_DIALOG_TITLE = "设置"
@@ -415,12 +500,59 @@ class WindowManager:
             logger.warning(f"click_background_on_dialog_hwnd 失败: {e}")
             return False
 
+    def click_background_on_dialog_client_xy(self, target_hwnd: int, cx: float, cy: float) -> bool:
+        """
+        直接使用设置子窗口 client 坐标后台点击（不做主窗口坐标转换）。
+        适用于「设置」子窗口专用录制坐标系。
+        """
+        if not target_hwnd:
+            return False
+        try:
+            rel_x = int(cx) & 0xFFFF
+            rel_y = int(cy) & 0xFFFF
+            l_param = (rel_y << 16) | rel_x
+            win32gui.PostMessage(
+                target_hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, l_param
+            )
+            time.sleep(0.03)
+            win32gui.PostMessage(target_hwnd, win32con.WM_LBUTTONUP, 0, l_param)
+            return True
+        except Exception as e:
+            logger.warning(f"click_background_on_dialog_client_xy 失败: {e}")
+            return False
+
     def click_background_settings_dialog(self, gx: float, gy: float) -> bool:
         """优先找「设置」子窗口并点击；找不到返回 False（调用方可回退主窗口）。"""
         h = self.find_settings_dialog_hwnd()
         if not h:
             return False
         return self.click_background_on_dialog_hwnd(h, gx, gy)
+
+    def click_background_settings_dialog_client_xy(self, cx: float, cy: float) -> bool:
+        """优先找「设置」子窗口并按其 client 像素坐标点击；找不到返回 False。"""
+        h = self.find_settings_dialog_hwnd()
+        if not h:
+            return False
+        return self.click_background_on_dialog_client_xy(h, cx, cy)
+
+    def click_background_settings_dialog_logic_xy(self, lx: float, ly: float) -> bool:
+        """
+        「设置」子窗口逻辑坐标点击（参考尺寸 SETTINGS_DIALOG_LOGIC_W×SETTINGS_DIALOG_LOGIC_H，
+        与主窗口 1200×700 用法一致：JSON 存逻辑坐标，运行时按当前子窗口 client 宽高缩放）。
+        """
+        h = self.find_settings_dialog_hwnd()
+        if not h:
+            return False
+        try:
+            x1, y1, x2, y2 = win32gui.GetClientRect(h)
+            cw = max(1, int(x2 - x1))
+            ch = max(1, int(y2 - y1))
+            cx = lx * float(cw) / float(SETTINGS_DIALOG_LOGIC_W)
+            cy = ly * float(ch) / float(SETTINGS_DIALOG_LOGIC_H)
+            return self.click_background_on_dialog_client_xy(h, cx, cy)
+        except Exception as e:
+            logger.warning(f"click_background_settings_dialog_logic_xy 失败: {e}")
+            return False
     
     def send_key(self, vk_code: int):
         """

@@ -36,6 +36,9 @@ from core.logger import add_kernel_log_callback, remove_kernel_log_callback
 from core.region_store import Region, RegionStore
 from core.utils import window_manager
 
+# Stage2：True=第一回合仅在出现内核 PetItem 时执行；False=仍走「先灰后蓝」与超时探针蓝回退（旧路径保留在下方，便于回滚）
+STAGE2_STRICT_KERNEL_PETITEM_ONLY = True
+
 
 class BattleMode(Enum):
     """对战模式枚举"""
@@ -98,12 +101,7 @@ class UnifiedBattleFramework:
     COLOR_SMALL_PROBE = (255, 255, 255)  # FFFFFF
     COLOR_ORANGE_CELL = (254, 103, 0)  # FE6700
     
-    # 内核日志token
-    TOKEN_PETITEM = "/resource/item/petItem/icon/"
-    TOKEN_MAP = "/resource/map/"
-    TOKEN_NEWNPC = "/resource/newNpc/multi/0.swf"
-    TOKEN_FIGHT_SKILL = "/resource/fightResource/skill/swf/"  # 点击成功且未出现校准的信号
-    TOKEN_FIGHT_PET = "/resource/fightResource/pet/swf/"  # pet swf信号（用于记录时间）
+    # 内核资源匹配请用 core.kernel_log_match（RE_* + line_matches，含 path= 反斜杠与无 resource 前缀片段）
     
     # Stage 4 region keys
     KEY_VICTORY_PROBE = "对话框.对战胜利确认"  # 黄色探针
@@ -244,8 +242,8 @@ class UnifiedBattleFramework:
                 continue
         return None
 
-    # 默认胶囊循环：特级单档（螳螂对战敌方 122 等仍可在 DarRouteRunner 侧覆盖为 legacy 六档）
-    _CAPSULE_CYCLE_TIERS: Tuple[str, ...] = ("special",)
+    # 默认胶囊循环：超级单档（未传 override 时；螳螂 122 等在 DarRouteRunner 侧覆盖为 legacy 六档）
+    _CAPSULE_CYCLE_TIERS: Tuple[str, ...] = ("super",)
 
     def _resolve_capsule_tier_key(self, tier: str) -> Optional[str]:
         """按档位解析胶囊 region 键（不含切换面板）。"""
@@ -444,8 +442,8 @@ class UnifiedBattleFramework:
         return line_matches(RE_NEWNPC_MULTI, line)
     
     def _has_fight_skill(self, line: str) -> bool:
-        """检查是否包含fightResource/skill/swf信号（点击成功且未出现校准）"""
-        return line_matches(RE_FIGHT_SKILL_SWF, line) or line_matches(self.TOKEN_FIGHT_SKILL, line)
+        """检查是否包含 fightResource/skill/swf（含 path= 反斜杠与无 resource 前缀片段）。"""
+        return line_matches(RE_FIGHT_SKILL_SWF, line)
     
     def _has_fight_pet(self, line: str) -> bool:
         """检查是否包含fightResource/pet/swf信号"""
@@ -880,21 +878,22 @@ class UnifiedBattleFramework:
                     except Exception:
                         pass
                 
-                # ✅ 3. 检查右下角探针（先灰后蓝）作为PetItem出现的条件
-                if not petitem_found and (skill_detected_time is not None or petswf_detected_time is not None):
-                    # 延迟加载回合探针模型
-                    if round_probe_model is None:
-                        round_probe_model = self._load_probe_templates()
-                    
-                    if round_probe_model:
-                        probe_state, blue_score, gray_score = self._detect_round_probe(round_probe_model)
+                if not STAGE2_STRICT_KERNEL_PETITEM_ONLY:
+                    # ✅ 3. 检查右下角探针（先灰后蓝）作为PetItem出现的条件
+                    if not petitem_found and (skill_detected_time is not None or petswf_detected_time is not None):
+                        # 延迟加载回合探针模型
+                        if round_probe_model is None:
+                            round_probe_model = self._load_probe_templates()
                         
-                        # 如果探针曾经是灰色，现在变成蓝色，说明PetItem出现
-                        if probe_state == "BLUE" and round_probe_was_gray:
-                            petitem_found = True
-                            self._emit("✅ 检测到右下角探针先灰后蓝，判定PetItem出现", "SUCCESS")
-                        elif probe_state == "GRAY":
-                            round_probe_was_gray = True  # 标记探针曾经是灰色
+                        if round_probe_model:
+                            probe_state, blue_score, gray_score = self._detect_round_probe(round_probe_model)
+                            
+                            # 如果探针曾经是灰色，现在变成蓝色，说明PetItem出现
+                            if probe_state == "BLUE" and round_probe_was_gray:
+                                petitem_found = True
+                                self._emit("✅ 检测到右下角探针先灰后蓝，判定PetItem出现", "SUCCESS")
+                            elif probe_state == "GRAY":
+                                round_probe_was_gray = True  # 标记探针曾经是灰色
                 
                 if petitem_found:
                     self._emit("✅ 检测到PetItem信号，立即执行第一回合动作", "SUCCESS")
@@ -1052,31 +1051,32 @@ class UnifiedBattleFramework:
                 
                 time.sleep(0.02)  # 减少等待时间，提高检测频率（从0.05s改为0.02s）
             
-            # 超时前最后检查：即使没检测到PetItem，也检查是否已进入战斗
-            if not petitem_found:
-                # 最后检查：检测回合探针（右下角蓝色探针）
-                if round_probe_model is None:
-                    round_probe_model = self._load_probe_templates()
-                
-                if round_probe_model and (skill_detected_time is not None or petswf_detected_time is not None):
-                    probe_state, blue_score, gray_score = self._detect_round_probe(round_probe_model)
-                    if probe_state == "BLUE" and blue_score >= 0.90:
-                        # 虽然没有PetItem日志，但回合探针变蓝，说明已经进入战斗
-                        self._emit("✅ 超时前最后检查：检测到回合探针变蓝，判定已进入战斗", "SUCCESS")
-                        petitem_found = True
-                        
-                        # 执行第一回合动作（如果还没有执行）
-                        if config:
-                            round_idx = 1
-                            if config.action_callback:
-                                action_type = config.action_callback(round_idx)
-                                self._execute_action(action_type, config, round_idx=round_idx, invincible_first_round=config.invincible_first_round)
-                            elif config.skill_key:
-                                self._click_region_twice(config.skill_key, config.use_foreground, gap=0.06)
-                                self._last_action = LastActionType.SKILL
-                            self._emit("✅ 第一回合动作已执行（超时前最后检查）", "SUCCESS")
-                        
-                        return True, None
+            if not STAGE2_STRICT_KERNEL_PETITEM_ONLY:
+                # 超时前最后检查：即使没检测到PetItem，也检查是否已进入战斗
+                if not petitem_found:
+                    # 最后检查：检测回合探针（右下角蓝色探针）
+                    if round_probe_model is None:
+                        round_probe_model = self._load_probe_templates()
+                    
+                    if round_probe_model and (skill_detected_time is not None or petswf_detected_time is not None):
+                        probe_state, blue_score, gray_score = self._detect_round_probe(round_probe_model)
+                        if probe_state == "BLUE" and blue_score >= 0.90:
+                            # 虽然没有PetItem日志，但回合探针变蓝，说明已经进入战斗
+                            self._emit("✅ 超时前最后检查：检测到回合探针变蓝，判定已进入战斗", "SUCCESS")
+                            petitem_found = True
+                            
+                            # 执行第一回合动作（如果还没有执行）
+                            if config:
+                                round_idx = 1
+                                if config.action_callback:
+                                    action_type = config.action_callback(round_idx)
+                                    self._execute_action(action_type, config, round_idx=round_idx, invincible_first_round=config.invincible_first_round)
+                                elif config.skill_key:
+                                    self._click_region_twice(config.skill_key, config.use_foreground, gap=0.06)
+                                    self._last_action = LastActionType.SKILL
+                                self._emit("✅ 第一回合动作已执行（超时前最后检查）", "SUCCESS")
+                            
+                            return True, None
             
             # 超时
             self._emit(f"⏱️ Stage 2 超时（{timeout_s}s内未检测到PetItem）", "WARN")

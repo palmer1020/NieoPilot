@@ -22,6 +22,55 @@ def _ensure_project_path() -> None:
     ensure_config_py(str(_ROOT))
 
 
+def _nono_super_action_paths() -> Tuple[Path, Path]:
+    """resource\\nono\\super 下的 action 目录与改名后的 super_og 目录。"""
+    _ensure_project_path()
+    import config as cfg
+
+    super_dir = Path(cfg.GAME_ASSET_BASE_PATH) / "nono" / "super"
+    return super_dir / "action", super_dir / "super_og"
+
+
+def rename_nono_super_action_to_super_og() -> Tuple[bool, str]:
+    """
+    将 action 改名为 super_og（与 PetStorage 写入配套）。
+    若无 action 目录则跳过（已成功）；若 super_og 已存在且 action 仍存在则失败。
+    """
+    action, super_og = _nono_super_action_paths()
+    if not action.is_dir():
+        return True, f"nono/super：无 action，跳过改名（{action}）"
+    if super_og.exists():
+        return (
+            False,
+            f"nono/super：已存在 {super_og.name}，无法将 action 改名（请先手动处理）",
+        )
+    try:
+        action.rename(super_og)
+        return True, f"nono/super：已将 action → super_og（{super_og}）"
+    except OSError as e:
+        return False, f"nono/super：action→super_og 失败: {e}"
+
+
+def rename_nono_super_super_og_to_action() -> Tuple[bool, str]:
+    """
+    将 super_og 改回 action（与 PetStorage OG 还原配套）。
+    若无 super_og 目录则跳过；若 action 已存在则失败。
+    """
+    action, super_og = _nono_super_action_paths()
+    if not super_og.is_dir():
+        return True, f"nono/super：无 super_og，跳过还原改名（{super_og}）"
+    if action.exists():
+        return (
+            False,
+            f"nono/super：已存在 action，无法将 super_og 改回（请先手动处理）",
+        )
+    try:
+        super_og.rename(action)
+        return True, f"nono/super：已将 super_og → action（{action}）"
+    except OSError as e:
+        return False, f"nono/super：super_og→action 失败: {e}"
+
+
 def _restore_dir_from_og(live_dir: Path, og_dir: Path) -> Tuple[int, int]:
     """将 og_dir 中同名 .swf 还原到 live_dir。返回 (已还原数量, 无 OG 跳过的数量)。"""
     restored = 0
@@ -60,7 +109,13 @@ def sync_petstorage() -> Tuple[bool, str]:
         os.makedirs(live.parent, exist_ok=True)
         _ensure_og_backup(live, og)
         shutil.copy2(PROJECT_PETSTORAGE_SWF, live)
-        return True, f"已写入 PetStorage.swf -> {live_path}"
+        ok2, msg2 = rename_nono_super_action_to_super_og()
+        if not ok2:
+            return (
+                False,
+                f"已写入 PetStorage.swf -> {live_path}；但 {msg2}",
+            )
+        return True, f"已写入 PetStorage.swf -> {live_path}；{msg2}"
     except OSError as e:
         return False, str(e)
 
@@ -147,7 +202,13 @@ def restore_petstorage_from_og() -> Tuple[bool, str]:
     try:
         os.makedirs(live.parent, exist_ok=True)
         shutil.copy2(og, live)
-        return True, f"已从 OG 还原 PetStorage.swf <- {og}"
+        ok2, msg2 = rename_nono_super_super_og_to_action()
+        if not ok2:
+            return (
+                False,
+                f"已从 OG 还原 PetStorage.swf <- {og}；但 {msg2}",
+            )
+        return True, f"已从 OG 还原 PetStorage.swf <- {og}；{msg2}"
     except OSError as e:
         return False, str(e)
 

@@ -6,21 +6,21 @@
             "action": "click",
             "x": 954,
             "y": 352,
-            "delay": 0.3,
+            "delay": 0.5,
             "desc": "Step 1"
         },
         {
             "action": "click",
-            "x": 818,
-            "y": 433,
-            "delay": 0.4,
+            "x": 803,
+            "y": 428,
+            "delay": 0.3,
             "desc": "Step 2"
         },
         {
             "action": "click",
             "x": 418,
             "y": 565,
-            "delay": 0.5,
+            "delay": 0.3,
             "desc": "Step 3"
         },
         {

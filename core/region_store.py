@@ -6,7 +6,7 @@ import os
 import random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.logger import logger
 
@@ -25,7 +25,8 @@ def _norm_key(key: str) -> str:
 class Region:
     key: str
     points: List[Tuple[float, float]]
-    click: Dict
+    click: Dict[str, Any]
+    meta: Dict[str, Any]
 
     def outer_bbox(self) -> Tuple[float, float, float, float]:
         xs = [p[0] for p in self.points]
@@ -116,6 +117,8 @@ class RegionStore:
                 continue
 
             click = data.get("click") or {"random": True}
+            meta_raw = data.get("meta")
+            meta: Dict[str, Any] = dict(meta_raw) if isinstance(meta_raw, dict) else {}
 
             # 1) 以路径构造 key
             rel = fp.relative_to(root)
@@ -128,7 +131,7 @@ class RegionStore:
             json_key = _norm_key(str(data.get("key", ""))) if data.get("key") else ""
 
             # 建 Region
-            region = Region(key=path_key, points=pts, click=click)
+            region = Region(key=path_key, points=pts, click=click, meta=meta)
 
             # 存主 key
             self._regions[path_key] = region

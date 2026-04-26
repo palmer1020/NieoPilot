@@ -27,7 +27,7 @@ _CSV_COLUMNS = [
     "capsule_special",
     "capsule_invincible",
     # 胶囊循环策略信息（便于分析轮换勾选是否生效）
-    "capsule_cycle_mode",   # default | mantis_legacy | special_only | super_only | custom
+    "capsule_cycle_mode",   # default | mantis_legacy | special_only | super_only | high_only | custom
     "capsule_cycle_tiers",  # e.g. "super,special,super,super,special,super" or "special"
 ]
 

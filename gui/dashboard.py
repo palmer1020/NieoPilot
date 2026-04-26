@@ -1,8 +1,12 @@
 # gui/dashboard.py
+import os
+import shutil
 import threading
+import time
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QComboBox, QLabel,
-    QPushButton, QTextEdit, QGroupBox, QCheckBox, QLineEdit, QDateTimeEdit, QInputDialog
+    QPushButton, QTextEdit, QGroupBox, QCheckBox, QLineEdit, QDateTimeEdit, QInputDialog,
+    QButtonGroup, QRadioButton,
 )
 from PyQt6.QtGui import QDoubleValidator, QIntValidator
 from PyQt6.QtCore import QDateTime
@@ -53,6 +57,19 @@ class Dashboard(QWidget):
         self.btn_launch = QPushButton("🎮 启动游戏")
         self.btn_launch.clicked.connect(self.on_launch_game)
 
+        self.btn_clear_game_temp = QPushButton("🗑 清除缓存")
+        self.btn_clear_game_temp.setToolTip(
+            "删除游戏安装目录（Nieo.exe 所在文件夹，如 NieoGame）下的 tmp 文件夹；"
+            "路径来自 config.GAME_PATH，无 tmp 则仅提示。"
+        )
+        self.btn_clear_game_temp.clicked.connect(self.on_clear_game_temp_cache)
+
+        self.btn_refresh_trinity = QPushButton("🔄 刷新")
+        self.btn_refresh_trinity.setToolTip(
+            "三键刷新：刷新.设置 → 刷新.刷新 → 刷新.保存（与完整重连无关）。"
+        )
+        self.btn_refresh_trinity.clicked.connect(self.on_refresh_trinity)
+
         self.btn_debug = QPushButton("🎯 校准屏幕")
         self.btn_debug.clicked.connect(self.on_debug_screen)
         
@@ -63,15 +80,23 @@ class Dashboard(QWidget):
         # 📐 区域录制器
         self.btn_region_recorder = QPushButton("📐 区域录制器")
         self.btn_region_recorder.clicked.connect(self.on_open_region_recorder)
+        # 🧭 设置子窗口区域录制器
+        self.btn_settings_region_recorder = QPushButton("🧭 设置窗口录制器")
+        self.btn_settings_region_recorder.clicked.connect(
+            self.on_open_settings_region_recorder
+        )
         
         # 🖼️ 模板录制器
         self.btn_template_recorder = QPushButton("🖼️ 模板录制器")
         self.btn_template_recorder.clicked.connect(self.on_open_template_recorder)
 
         base_layout.addWidget(self.btn_launch)
+        base_layout.addWidget(self.btn_clear_game_temp)
+        base_layout.addWidget(self.btn_refresh_trinity)
         base_layout.addWidget(self.btn_debug)
         base_layout.addWidget(self.btn_script_recorder)
         base_layout.addWidget(self.btn_region_recorder)
+        base_layout.addWidget(self.btn_settings_region_recorder)
         base_layout.addWidget(self.btn_template_recorder)
         base_group.setLayout(base_layout)
         control_panel.addWidget(base_group)
@@ -84,7 +109,8 @@ class Dashboard(QWidget):
         self.btn_swf_petstorage.setToolTip(
             "宠物仓库：assets/PetStorage.swf → 微端 "
             "NieoData\\module\\com\\robot\\module\\app\\PetStorage.swf；"
-            "覆盖前若无则生成同目录 PetStorage.og.swf"
+            "覆盖前若无则生成同目录 PetStorage.og.swf。"
+            "同时将 resource\\nono\\super\\action 改名为 super_og（若无 action 则跳过）。"
         )
         self.btn_swf_petstorage.clicked.connect(
             lambda: self._on_swf_sync("PetStorage", "sync_petstorage")
@@ -117,7 +143,10 @@ class Dashboard(QWidget):
 
         swf_restore_layout = QHBoxLayout()
         self.btn_restore_petstorage = QPushButton("↩ PetStorage OG")
-        self.btn_restore_petstorage.setToolTip("从 PetStorage.og.swf 还原到插件目录（见 config GAME_PETSTORAGE_*）")
+        self.btn_restore_petstorage.setToolTip(
+            "从 PetStorage.og.swf 还原到插件目录（见 config GAME_PETSTORAGE_*）；"
+            "同时将 resource\\nono\\super\\super_og 改回 action（若无 super_og 则跳过）。"
+        )
         self.btn_restore_petstorage.clicked.connect(
             lambda: self._on_swf_restore("PetStorage OG", "restore_petstorage_from_og")
         )
@@ -365,14 +394,26 @@ class Dashboard(QWidget):
         self.chk_rotation_test_mode.setChecked(False)
         rotation_layout.addWidget(self.chk_rotation_test_mode)
 
-        self.chk_non_mantis_super_capsule = QCheckBox(
-            "勾选：除螳螂外全程用「超级胶囊」（不勾选：特级；螳螂仍无敌+六档）"
-        )
-        self.chk_non_mantis_super_capsule.setChecked(False)
-        self.chk_non_mantis_super_capsule.setToolTip(
-            "非敌方 122 时：勾选→仅超级；不勾选→仅特级。敌方含螳螂(122)→仍无敌首回合+原六档循环。"
-        )
-        rotation_layout.addWidget(self.chk_non_mantis_super_capsule)
+        self._capsule_tier_label = QLabel("非螳螂对战胶囊单档（敌方含122时仍为无敌首回合+六档，不受此项影响）：")
+        self._capsule_tier_label.setWordWrap(True)
+        rotation_layout.addWidget(self._capsule_tier_label)
+        self._capsule_tier_group = QButtonGroup(self)
+        self.radio_cap_super = QRadioButton("仅超级精灵胶囊（默认）")
+        self.radio_cap_high = QRadioButton("仅高级精灵胶囊")
+        self.radio_cap_special = QRadioButton("仅特级精灵胶囊")
+        self.radio_cap_super.setChecked(True)
+        self.radio_cap_super.setToolTip("非敌方122时：捕捉阶段只投超级胶囊。")
+        self.radio_cap_high.setToolTip("非敌方122时：捕捉阶段只投高级胶囊。")
+        self.radio_cap_special.setToolTip("非敌方122时：捕捉阶段只投特级胶囊。")
+        self._capsule_tier_group.addButton(self.radio_cap_super, 0)
+        self._capsule_tier_group.addButton(self.radio_cap_high, 1)
+        self._capsule_tier_group.addButton(self.radio_cap_special, 2)
+        self._capsule_tier_radios = (self.radio_cap_super, self.radio_cap_high, self.radio_cap_special)
+        cap_tier_col = QVBoxLayout()
+        cap_tier_col.addWidget(self.radio_cap_super)
+        cap_tier_col.addWidget(self.radio_cap_high)
+        cap_tier_col.addWidget(self.radio_cap_special)
+        rotation_layout.addLayout(cap_tier_col)
         
         # 测试模式参数输入
         row2 = QHBoxLayout()
@@ -496,6 +537,60 @@ class Dashboard(QWidget):
             msg = detail if detail else "启动失败（未知原因）"
             self.log_message(f"❌ {msg}", "ERROR")
         QMetaObject.invokeMethod(self.btn_launch, "setEnabled", Qt.ConnectionType.QueuedConnection, Q_ARG(bool, True))
+
+    def on_clear_game_temp_cache(self):
+        self.log_message("🗑 正在检查游戏目录下的 tmp 文件夹…", "SYSTEM")
+        threading.Thread(target=self._clear_game_temp_worker, daemon=True).start()
+
+    def _clear_game_temp_worker(self):
+        try:
+            from config import GAME_PATH
+        except Exception as e:
+            self.log_message(f"❌ 无法读取 config.GAME_PATH: {e}", "ERROR")
+            return
+        game_root = os.path.dirname(os.path.abspath(GAME_PATH))
+        tmp_dir = os.path.join(game_root, "tmp")
+        if not os.path.isdir(tmp_dir):
+            self.log_message(f"ℹ 未找到 tmp，跳过删除：{tmp_dir}", "INFO")
+            return
+        try:
+            shutil.rmtree(tmp_dir)
+            self.log_message(f"✅ 已删除 tmp：{tmp_dir}", "SUCCESS")
+        except OSError as e:
+            self.log_message(f"❌ 删除 tmp 失败（若游戏占用请先关闭）：{tmp_dir} | {e}", "ERROR")
+
+    def on_refresh_trinity(self):
+        self.btn_refresh_trinity.setEnabled(False)
+        self.log_message("🔄 执行三键刷新（设置 → 刷新 → 保存）…", "SYSTEM")
+        threading.Thread(target=self._refresh_trinity_worker, daemon=True).start()
+
+    def _refresh_trinity_worker(self):
+        try:
+            if not hasattr(self, "bot") or not self.bot:
+                self.log_message("❌ bot 未就绪，无法执行三键刷新", "ERROR")
+                return
+            drr = getattr(self.bot, "dar_route_runner", None)
+            if not drr:
+                self.log_message("❌ dar_route_runner 不存在，无法执行三键刷新", "ERROR")
+                return
+            use_fg = self.chk_foreground.isChecked()
+            ok = drr._refresh_trinity_clicks(use_fg, log_prefix="仪表盘")
+            if ok:
+                time.sleep(0.45)
+                self.log_message("✅ 三键刷新已完成", "SUCCESS")
+            else:
+                self.log_message("❌ 三键刷新未完全成功（见上方日志）", "WARN")
+        except Exception as e:
+            self.log_message(f"❌ 三键刷新异常: {e}", "ERROR")
+            import traceback
+            self.log_message(f"📋 异常详情: {traceback.format_exc()}", "ERROR")
+        finally:
+            QMetaObject.invokeMethod(
+                self.btn_refresh_trinity,
+                "setEnabled",
+                Qt.ConnectionType.QueuedConnection,
+                Q_ARG(bool, True),
+            )
 
     def _on_swf_sync(self, label: str, op_name: str):
         self.log_message(f"⏳ [{label}] 正在同步…", "SYSTEM")
@@ -685,6 +780,26 @@ class Dashboard(QWidget):
             self.log_message("📐 区域录制器已启动", "SYSTEM")
         except Exception as e:
             self.log_message(f"❌ 启动区域录制器失败: {e}", "ERROR")
+
+    def on_open_settings_region_recorder(self):
+        """打开设置子窗口区域录制器"""
+        import subprocess
+        import os
+        import sys
+
+        recorder_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "tools",
+            "region_recorder_settings_dialog.py",
+        )
+        try:
+            subprocess.Popen(
+                [sys.executable, recorder_path],
+                creationflags=subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0,
+            )
+            self.log_message("🧭 设置子窗口区域录制器已启动", "SYSTEM")
+        except Exception as e:
+            self.log_message(f"❌ 启动设置子窗口区域录制器失败: {e}", "ERROR")
     
     def on_open_template_recorder(self):
         """打开模板录制器（区域模板捕获工具）"""
@@ -998,8 +1113,10 @@ class Dashboard(QWidget):
             self.btn_start_rotation.setEnabled(False)
         if hasattr(self, "chk_rotation_test_mode"):
             self.chk_rotation_test_mode.setEnabled(False)
-        if hasattr(self, "chk_non_mantis_super_capsule"):
-            self.chk_non_mantis_super_capsule.setEnabled(False)
+        for _w in getattr(self, "_capsule_tier_radios", ()):
+            _w.setEnabled(False)
+        if hasattr(self, "_capsule_tier_label"):
+            self._capsule_tier_label.setEnabled(False)
         if hasattr(self, "rotation_interval_minutes_nieo_input"):
             self.rotation_interval_minutes_nieo_input.setEnabled(False)
         if hasattr(self, "rotation_interval_minutes_shuangta_input"):
@@ -1074,8 +1191,10 @@ class Dashboard(QWidget):
                 # 根据测试模式复选框状态更新输入框状态
                 if hasattr(self, "_update_rotation_test_inputs_enabled"):
                     self._update_rotation_test_inputs_enabled()
-            if hasattr(self, "chk_non_mantis_super_capsule"):
-                self.chk_non_mantis_super_capsule.setEnabled(True)
+            for _w in getattr(self, "_capsule_tier_radios", ()):
+                _w.setEnabled(True)
+            if hasattr(self, "_capsule_tier_label"):
+                self._capsule_tier_label.setEnabled(True)
             
             if hasattr(self, "btn_nieo"):
                 self.btn_nieo.setEnabled(True)
@@ -1107,12 +1226,12 @@ class Dashboard(QWidget):
         self.log_message("日志已清空", "SYSTEM")
 
     def _capsule_task_kv(self) -> dict:
-        """非螳螂对战的胶囊档位：勾选→超级，不勾选→特级（敌方 122 由 runner 单独处理）。"""
-        v = bool(
-            getattr(self, "chk_non_mantis_super_capsule", None)
-            and self.chk_non_mantis_super_capsule.isChecked()
-        )
-        return {"non_mantis_use_super_capsule": v}
+        """非螳螂对战：单档超级/高级/特级（敌方122 由 runner 单独走六档）。"""
+        if getattr(self, "radio_cap_high", None) and self.radio_cap_high.isChecked():
+            return {"non_mantis_capsule_tier": "high"}
+        if getattr(self, "radio_cap_special", None) and self.radio_cap_special.isChecked():
+            return {"non_mantis_capsule_tier": "special"}
+        return {"non_mantis_capsule_tier": "super"}
 
     def _update_flash_pipi_pre_rotation_checkbox_state(self):
         """仅当选中闪光皮皮时解锁轮换重连前置勾选框"""
@@ -1218,9 +1337,8 @@ class Dashboard(QWidget):
             return default_value
     
     def start_scheduled_task(self):
-        """启动定时任务（已禁用，保留以备参考）"""
-        # ⚠️ 原定时任务已禁用，请使用双塔尼奥轮换模式
-        self.log_message("⚠️ 原定时任务已禁用，请使用双塔尼奥轮换模式", "WARN")
+        """定时任务入口已移除（引擎不再执行 scheduled_*）；请使用双塔尼奥轮换模式。"""
+        self.log_message("⚠️ 定时任务已从引擎移除，请使用「启动轮换模式」", "WARN")
         return
     
     def start_test_nie(self):

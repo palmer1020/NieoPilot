@@ -1,8 +1,8 @@
 # core/bot_thread.py
+import math
 import os
 import time
 import threading
-import json
 from typing import Dict, Optional
 
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -125,44 +125,8 @@ class BotWorker(QThread):
     # --------------------
     def set_tasks(self, tasks: dict):
         with self._task_lock:
-            if tasks and tasks.get("scheduled_task"):
-                # 如果是定时任务，检查是否已有定时任务，如果有则覆盖
-                current_tasks = dict(self.active_tasks)
-                
-                # 检查是否已有定时任务
-                if current_tasks.get("scheduled_task"):
-                    old_datetime = current_tasks.get("scheduled_datetime")
-                    old_profile = current_tasks.get("wild_capture_profile", "unknown")
-                    new_datetime = tasks.get("scheduled_datetime")
-                    new_profile = tasks.get("wild_capture_profile", "unknown")
-                    
-                    # 记录覆盖日志
-                    if old_datetime:
-                        old_time_str = old_datetime.strftime("%Y-%m-%d %H:%M:%S") if hasattr(old_datetime, 'strftime') else str(old_datetime)
-                    else:
-                        old_time_str = "未知时间"
-                    if new_datetime:
-                        new_time_str = new_datetime.strftime("%Y-%m-%d %H:%M:%S") if hasattr(new_datetime, 'strftime') else str(new_datetime)
-                    else:
-                        new_time_str = "未知时间"
-                    
-                    self.emit_and_log(
-                        f"⚠️ 检测到已有定时任务（{old_time_str}，目标：{old_profile}），已被新任务覆盖（{new_time_str}，目标：{new_profile}）",
-                        "WARN"
-                    )
-                    
-                    # ✅ 清除旧的定时任务相关字段，确保完全覆盖
-                    current_tasks.pop("scheduled_task", None)
-                    current_tasks.pop("scheduled_datetime", None)
-                    current_tasks.pop("wild_capture_profile", None)
-                    current_tasks.pop("scheduled_from_hangup", None)
-                
-                # 覆盖定时任务（保留其他任务，但清除旧的定时任务字段后再更新）
-                current_tasks.update(tasks)
-                self.active_tasks = current_tasks
-            else:
-                # 其他任务替换现有任务（保持原有行为）
-                self.active_tasks = dict(tasks or {})
+            # 原定时任务（scheduled_task / scheduled_datetime）已移除，由轮换模式等替代
+            self.active_tasks = dict(tasks or {})
 
         self.stop_current = False
         self.is_paused = False
@@ -296,7 +260,6 @@ class BotWorker(QThread):
                 or tasks.get("afk_battle_mode")  # ✅ 挂机对战模式
                 or tasks.get("rotation_mode")  # ✅ 双塔尼奥轮换模式（已替换原定时任务）
                 or tasks.get("pinnacle_mode")  # ✅ 巅峰对战模式（排位/娱乐）
-                # or tasks.get("scheduled_task")  # ⚠️ 原定时任务已禁用
             )
 
             if not has_job:
@@ -318,9 +281,16 @@ class BotWorker(QThread):
                     use_foreground = bool(tasks.get("use_foreground", False))
                     use_background = (not use_foreground)
 
-                    cap_super = bool(tasks.get("non_mantis_use_super_capsule", False))
                     try:
-                        self.dar_route_runner.set_non_mantis_use_super_capsule(cap_super)
+                        cap_tier = tasks.get("non_mantis_capsule_tier")
+                        if cap_tier in ("super", "high", "special"):
+                            self.dar_route_runner.set_non_mantis_capsule_tier(str(cap_tier))
+                        elif "non_mantis_use_super_capsule" in tasks:
+                            self.dar_route_runner.set_non_mantis_use_super_capsule(
+                                bool(tasks.get("non_mantis_use_super_capsule", False))
+                            )
+                        else:
+                            self.dar_route_runner.set_non_mantis_capsule_tier("super")
                     except Exception:
                         pass
 
@@ -338,10 +308,40 @@ class BotWorker(QThread):
                             f"📜 开始执行脚本: {script_name}.json × {repeat}（前台={use_foreground}）",
                             "SYSTEM",
                         )
+                        fangsheng_left_flips = 0
+                        if script_name == "放生":
+                            fangsheng_left_flips = math.ceil(repeat / 9) + 5
+                            self.emit_and_log(
+                                f"🐾 放生：每轮前先左翻页 {fangsheng_left_flips} 次"
+                                f"（⌈{repeat}/9⌉+5）",
+                                "INFO",
+                            )
                         for _ in range(repeat):
                             if self.stop_current:
                                 break
-                            self.daily_runner.run_single_script(script_name, bg_mode=use_background)
+                            if script_name == "放生" and fangsheng_left_flips > 0:
+                                flip_ok = True
+                                for _flip in range(fangsheng_left_flips):
+                                    if self.stop_current:
+                                        flip_ok = False
+                                        break
+                                    if not self.daily_runner._click_region_safe(
+                                        self.regions,
+                                        "精灵仓库.左",
+                                        use_foreground,
+                                    ):
+                                        self.emit_and_log(
+                                            "❌ 放生前左翻页中止（缺少区域 精灵仓库.左 或点击失败）",
+                                            "ERROR",
+                                        )
+                                        flip_ok = False
+                                        break
+                                    time.sleep(0.05)
+                                if not flip_ok:
+                                    break
+                            self.daily_runner.run_single_script(
+                                script_name, bg_mode=use_background
+                            )
 
                     # ---- 扭蛋 ----
                     if tasks.get("gacha") and (not self.stop_current):
@@ -552,257 +552,6 @@ class BotWorker(QThread):
                             use_foreground=use_foreground,
                             is_test_mode=is_test_mode,  # ✅ 传递测试模式标志
                         )
-                    
-                    # ---- 原定时任务（已禁用）----
-                    # if tasks.get("scheduled_task") and (not self.stop_current):
-                        from datetime import datetime
-                        scheduled_datetime = tasks.get("scheduled_datetime")
-                        if scheduled_datetime:
-                            profile_name = (tasks.get("wild_capture_profile") or "dugulu").lower().strip()
-                            if profile_name == "mantis":
-                                profile = DEFAULT_PROFILE_MANTIS
-                                script_name = "to螳螂"
-                            elif profile_name == "dugulu":
-                                profile = DEFAULT_PROFILE_DUGULU
-                                script_name = "to嘟咕噜"
-                            elif profile_name == "shuangta":
-                                profile = DEFAULT_PROFILE_SHUANGTA
-                                script_name = "to双塔"
-                            elif profile_name == "xiaodouya":
-                                profile = DEFAULT_PROFILE_XIAODOUYA
-                                script_name = "to小豆芽"
-                            elif profile_name == "flash_pipi":
-                                profile = DEFAULT_PROFILE_FLASH_PIPI
-                                script_name = "to闪光皮皮"  # 需要确认脚本名称
-                            elif profile_name == "eyeball":
-                                profile = EYEBALL_PROFILE
-                                script_name = "to眼球"
-                            elif profile_name == "nieo":
-                                # 尼奥模式：定时任务使用to尼奥脚本，直接触发使用地图/27.json
-                                profile = None
-                                script_name = "to尼奥"  # 定时任务使用to尼奥
-                                # 注意：直接触发尼奥模式时，会使用地图/27.json（在run_nieo_mode中处理）
-                            else:
-                                profile = DEFAULT_PROFILE_DUGULU
-                                script_name = "to嘟咕噜"
-                            
-                                            # 检查时间是否已经过去
-                            now = datetime.now()
-                            if now >= scheduled_datetime:
-                                self.emit_and_log(f"⏰ 定时任务：输入的时间 {scheduled_datetime.strftime('%Y-%m-%d %H:%M:%S')} 已过去，立即执行，目标：{profile_name}", "SYSTEM")
-                            else:
-                                self.emit_and_log(f"⏰ 定时任务启动：等待到 {scheduled_datetime.strftime('%Y-%m-%d %H:%M:%S')}，目标：{profile_name}", "SYSTEM")
-                                # 等待到指定时间
-                                while datetime.now() < scheduled_datetime:
-                                    if self.stop_current:
-                                        self.emit_and_log("⛔ 定时任务已取消", "WARN")
-                                        break
-                                    time.sleep(1.0)  # 每秒检查一次
-                            
-                            if not self.stop_current:
-                                # 检查是否有捕捉任务正在运行
-                                has_wild_capture = tasks.get("wild_capture", False)
-                                
-                                if has_wild_capture:
-                                    self.emit_and_log("⏳ 定时时间已到，检测到捕捉任务正在运行，等待安全打断时机...", "SYSTEM")
-                                    
-                                    # 等待到安全打断时机：稳态扫描阶段
-                                    # 1. 如果正在战斗，等待战斗结束
-                                    # 2. 如果正在恢复，等待恢复完成
-                                    # 3. 等待进入稳态扫描阶段
-                                    max_wait_time = 300  # 最多等待5分钟
-                                    wait_start = time.time()
-                                    
-                                    while (time.time() - wait_start) < max_wait_time and (not self.stop_current):
-                                        # 检查DarRouteRunner的状态
-                                        if hasattr(self.dar_route_runner, "_is_scanning_steady_state"):
-                                            if self.dar_route_runner._is_scanning_steady_state:
-                                                # 已经在稳态扫描阶段，可以安全打断
-                                                self.emit_and_log("✅ 检测到捕捉任务处于稳态扫描阶段，可以安全打断", "SUCCESS")
-                                                # 设置stop_current来打断捕捉任务
-                                                self.stop_current = True
-                                                self._stop_event.set()
-                                                # 等待一下确保捕捉任务已停止
-                                                time.sleep(1.0)
-                                                break
-                                            elif hasattr(self.dar_route_runner, "_is_in_battle") and self.dar_route_runner._is_in_battle:
-                                                # 正在战斗中，等待战斗结束
-                                                self.emit_and_log("⏳ 捕捉任务正在战斗中，等待战斗结束...", "INFO")
-                                            elif hasattr(self.dar_route_runner, "_is_recovering") and self.dar_route_runner._is_recovering:
-                                                # 正在恢复中，等待恢复完成
-                                                self.emit_and_log("⏳ 捕捉任务正在恢复中，等待恢复完成...", "INFO")
-                                            else:
-                                                # 不在稳态扫描，也不在战斗/恢复，可能在其他阶段，等待进入稳态扫描
-                                                self.emit_and_log("⏳ 等待捕捉任务进入稳态扫描阶段...", "INFO")
-                                        
-                                        time.sleep(0.5)  # 每0.5秒检查一次
-                                    
-                                    if (time.time() - wait_start) >= max_wait_time:
-                                        self.emit_and_log("⚠️ 等待超时，强制打断捕捉任务", "WARN")
-                                        self.stop_current = True
-                                        self._stop_event.set()
-                                        time.sleep(1.0)
-                                    
-                                    # 如果捕捉任务被打断，执行回到基地脚本
-                                    if self.stop_current:
-                                        self.emit_and_log("🏠 执行回到基地脚本，准备开始定时任务", "SYSTEM")
-                                        if self.daily_runner.run_single_script("回到基地", bg_mode=use_background):
-                                            self.emit_and_log("✅ 回到基地脚本执行完成", "SUCCESS")
-                                        else:
-                                            self.emit_and_log("⚠️ 回到基地脚本执行失败，继续执行后续步骤", "WARN")
-                                    
-                                    # 重置stop_current，以便执行定时任务
-                                    self.stop_current = False
-                                    self._stop_event.clear()
-                                
-                                # 检查其他任务
-                                has_other_job = bool(
-                                    tasks.get("daily_chain")
-                                    or tasks.get("run_script")
-                                    or tasks.get("gacha")
-                                    or tasks.get("battle_defeat")
-                                    or tasks.get("training_level")
-                                    or tasks.get("training_until_level")
-                                    or tasks.get("dar_route_test")
-                                    or tasks.get("smart_tracking_test")
-                                    or tasks.get("calibration_test")
-                                    or tasks.get("nieo_mode")  # ✅ 尼奥模式（10/11地图循环）
-                                )
-                                
-                                if has_other_job:
-                                    self.emit_and_log("⏳ 定时时间已到，但检测到其他任务正在运行，等待其完成...", "SYSTEM")
-                                    # 等待其他任务完成（通过检查is_running状态）
-                                    while self.is_running and (not self.stop_current):
-                                        # 检查是否有除了定时任务之外的其他任务
-                                        with self._task_lock:
-                                            current_tasks = dict(self.active_tasks)
-                                        has_other = bool(
-                                            current_tasks.get("daily_chain")
-                                            or current_tasks.get("run_script")
-                                            or current_tasks.get("gacha")
-                                            or current_tasks.get("hero_tower")
-                                            or current_tasks.get("training_level")
-                                            or current_tasks.get("training_until_level")
-                                            or current_tasks.get("dar_route_test")
-                                            or current_tasks.get("smart_tracking_test")
-                                            or current_tasks.get("calibration_test")
-                                        )
-                                        if not has_other:
-                                            break  # 其他任务已完成
-                                        time.sleep(0.5)  # 每0.5秒检查一次
-                                    
-                                    if self.stop_current:
-                                        self.emit_and_log("⛔ 定时任务已取消", "WARN")
-                                    else:
-                                        self.emit_and_log("✅ 其他任务已完成，开始执行定时任务", "SUCCESS")
-                                
-                                if not self.stop_current:
-                                    self.emit_and_log("⏰ 定时时间到达，开始执行任务", "SYSTEM")
-                                
-                                # 1. 根据模式执行不同的脚本
-                                from_hangup = tasks.get("scheduled_from_hangup", False)
-                                if from_hangup:
-                                    # 睡前在挂机脚本模式：执行回到基地.json
-                                    if self.daily_runner.run_single_script("回到基地", bg_mode=use_background):
-                                        self.emit_and_log("✅ 回到基地脚本执行完成", "SUCCESS")
-                                    else:
-                                        self.emit_and_log("⚠️ 回到基地脚本执行失败，继续执行后续步骤", "WARN")
-                                else:
-                                    # 正常模式：执行登录.json
-                                    if self.daily_runner.run_single_script("登录", bg_mode=use_background):
-                                        self.emit_and_log("✅ 登录脚本执行完成", "SUCCESS")
-                                    else:
-                                        self.emit_and_log("⚠️ 登录脚本执行失败，继续执行后续步骤", "WARN")
-                                
-                                # ✅ 1.5. 等待0.5s，点击登录.亨姆区域，执行亨姆.json
-                                if not self.stop_current:
-                                    time.sleep(0.5)
-                                    
-                                    # 点击登录.亨姆区域
-                                    try:
-                                        from core.region_store import RegionStore
-                                        regions = getattr(self.dar_route_runner, "regions", None)
-                                        if regions:
-                                            hengmu_region = regions.get("登录.亨姆")
-                                            if hengmu_region:
-                                                self.emit_and_log("🖱️ 点击登录.亨姆区域", "INFO")
-                                                self.dar_route_runner._click_region(hengmu_region, use_foreground)
-                                                time.sleep(0.2)  # 等待点击生效
-                                            else:
-                                                self.emit_and_log("⚠️ 找不到登录.亨姆区域，跳过点击", "WARN")
-                                        else:
-                                            self.emit_and_log("⚠️ regions未初始化，跳过点击亨姆区域", "WARN")
-                                    except Exception as e:
-                                        self.emit_and_log(f"⚠️ 点击登录.亨姆区域时出错: {e}", "WARN")
-                                
-                                # ✅ 1.5. 在执行to脚本之前，执行亨姆检测流程
-                                if not self.stop_current:
-                                    # ✅ 检查 profile 是否已定义（尼奥模式下 profile 可能为 None）
-                                    if profile is not None:
-                                        self.emit_and_log("🔍 开始执行亨姆检测流程", "INFO")
-                                        if self.dar_route_runner._handle_hengmu_before_to_script(
-                                            profile=profile,
-                                            use_foreground=use_foreground,
-                                            stop_event=self._stop_event
-                                        ):
-                                            self.emit_and_log("✅ 亨姆检测流程完成", "SUCCESS")
-                                        else:
-                                            self.emit_and_log("⚠️ 亨姆检测流程失败，继续执行to脚本", "WARN")
-                                    else:
-                                        self.emit_and_log("ℹ️ 跳过亨姆检测流程（尼奥模式，profile为None）", "INFO")
-                                
-                                # 2. 执行切换脚本（toXXX.json）
-                                if not self.stop_current:
-                                    if self.daily_runner.run_single_script(script_name, bg_mode=use_background):
-                                        self.emit_and_log(f"✅ 切换脚本执行完成: {script_name}.json", "SUCCESS")
-                                    else:
-                                        self.emit_and_log(f"⚠️ 切换脚本执行失败: {script_name}.json，尝试继续", "WARN")
-                                
-                                # 3. 直接调用改进后的捕捉逻辑（会自动执行恢复、地图进入、等待地图、标定基线、开始扫描）
-                                if not self.stop_current:
-                                    self.emit_and_log(f"🌲 开始捕捉：{profile_name}（自动进入地图并开始扫描）", "SYSTEM")
-                                    # #region agent log
-                                    try:
-                                        with open(r"c:\Users\dayuz\OneDrive\Desktop\nieo\NieoPilot\.cursor\debug.log", "a", encoding="utf-8") as f:
-                                            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"bot_thread.py:627","message":"定时任务准备调用dar_route_runner.run","data":{"profile_name":profile_name,"profile_is_none":(profile is None),"stop_current":self.stop_current},"timestamp":int(time.time()*1000)})+"\n")
-                                    except: pass
-                                    # #endregion
-                                    
-                                    if profile_name == "nieo":
-                                        # 尼奥模式：直接调用run_nieo_mode
-                                        self.emit_and_log(f"🌊 开始尼奥模式（10/11地图循环）", "SYSTEM")
-                                        # #region agent log
-                                        try:
-                                            with open(r"c:\Users\dayuz\OneDrive\Desktop\nieo\NieoPilot\.cursor\debug.log", "a", encoding="utf-8") as f:
-                                                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"bot_thread.py:635","message":"定时任务调用run_nieo_mode","data":{"profile_name":profile_name},"timestamp":int(time.time()*1000)})+"\n")
-                                        except: pass
-                                        # #endregion
-                                        self.dar_route_runner.run_nieo_mode(
-                                            stop_event=self._stop_event,
-                                            use_foreground=use_foreground,
-                                            test_nieo=False,
-                                            test_nie=False,
-                                            skip_nie_77=False,
-                                        )
-                                    else:
-                                        # 普通捕捉模式
-                                        # #region agent log
-                                        try:
-                                            with open(r"c:\Users\dayuz\OneDrive\Desktop\nieo\NieoPilot\.cursor\debug.log", "a", encoding="utf-8") as f:
-                                                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"bot_thread.py:648","message":"定时任务调用dar_route_runner.run","data":{"profile_name":profile_name,"profile_is_none":(profile is None)},"timestamp":int(time.time()*1000)})+"\n")
-                                        except: pass
-                                        # #endregion
-                                        # ✅ 检查 profile 是否已定义（尼奥模式下 profile 可能为 None）
-                                        if profile is not None:
-                                            self.dar_route_runner.run(
-                                                stop_event=self._stop_event,
-                                                use_foreground=use_foreground,
-                                                profile=profile,
-                                                test_mode=False,
-                                                smart_tracking_mode=False,  # 定时任务使用正常的捕捉逻辑
-                                            )
-                                        else:
-                                            self.emit_and_log("⚠️ profile为None，无法执行普通捕捉模式", "WARN")
 
                     # ---- 🌊 尼奥模式（10/11地图循环）----
                     if tasks.get("nieo_mode") and (not self.stop_current):

@@ -69,7 +69,12 @@ def load_route_points(folder_name: str, region_root: str) -> List[Tuple[int, Reg
             
             # 创建Region对象
             click_config = data.get("click", {"random": True})
-            region = Region(key=f"{folder_name}.{i}", points=pts, click=click_config)
+            region = Region(
+                key=f"{folder_name}.{i}",
+                points=pts,
+                click=click_config,
+                meta={},
+            )
             
             # 计算中心点
             x1, y1, x2, y2 = region.outer_bbox()
