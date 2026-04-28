@@ -553,7 +553,26 @@ class WindowManager:
         except Exception as e:
             logger.warning(f"click_background_settings_dialog_logic_xy 失败: {e}")
             return False
-    
+
+    def click_background_settings_dialog_logic_xy_on_hwnd(
+        self, target_hwnd: int, lx: float, ly: float
+    ) -> bool:
+        """已知「设置」子窗口句柄时，按逻辑坐标后台点击（PostMessage）。"""
+        if not target_hwnd:
+            return False
+        try:
+            x1, y1, x2, y2 = win32gui.GetClientRect(target_hwnd)
+            cw = max(1, int(x2 - x1))
+            ch = max(1, int(y2 - y1))
+            cx = lx * float(cw) / float(SETTINGS_DIALOG_LOGIC_W)
+            cy = ly * float(ch) / float(SETTINGS_DIALOG_LOGIC_H)
+            return self.click_background_on_dialog_client_xy(target_hwnd, cx, cy)
+        except Exception as e:
+            logger.warning(
+                f"click_background_settings_dialog_logic_xy_on_hwnd 失败: {e}"
+            )
+            return False
+
     def send_key(self, vk_code: int):
         """
         发送键盘按键到游戏窗口（后台）

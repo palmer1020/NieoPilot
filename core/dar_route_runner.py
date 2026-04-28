@@ -227,6 +227,8 @@ class DarRouteRunner:
 
     # 登录后的期望 map ID（向上的第一个map，与检测315逻辑相同）
     MAP_ID_AFTER_LOGIN = 500001
+    # Step1：刷新 UI 后等待 Login.swf 内核行（野外 / 轮换 / 巅峰预刷新共用）
+    REFRESH_LOGIN_WAIT_SEC = 5.0
 
     # fightResource pet swf / pet 校准 / map：与 kernel_log_match 中正则一致（含 path= 反斜杠格式）
     _FIGHT_PET_SWF_RE = RE_FIGHT_PET_ID
@@ -10988,7 +10990,7 @@ class DarRouteRunner:
     # ---------- 刷新 UI 登录管线（替代 fix_script/登录.json） ----------
     #
     # 野外精灵重连统一 Step123（实现与日志一一对应）：
-    #   Step1 — _step1_trinity_clicks_and_wait_login_swf：三键 + 等 Login.swf
+    #   Step1 — _step1_trinity_clicks_and_wait_login_swf：设置窗 + 刷新（无保存）+ 等 Login.swf
     #   Step2 — _run_full_refresh_login_pipeline：至基地 / map500001 门控；成功则 _mark_refresh_pipeline_map500001_gate_done
     #   Step3 — _execute_reconnect_scripts_*：轻量 500001 门控（可因 Step2 跳过一次全缓冲）→ 轮换背包/精灵/跟随 → to 脚本 → 目标 map
     # 轮换 Step2 成功后同样 _mark（与野外一致）；下一若进重连核心则 _consume 跳过复验。轮换子步骤 2–5 仍不经过 _execute_refresh_reconnect 外壳。
@@ -11016,19 +11018,24 @@ class DarRouteRunner:
         use_foreground: bool,
         log_prefix: str,
         stop_event: Optional[threading.Event] = None,
-        max_wait_s: float = 10.0,
+        max_wait_s: Optional[float] = None,
     ) -> str:
         """
-        Step1：三键 → 等 Login.swf（只到内核出现 Login，不含四下开始/基地门控）。
+        Step1：设置窗 + 后台刷新（PostMessage，不点保存）→ 等 Login.swf（只到内核出现 Login，不含四下开始/基地门控）。
 
         返回值：
             "login" — 已检测到 Login.swf
-            "trinity_fail" — 三键点击失败
+            "trinity_fail" — 刷新 UI 点击失败
             "stopped" — stop_event / stop_current
             "no_login" — 超时内未出现 Login
         """
+        if max_wait_s is None:
+            max_wait_s = float(self.REFRESH_LOGIN_WAIT_SEC)
         self._mark_refresh_pipeline_start()
-        self._emit(f"🖱️ [Step1·{log_prefix}] 刷新 UI：设置 → 刷新 → 保存", "INFO")
+        self._emit(
+            f"🖱️ [Step1·{log_prefix}] 刷新 UI：若无设置窗则点设置 → 仅后台刷新（不保存）",
+            "INFO",
+        )
         if not self._refresh_trinity_clicks(use_foreground, log_prefix=log_prefix):
             return "trinity_fail"
         time.sleep(0.45)
@@ -11055,92 +11062,100 @@ class DarRouteRunner:
         self._emit(f"⚠️ [Step1·{log_prefix}] {max_wait_s:.0f}s 内未检测到 Login.swf", "WARN")
         return "no_login"
 
-    def _refresh_trinity_clicks(self, use_foreground: bool, log_prefix: str = "") -> bool:
+    def _click_refresh_on_settings_hwnd(self, dlg: int, log_prefix: str = "") -> bool:
         """
-        刷新.设置 → 刷新.刷新 → 刷新.保存。
-        - 「设置」：后台点在主窗口上，弹出标题为「设置」的子窗口。
-        - 「刷新」「保存」：后台点击必须发到该子窗口（见 window_manager 子 HWND），否则会点空。
+        对已知「设置」子窗口 HWND 仅后台点击「刷新.刷新」（PostMessage）。
+        优先 设置窗口.刷新 / 设置子窗口.刷新；否则 刷新.刷新 映射到该 HWND。
         """
         lp = f"{log_prefix} " if log_prefix else ""
-
-        def _click_trinity_child_or_main(key: str) -> bool:
-            # 先尝试「设置子窗口坐标系」region：设置窗口.<name> / 设置子窗口.<name>
-            name = key.split(".", 1)[1] if "." in key else key
-            child_keys = (f"设置窗口.{name}", f"设置子窗口.{name}")
-            for ck in child_keys:
-                try:
-                    reg_child = self.regions.get(ck)
-                    if reg_child:
-                        px, py = reg_child.sample_click_point()
-                        coord_space = (reg_child.meta or {}).get("coord_space", "")
-                        if coord_space == "settings_dialog_logic":
-                            ok = window_manager.click_background_settings_dialog_logic_xy(
-                                px, py
-                            )
-                        else:
-                            ok = window_manager.click_background_settings_dialog_client_xy(
-                                px, py
-                            )
-                        if ok:
-                            self._emit(
-                                f"🖱️ [{lp}刷新UI] 已后台点击 {ck}（设置子窗口"
-                                f"{'逻辑1440×1000' if coord_space == 'settings_dialog_logic' else '像素client'}）",
-                                "INFO",
-                            )
-                            return True
-                except Exception:
-                    pass
-
+        key = "刷新.刷新"
+        name = key.split(".", 1)[1] if "." in key else key
+        child_keys = (f"设置窗口.{name}", f"设置子窗口.{name}")
+        for ck in child_keys:
             try:
-                reg = self.regions.get(key)
-                if not reg:
-                    raise KeyError(key)
-                gx, gy = reg.sample_click_point()
-            except KeyError:
-                self._emit(f"❌ [{lp}刷新UI] 缺少 region：{key}", "ERROR")
-                return False
-            if window_manager.click_background_settings_dialog(gx, gy):
-                self._emit(
-                    f"🖱️ [{lp}刷新UI] 已后台点击 {key}（目标：设置子窗口）",
-                    "INFO",
-                )
-                return True
-            window_manager.click_background(gx, gy)
+                reg_child = self.regions.get(ck)
+                if reg_child:
+                    px, py = reg_child.sample_click_point()
+                    coord_space = (reg_child.meta or {}).get("coord_space", "")
+                    if coord_space == "settings_dialog_logic":
+                        ok = window_manager.click_background_settings_dialog_logic_xy_on_hwnd(
+                            dlg, px, py
+                        )
+                    else:
+                        ok = window_manager.click_background_on_dialog_client_xy(
+                            dlg, px, py
+                        )
+                    if ok:
+                        self._emit(
+                            f"🖱️ [{lp}刷新UI] 已后台点击 {ck}（设置子窗口"
+                            f"{'逻辑1440×1000' if coord_space == 'settings_dialog_logic' else '像素client'}）",
+                            "INFO",
+                        )
+                        return True
+            except Exception:
+                pass
+
+        try:
+            reg = self.regions.get(key)
+            if not reg:
+                raise KeyError(key)
+            gx, gy = reg.sample_click_point()
+        except KeyError:
+            self._emit(f"❌ [{lp}刷新UI] 缺少 region：{key}", "ERROR")
+            return False
+        if window_manager.click_background_on_dialog_hwnd(dlg, gx, gy):
             self._emit(
-                f"⚠️ [{lp}刷新UI] 未找到「设置」子窗口，{key} 已回退为「主窗口后台」",
-                "WARN",
+                f"🖱️ [{lp}刷新UI] 已后台点击 {key}（逻辑坐标→设置子窗口）",
+                "INFO",
             )
             return True
+        self._emit(f"❌ [{lp}刷新UI] PostMessage 点击 {key} 失败", "ERROR")
+        return False
 
-        # 1) 只开子窗：主窗口后台点「设置」
-        self._emit(f"🖱️ [{lp}刷新UI] 点击 刷新.设置（主窗口后台）", "INFO")
-        try:
-            reg_setting = self.regions.require("刷新.设置")
-            gx, gy = reg_setting.sample_click_point()
-            if not window_manager.click_background_client_left_x(gx, gy, offset_x=4):
-                # 回退：如果特殊点击失败，使用旧逻辑避免流程中断
-                self._click_region("刷新.设置", use_foreground)
-        except KeyError:
-            self._emit(f"❌ [{lp}刷新UI] 缺少 region：刷新.设置", "ERROR")
-            return False
-        time.sleep(0.45)
-
-        # 2) 等弹层出现（与游戏同进程、窗口标题「设置」）
-        dlg = window_manager.wait_settings_dialog_hwnd(1.5)
+    def _refresh_trinity_clicks(self, use_foreground: bool, log_prefix: str = "") -> bool:
+        """
+        预登录刷新 UI（PostMessage）：
+        - 若已有「设置」子窗口：直接对该 HWND 仅点「刷新」；不点保存。
+        - 若无：循环点 刷新.设置 直至出现设置窗 → sleep 2s → 仅点「刷新」；不点保存。
+        """
+        lp = f"{log_prefix} " if log_prefix else ""
+        dlg = window_manager.find_settings_dialog_hwnd()
         if dlg:
-            self._emit(f"✅ [{lp}刷新UI] 已检测到「设置」子窗口 HWND={dlg}", "INFO")
-        else:
             self._emit(
-                f"⚠️ [{lp}刷新UI] 1.5s 内未检测到「设置」子窗口，后续将尝试点击并可能回退主窗口",
-                "WARN",
+                f"✅ [{lp}刷新UI] 已有「设置」子窗口 HWND={dlg}，直接后台刷新",
+                "INFO",
             )
+            return self._click_refresh_on_settings_hwnd(dlg, log_prefix=log_prefix)
 
-        for key in ("刷新.刷新", "刷新.保存"):
-            self._emit(f"🖱️ [{lp}刷新UI] 点击 {key}", "INFO")
-            if not _click_trinity_child_or_main(key):
+        OPEN_TIMEOUT_S = 25.0
+        t_open = time.time()
+        self._emit(
+            f"🖱️ [{lp}刷新UI] 未检测到设置窗，循环点击 刷新.设置 直至出现…",
+            "INFO",
+        )
+        dlg = 0
+        while time.time() - t_open < OPEN_TIMEOUT_S:
+            try:
+                reg_setting = self.regions.require("刷新.设置")
+                gx, gy = reg_setting.sample_click_point()
+                if not window_manager.click_background_client_left_x(gx, gy, offset_x=4):
+                    self._click_region("刷新.设置", use_foreground)
+            except KeyError:
+                self._emit(f"❌ [{lp}刷新UI] 缺少 region：刷新.设置", "ERROR")
                 return False
-            time.sleep(0.2)
-        return True
+            time.sleep(0.25)
+            dlg = window_manager.wait_settings_dialog_hwnd(1.2)
+            if dlg:
+                break
+        if not dlg:
+            self._emit(
+                f"❌ [{lp}刷新UI] {OPEN_TIMEOUT_S:.0f}s 内未出现「设置」子窗口",
+                "ERROR",
+            )
+            return False
+        self._emit(f"✅ [{lp}刷新UI] 已检测到「设置」子窗口 HWND={dlg}", "INFO")
+        time.sleep(2.0)
+        return self._click_refresh_on_settings_hwnd(dlg, log_prefix=log_prefix)
 
     def _click_shield_preferred(self, use_foreground: bool, log_tag: str = "") -> None:
         for key in ("刷新.屏蔽", "系统.屏蔽"):
@@ -11243,8 +11258,17 @@ class DarRouteRunner:
         last_click = 0.0
         interval = getattr(self, "PINNACLE_LOOP_CLICK_INTERVAL_SEC", 0.25)
         poll = getattr(self, "PINNACLE_LOOP_SLEEP_SEC", 0.05)
+        # ✅ 关键兜底：避免卡在“无限点三键但内核无 map”的死循环
+        max_wait_s = float(getattr(self, "REFRESH_LOGIN_MAP_WAIT_SEC", 25.0))
+        t0 = time.time()
         while True:
             if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                return False
+            if time.time() - t0 > max_wait_s:
+                self._emit(
+                    f"⚠️ [{log_tag}] 三键循环等待 map 超时（{max_wait_s:.0f}s），判定失败并触发上层刷新重试",
+                    "WARN",
+                )
                 return False
             now = time.time()
             if now - last_click >= interval:
@@ -11480,7 +11504,7 @@ class DarRouteRunner:
         """
         野外精灵重连 **Step1+2+3 主入口**（与类内「刷新 UI 登录管线」处 Step123 总述一致；轮换的「子步骤1」仅含本函数的 Step1+2，不重复跑本函数 Step3）。
         
-        1. **Step1**：三键 + 等 Login.swf（仅到出现 Login 行）
+        1. **Step1**：设置窗 + 后台刷新（无保存）+ 等 Login.swf（仅到出现 Login 行，默认 5s）
         2. **Step2**：`_run_full_refresh_login_pipeline`（至基地/map500001 门控；成功则 `_mark_refresh_pipeline_map500001_gate_done`）
         3. **Step3**：按模式 `_execute_reconnect_scripts_*`（轻量门控、轮换、to、目标 map；可跳过一次全缓冲 500001 复验）
         
@@ -11540,9 +11564,9 @@ class DarRouteRunner:
                 except Exception:
                     pass
             
-            # Step1：三键 + 等 Login（与「Step2 程序化」分离，避免与重连 to 阶段混淆）
+            # Step1：设置窗 + 后台刷新（无保存）+ 等 Login（与「Step2 程序化」分离，避免与重连 to 阶段混淆）
             step1_res = self._step1_trinity_clicks_and_wait_login_swf(
-                use_foreground, reason, stop_event=None, max_wait_s=10.0
+                use_foreground, reason, stop_event=None
             )
             if step1_res == "trinity_fail":
                 self._emit(f"⚠️ [{reason}] 刷新 UI 点击失败，2s 后重试", "WARN")
@@ -11562,10 +11586,16 @@ class DarRouteRunner:
                 self._reconnect_scripts_executing = False
                 return
             if step1_res == "no_login":
-                self._emit(f"⚠️ [{reason}] 10秒内未检测到login信号，重复刷新", "WARN")
+                self._emit(
+                    f"⚠️ [{reason}] {self.REFRESH_LOGIN_WAIT_SEC:.0f}秒内未检测到login信号，重复刷新",
+                    "WARN",
+                )
                 actual_retry_count = retry_count + 1
                 actual_max_retries = max_retries
-                self._emit(f"🔄 [{reason}] 10秒内未检测到login信号，立即重复刷新流程（第{actual_retry_count}次）", "INFO")
+                self._emit(
+                    f"🔄 [{reason}] {self.REFRESH_LOGIN_WAIT_SEC:.0f}秒内未检测到login信号，立即重复刷新流程（第{actual_retry_count}次）",
+                    "INFO",
+                )
                 if getattr(self.bot, "stop_current", False):
                     self._emit(f"⛔ [{reason}] 重试前被停止（stop_current）", "WARN")
                     self._reconnect_scripts_executing = False
@@ -13365,7 +13395,7 @@ class DarRouteRunner:
     ) -> None:
         """
         轮换专用重连：与全局 Step123 的对应关系如下（见类内「刷新 UI 登录管线」处总述）：
-        - **全局 Step1+Step2**：`_rotation_step1_login`（三键+Login+`_run_full_refresh_login_pipeline` 至 map500001，不置位「野外 Step3 门控 skip」标志）。
+        - **全局 Step1+Step2**：`_rotation_step1_login`（设置窗+仅刷新+Login+`_run_full_refresh_login_pipeline` 至 map500001，不置位「野外 Step3 门控 skip」标志）。
         - **全局 Step3 及子阶段**：`_rotation_step2`～`_rotation_step5`（背包、精灵、跟随、to+起图/地图检查）。
         子步骤 1–5 任一失败则整体从子步骤 1 重试。
         """
@@ -13591,7 +13621,7 @@ class DarRouteRunner:
 
     def _rotation_step1_login(self, use_foreground: bool, stop_event: threading.Event) -> None:
         """
-        轮换 **子步骤1** = 全局 **Step1 + Step2**（`_step1_trinity_clicks_and_wait_login_swf` + `_run_full_refresh_login_pipeline`），
+        轮换 **子步骤1** = 全局 **Step1 + Step2**（预刷新无保存 + 等 Login + `_run_full_refresh_login_pipeline`），
         与野外相同；Step2 成功后 `_mark_refresh_pipeline_map500001_gate_done`，以便之后若进入重连核心可 `_consume` 跳过 500001 全缓冲复验。
         """
         lp = "轮换模式-步骤1"
@@ -13610,7 +13640,7 @@ class DarRouteRunner:
                 pass
         
         step1_res = self._step1_trinity_clicks_and_wait_login_swf(
-            use_foreground, lp, stop_event=stop_event, max_wait_s=10.0
+            use_foreground, lp, stop_event=stop_event
         )
         if step1_res == "trinity_fail":
             self._emit(f"⚠️ [{lp}] 刷新 UI 点击失败，2s 后重试", "WARN")
@@ -13623,7 +13653,10 @@ class DarRouteRunner:
         if step1_res == "stopped":
             return
         if step1_res == "no_login":
-            self._emit(f"⚠️ [{lp}] 10秒内未检测到login信号，重复刷新", "WARN")
+            self._emit(
+                f"⚠️ [{lp}] {self.REFRESH_LOGIN_WAIT_SEC:.0f}秒内未检测到login信号，重复刷新",
+                "WARN",
+            )
             if getattr(self.bot, "stop_current", False):
                 self._emit(f"⛔ [{lp}] 重试前被停止（stop_current）", "WARN")
                 return
@@ -14319,8 +14352,8 @@ class DarRouteRunner:
     # ==================== 巅峰对战模式 ====================
     #
     # 一轮流程（_pinnacle_run_once）：
-    #   1) 预刷新：设置子窗口三键（刷新.设置→刷新→保存），等待 /login/Login.swf（计时起点，与野外刷新重连一致）
-    #   2) 四连击 刷新.开始 → 双击 刷新.登录 → 刷新.* 三键至 map（无阶段间 1.0s sleep）
+    #   1) 预刷新：若无设置窗则点设置→仅后台刷新（无保存）；若有则直接刷新；等 /login/Login.swf（与野外一致）
+    #   2) 四连击 刷新.开始 → 双击 刷新.登录 → 程序化点击至 map（无阶段间 1.0s sleep）
     #   3) 白天/夜间 屏蔽策略（非 map 后出现时刻起算）
     #   4) （无基地/map500001，巅峰直入大厅）
     #   5) 若当前 map ≠ 4：点 巅峰对战.地图 → 巅峰对战.船长室，等 map==4
@@ -14339,7 +14372,7 @@ class DarRouteRunner:
     PINNACLE_BATTLE_AREA_MAP_ID = 433
 
     PINNACLE_IP_TOKEN = "/ip.txt"
-    PINNACLE_LOGIN_WAIT_SEC = 10.0
+    PINNACLE_LOGIN_WAIT_SEC = REFRESH_LOGIN_WAIT_SEC
     PINNACLE_IP_WAIT_SEC = 15.0
     PINNACLE_MAP_WAIT_SEC = 20.0
     # 三键循环 / 双键循环（中速）
@@ -14467,7 +14500,7 @@ class DarRouteRunner:
                 "INFO",
             )
             self._sleep_abortable(stop_event, 0.15)
-            self._emit("🔄 [巅峰对战] 三键预刷新进入下一轮", "INFO")
+            self._emit("🔄 [巅峰对战] 预刷新进入下一轮", "INFO")
             return True
 
         self._emit("🖱️ [巅峰对战] 点击 对战.使用技能一", "INFO")
@@ -14478,18 +14511,18 @@ class DarRouteRunner:
             return False
         self._sleep_abortable(stop_event, 0.3)
 
-        self._emit("🔄 [巅峰对战] 三键预刷新进入下一轮", "INFO")
+        self._emit("🔄 [巅峰对战] 预刷新进入下一轮", "INFO")
         return True
 
     def _pinnacle_refresh_and_wait_login(
         self, use_foreground: bool, stop_event: threading.Event
     ) -> bool:
-        """设置子窗口三键（刷新.设置→刷新→保存），等待 /login/Login.swf。超时则重复直至成功或中止。"""
+        """设置窗 + 仅后台刷新（无保存），等待 /login/Login.swf。超时则重复直至成功或中止。"""
         from core.logger import fetch_kernel_since, kernel_cursor
 
         while not stop_event.is_set() and not getattr(self.bot, "stop_current", False):
             self._pinnacle_round_refresh_start = time.perf_counter()
-            self._emit("🔄 [巅峰对战] 三键预刷新：设置 → 刷新 → 保存", "INFO")
+            self._emit("🔄 [巅峰对战] 预刷新：设置（如需）→ 仅刷新（不保存）", "INFO")
             try:
                 import win32gui
                 if window_manager.find_window() and window_manager.hwnd:
@@ -14506,7 +14539,7 @@ class DarRouteRunner:
 
             self._mark_refresh_pipeline_start()
             if not self._refresh_trinity_clicks(use_foreground, log_prefix="巅峰对战"):
-                self._emit("⚠️ [巅峰对战] 三键刷新 UI 点击失败，重试", "WARN")
+                self._emit("⚠️ [巅峰对战] 预刷新 UI 点击失败，重试", "WARN")
                 self._sleep_abortable(stop_event, 0.8)
                 continue
             self._sleep_abortable(stop_event, 0.45)
@@ -14535,7 +14568,7 @@ class DarRouteRunner:
                 self._emit("✅ [巅峰对战] 已检测到 Login.swf，继续下一步", "SUCCESS")
                 self._sleep_abortable(stop_event, 0.8)
                 return True
-            self._emit("⚠️ [巅峰对战] 未检测到 Login.swf，重新三键刷新", "WARN")
+            self._emit("⚠️ [巅峰对战] 未检测到 Login.swf，重新预刷新", "WARN")
         return False
 
     def _pinnacle_wait_ip_signal(self, stop_event: threading.Event) -> bool:
