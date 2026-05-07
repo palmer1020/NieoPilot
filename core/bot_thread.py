@@ -10,7 +10,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from core.logger import logger
 from core.utils import window_manager
 from core.region_store import RegionStore
-from core.daily_runner import DailyRunner
+from core.daily_runner import DailyRunner, DEFAULT_HERO_TOWER_BATTLES
 from core.battle_runner import BattleRunner
 from core.training_level_runner import TrainingLevelRunner
 
@@ -297,7 +297,12 @@ class BotWorker(QThread):
                     # ---- 日常 ----
                     if tasks.get("daily_chain") and (not self.stop_current):
                         self.emit_and_log(f"▶ 开始一键日常（前台={use_foreground}）", "SYSTEM")
-                        self.daily_runner.run_all(background_mode=use_background)
+                        self.daily_runner.run_all(
+                            background_mode=use_background,
+                            include_hero_tower_after_daily=bool(
+                                tasks.get("daily_include_hero_tower", False)
+                            ),
+                        )
 
                     # ---- 执行脚本 ----
                     if tasks.get("run_script") and (not self.stop_current):
@@ -356,8 +361,15 @@ class BotWorker(QThread):
 
                     # ---- 勇者之塔 ----
                     if tasks.get("hero_tower") and (not self.stop_current):
-                        self.emit_and_log(f"🗼 勇者之塔：10回合（前台={use_foreground}）", "SYSTEM")
-                        self.daily_runner.run_hero_tower(times=10, background_mode=use_background, use_unified_framework=True)
+                        self.emit_and_log(
+                            f"🗼 勇者之塔：{DEFAULT_HERO_TOWER_BATTLES} 场（前台={use_foreground}）",
+                            "SYSTEM",
+                        )
+                        self.daily_runner.run_hero_tower(
+                            times=DEFAULT_HERO_TOWER_BATTLES,
+                            background_mode=use_background,
+                            use_unified_framework=True,
+                        )
                     
                     # ---- 大乱斗x2 ----
                     if tasks.get("chaos_battle_x2") and (not self.stop_current):
@@ -374,13 +386,31 @@ class BotWorker(QThread):
                         self.emit_and_log(f"📚 开始小号对战（刷经验，前台={use_foreground}）", "SYSTEM")
                         self.daily_runner.run_exp_minor_battle(use_foreground=use_foreground)
 
-                    # ---- 雷伊特训 ----
+                    # ---- 雷伊特训 / 嘟嘟卡拉对战 ----
                     if tasks.get("leiyi_training") and (not self.stop_current):
-                        loop_count = self._parse_int(tasks.get("leiyi_loop_count", 10), 10)
-                        loop_count = max(1, min(999, loop_count))
-                        self.emit_and_log(f"⚡ 开始雷伊特训（循环={loop_count} 前台={use_foreground}）", "SYSTEM")
+                        tb_mode = tasks.get("training_battle_mode") or "leiyi"
+                        if tb_mode not in ("leiyi", "dudukala"):
+                            tb_mode = "leiyi"
+                        lbl = "嘟嘟卡拉" if tb_mode == "dudukala" else "雷伊特训"
+                        if tb_mode == "dudukala":
+                            self.emit_and_log(
+                                f"⚡ 开始{lbl}（无限循环至黄探针胜利，前台={use_foreground}）",
+                                "SYSTEM",
+                            )
+                            loop_count_dummy = 1
+                        else:
+                            loop_count_dummy = self._parse_int(tasks.get("leiyi_loop_count", 10), 10)
+                            loop_count_dummy = max(1, min(999, loop_count_dummy))
+                            self.emit_and_log(
+                                f"⚡ 开始{lbl}（循环={loop_count_dummy} 前台={use_foreground}）",
+                                "SYSTEM",
+                            )
                         self.dar_route_runner._check_and_fill_missing_swf_files()  # 像尼奥模式一样补齐swf
-                        self.daily_runner.run_leiyi_training(loop_count=loop_count, use_foreground=use_foreground)
+                        self.daily_runner.run_leiyi_training(
+                            loop_count=loop_count_dummy,
+                            use_foreground=use_foreground,
+                            training_battle_mode=tb_mode,
+                        )
 
                     # ---- 特训循环 ----
                     if tasks.get("teixun_loop") and (not self.stop_current):
@@ -476,24 +506,43 @@ class BotWorker(QThread):
                         else:
                             profile = DEFAULT_PROFILE_DUGULU
 
-                        self.emit_and_log(f"🌲 野外捕捉启动：profile={profile_name} 前台={use_foreground}", "SYSTEM")
+                        mantis_test_super_only = bool(tasks.get("mantis_test_super_only", False))
+                        suffix_msg = " [测试·仅突变+全程超级胶囊]" if mantis_test_super_only else ""
+                        self.emit_and_log(f"🌲 野外捕捉启动：profile={profile_name} 前台={use_foreground}{suffix_msg}", "SYSTEM")
 
-                        # 闪光皮皮专用：轮换重连前置（勾选时先执行双塔精灵版轮换重连，失败则重试完整流程直到成功）
-                        if profile_name == "flash_pipi" and tasks.get("rare_rotation_reconnect_first"):
-                            while not self.stop_current and not self._stop_event.is_set():
-                                ok = self.dar_route_runner._execute_flash_pipi_pre_rotation_reconnect(
-                                    use_foreground=use_foreground,
-                                    stop_event=self._stop_event,
-                                )
-                                if ok:
-                                    break
-                                self.emit_and_log("⚠️ 轮换重连前置失败，重试完整流程（1-5）直到启动模式", "WARN")
+                        # 轮换前置重连：闪光皮皮 → to闪光皮皮；螳螂 → to螳螂（同一 task 键）
+                        if tasks.get("rare_rotation_reconnect_first"):
+                            if profile_name == "flash_pipi":
+                                while not self.stop_current and not self._stop_event.is_set():
+                                    ok = self.dar_route_runner._execute_flash_pipi_pre_rotation_reconnect(
+                                        use_foreground=use_foreground,
+                                        stop_event=self._stop_event,
+                                    )
+                                    if ok:
+                                        break
+                                    self.emit_and_log(
+                                        "⚠️ 轮换前置重连失败，重试完整流程（1-5）直到启动模式",
+                                        "WARN",
+                                    )
+                            elif profile_name == "mantis":
+                                while not self.stop_current and not self._stop_event.is_set():
+                                    ok = self.dar_route_runner._execute_mantis_pre_rotation_reconnect(
+                                        use_foreground=use_foreground,
+                                        stop_event=self._stop_event,
+                                    )
+                                    if ok:
+                                        break
+                                    self.emit_and_log(
+                                        "⚠️ [螳螂] 轮换前置重连失败，重试完整流程（1-5）直到启动模式",
+                                        "WARN",
+                                    )
 
                         if not self.stop_current and not self._stop_event.is_set():
                             self.dar_route_runner.run(
                                 stop_event=self._stop_event,
                                 use_foreground=use_foreground,
                                 profile=profile,
+                                mantis_test_super_only=mantis_test_super_only,
                             )
 
                     # ---- 智能追踪测试 ----
@@ -526,7 +575,11 @@ class BotWorker(QThread):
                     if tasks.get("rotation_mode") and (not self.stop_current):
                         is_test_mode = bool(tasks.get("rotation_test_mode", False))
                         mode_text = "测试模式（固定时间间隔切换）" if is_test_mode else "正式模式（根据北京时间自动切换）"
-                        self.emit_and_log(f"🔄 启动双塔尼奥轮换模式（{mode_text}）", "SYSTEM")
+                        rare_slot = str(tasks.get("rotation_rare_slot") or "shuangta").strip().lower()
+                        if rare_slot not in ("shuangta", "mantis"):
+                            rare_slot = "shuangta"
+                        rare_lbl = "双塔" if rare_slot == "shuangta" else "螳螂"
+                        self.emit_and_log(f"🔄 启动轮换模式（{mode_text}；非尼奥稀有={rare_lbl}）", "SYSTEM")
                         use_foreground = bool(tasks.get("use_foreground", False))
                         
                         # 测试模式参数
@@ -551,6 +604,7 @@ class BotWorker(QThread):
                             stop_event=self._stop_event,
                             use_foreground=use_foreground,
                             is_test_mode=is_test_mode,  # ✅ 传递测试模式标志
+                            rotation_rare_slot=rare_slot,
                         )
 
                     # ---- 🌊 尼奥模式（10/11地图循环）----
@@ -559,6 +613,7 @@ class BotWorker(QThread):
                         test_nie = tasks.get("test_nie", False)
                         skip_nie_77 = tasks.get("skip_nie_77", False)
                         nieo_pre_rotation_first = tasks.get("nieo_pre_rotation_first", False)
+                        nieo_test_force_switch = bool(tasks.get("nieo_test_force_switch", False))
                         test_msg = ""
                         if test_nieo:
                             test_msg += " [测试尼奥模式]"
@@ -568,27 +623,43 @@ class BotWorker(QThread):
                             test_msg += " [不捕捉尼尔]"
                         if nieo_pre_rotation_first:
                             test_msg += " [前置重连]"
-                        self.emit_and_log(f"🌊 启动尼奥模式（10/11地图循环）{test_msg}", "SYSTEM")
+                        if nieo_test_force_switch:
+                            test_msg += " [测试·10图闪光艾菲亚/11图艾斯菲格]"
+                        sub_mode = str(tasks.get("nieo_sub_mode") or "nieo").strip().lower()
+                        is_pure_energy = sub_mode == "pure_energy"
 
-                        # 尼奥模式专用：前置重连（使用尼奥模式的三个精灵）
+                        # 前置重连：尼奥走 to尼奥/map11；纯净能量走 to纯净能量/map26（仍摆尼奥三只）
                         if nieo_pre_rotation_first:
                             while not self.stop_current and not self._stop_event.is_set():
                                 ok = self.dar_route_runner._execute_nieo_pre_rotation_reconnect(
                                     use_foreground=use_foreground,
                                     stop_event=self._stop_event,
+                                    pem_route=is_pure_energy,
                                 )
                                 if ok:
                                     break
-                                self.emit_and_log("⚠️ 尼奥模式前置重连失败，重试完整流程（1-4）直到成功", "WARN")
+                                tag = "纯净能量" if is_pure_energy else "尼奥"
+                                self.emit_and_log(f"⚠️ [{tag}] 前置重连失败，将重试完整流程（步骤1–5）直到成功", "WARN")
 
                         if not self.stop_current and not self._stop_event.is_set():
-                            self.dar_route_runner.run_nieo_mode(
-                                stop_event=self._stop_event,
-                                use_foreground=use_foreground,
-                                test_nieo=test_nieo,
-                                test_nie=test_nie,
-                                skip_nie_77=skip_nie_77,
-                            )
+                            if is_pure_energy:
+                                self.emit_and_log("⚡ 启动纯净能量(资源)模式（26/27，技能四战胜）" + test_msg, "SYSTEM")
+                                self.dar_route_runner.run_pure_energy_resource_mode(
+                                    stop_event=self._stop_event,
+                                    use_foreground=use_foreground,
+                                    nieo_pre_rotation_first=bool(nieo_pre_rotation_first),
+                                    skip_nie_77=skip_nie_77,
+                                )
+                            else:
+                                self.emit_and_log(f"🌊 启动尼奥模式（10/11地图循环）{test_msg}", "SYSTEM")
+                                self.dar_route_runner.run_nieo_mode(
+                                    stop_event=self._stop_event,
+                                    use_foreground=use_foreground,
+                                    test_nieo=test_nieo,
+                                    test_nie=test_nie,
+                                    skip_nie_77=skip_nie_77,
+                                    nieo_test_force_switch=nieo_test_force_switch,
+                                )
                     
                     # ---- 🎮 挂机对战模式 ----
                     if tasks.get("afk_battle_mode") and (not self.stop_current):

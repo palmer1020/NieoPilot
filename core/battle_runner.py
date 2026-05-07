@@ -106,6 +106,10 @@ class BattleRunner:
     PROBE_BLUE_REL = os.path.join("对战", "回合探针", "blue.png")
     PROBE_GRAY_REL = os.path.join("对战", "回合探针", "gray.png")
 
+    # 与 UnifiedBattleFramework 一致：投掷胶囊每次单击间隔 1s 后再决定是否再单击，直至探针灰
+    CAPSULE_THROW_INTERVAL_S = 1.0
+    CAPSULE_THROW_MAX_SINGLE_CLICKS = 15
+
     # ---------- 人机验证样本保存 ----------
     HV_SAVE_ROOT_REL = os.path.join("assets", "human_verify")
     HV_UNLABELED = "未处理"
@@ -219,17 +223,12 @@ class BattleRunner:
         return self._outer_bbox(r)
 
     def _sample_point_in_bbox(self, x1, y1, x2, y2) -> Tuple[float, float]:
-        # bbox 可能是 2px：必须允许极小范围
+        # 始终在 bbox 中心点击（与 Region.sample_click_point 一致）
         if x2 < x1:
             x1, x2 = x2, x1
         if y2 < y1:
             y1, y2 = y2, y1
-        # 如果是极小 bbox，直接取中心
-        if (x2 - x1) < 1.0 and (y2 - y1) < 1.0:
-            return (0.5 * (x1 + x2), 0.5 * (y1 + y2))
-        gx = np.random.uniform(x1, x2)
-        gy = np.random.uniform(y1, y2)
-        return float(gx), float(gy)
+        return float(0.5 * (x1 + x2)), float(0.5 * (y1 + y2))
 
     def _click_region(self, key: str, use_foreground: bool):
         r = self._require_region(key)
@@ -455,6 +454,22 @@ class BattleRunner:
 
         except Exception:
             return ("UNKNOWN", 0.0, 0.0)
+
+    def _throw_capsule_singles_until_round_probe_gray_br(
+        self, region_key: str, use_foreground: bool, probe_model: ProbeModel
+    ) -> None:
+        """与 UnifiedBattleFramework 对齐：每次单击后固定等待 INTERVAL_S，再判灰；未灰则再单击。"""
+        for _attempt in range(self.CAPSULE_THROW_MAX_SINGLE_CLICKS):
+            self._click_region(region_key, use_foreground)
+            time.sleep(self.CAPSULE_THROW_INTERVAL_S)
+            st, _, _ = self._detect_probe(probe_model)
+            if st == "GRAY":
+                return
+        self.bot.emit_and_log(
+            f"⚠️ 投掷{region_key}：已单击{self.CAPSULE_THROW_MAX_SINGLE_CLICKS}次，"
+            f"每次间隔{self.CAPSULE_THROW_INTERVAL_S:.1f}s，探针仍未判为灰色",
+            "WARN",
+        )
 
     # -------------------------
     # kernel pattern
@@ -1433,14 +1448,16 @@ class BattleRunner:
                 label_zh = "高级(回退)"
             slot_info = f" [循环{(self._capsule_cycle_index - 1) % n_tiers + 1}/{n_tiers}]"
 
-            # split：面板 + 胶囊（胶囊连点2次）
+            # split：面板双击 + 胶囊单击（直至探针灰）
             if panel and cap_key:
                 self._click_region_twice(panel, use_foreground=_uf(), gap=0.10)
                 time.sleep(0.50)
-                self._click_region_twice(cap_key, use_foreground=_uf(), gap=0.08)
+                self._throw_capsule_singles_until_round_probe_gray_br(
+                    cap_key, use_foreground=_uf(), probe_model=probe_model
+                )
                 last_action_at = time.time()
                 self.bot.emit_and_log(
-                    f"🎯 回合{ridx} 捕捉：面板 -> {label_zh}胶囊(×2){slot_info}",
+                    f"🎯 回合{ridx} 捕捉：面板 -> {label_zh}胶囊(单击直至探针灰){slot_info}",
                     "INFO",
                 )
                 return
@@ -1452,10 +1469,12 @@ class BattleRunner:
                 and high
                 and cap_key == high
             ):
-                self._click_region_twice(combo_high, use_foreground=_uf(), gap=0.50)
+                self._throw_capsule_singles_until_round_probe_gray_br(
+                    combo_high, use_foreground=_uf(), probe_model=probe_model
+                )
                 last_action_at = time.time()
                 self.bot.emit_and_log(
-                    f"🎯 回合{ridx} 捕捉：高级（combo×2）{slot_info}",
+                    f"🎯 回合{ridx} 捕捉：高级（combo 单击直至探针灰）{slot_info}",
                     "INFO",
                 )
                 return
@@ -1519,9 +1538,11 @@ class BattleRunner:
                                 # 你要求：切换捕捉面板点两次，然后等待约0.5s
                                 self._click_region_twice(inv_panel, use_foreground=_uf(), gap=0.10)
                                 time.sleep(0.50)
-                                self._click_region_twice(inv_key, use_foreground=_uf(), gap=0.08)
+                                self._throw_capsule_singles_until_round_probe_gray_br(
+                                    inv_key, use_foreground=_uf(), probe_model=probe_model
+                                )
                                 time.sleep(0.55)
-                                self.bot.emit_and_log("🛡 回合1：无敌精灵胶囊(×2)", "INFO")
+                                self.bot.emit_and_log("🛡 回合1：无敌精灵胶囊(单击直至探针灰)", "INFO")
                             else:
                                 self.bot.emit_and_log("⚠ 无敌胶囊 region 缺失：回退为技能1", "WARN")
                                 self._click_region(skill1_key, use_foreground=_uf())
@@ -1572,9 +1593,11 @@ class BattleRunner:
                             if inv_panel and self._rs_get(inv_key):
                                 self._click_region_twice(inv_panel, use_foreground=_uf(), gap=0.10)
                                 time.sleep(0.50)
-                                self._click_region_twice(inv_key, use_foreground=_uf(), gap=0.08)
+                                self._throw_capsule_singles_until_round_probe_gray_br(
+                                    inv_key, use_foreground=_uf(), probe_model=probe_model
+                                )
                                 time.sleep(0.55)
-                                self.bot.emit_and_log("🛡 回合1：无敌精灵胶囊(×2)", "INFO")
+                                self.bot.emit_and_log("🛡 回合1：无敌精灵胶囊(单击直至探针灰)", "INFO")
                             else:
                                 self.bot.emit_and_log("⚠ 无敌胶囊 region 缺失：回退为技能1", "WARN")
                                 self._click_region(skill1_key, use_foreground=_uf())

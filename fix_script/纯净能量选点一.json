@@ -1,0 +1,83 @@
+{
+    "name": "纯净能量选点一",
+    "create_time": "2026-04-29 20:01:19",
+    "steps": [
+        {
+            "action": "click",
+            "x": 140,
+            "y": 388,
+            "delay": 4.27,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 93,
+            "y": 567,
+            "delay": 3.77,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 464,
+            "y": 627,
+            "delay": 3.97,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 279,
+            "y": 332,
+            "delay": 9.97,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 370,
+            "y": 493,
+            "delay": 8.83,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 711,
+            "y": 578,
+            "delay": 3.67,
+            "desc": "Step 6"
+        },
+        {
+            "action": "click",
+            "x": 566,
+            "y": 480,
+            "delay": 8.97,
+            "desc": "Step 7"
+        },
+        {
+            "action": "click",
+            "x": 724,
+            "y": 289,
+            "delay": 4.6,
+            "desc": "Step 8"
+        },
+        {
+            "action": "click",
+            "x": 840,
+            "y": 218,
+            "delay": 4.93,
+            "desc": "Step 9"
+        },
+        {
+            "action": "click",
+            "x": 614,
+            "y": 400,
+            "delay": 6.74,
+            "desc": "Step 10"
+        },
+        {
+            "action": "click",
+            "x": 1100,
+            "y": 290,
+            "delay": 2.47,
+            "desc": "Step 11"
+        }
+    ]
+}

@@ -82,15 +82,26 @@ RARE_AISIFEIGE_PROBE_RGB = (111, 106, 48)  # 艾斯菲格（黄绿色调，蓝�
 # 亚梅丝：纯蓝色 - 与尼奥模式的艾斯菲格相同（#184992）
 RARE_YAMEISI_PROBE_RGB = (24, 73, 146)  # 亚梅丝（纯蓝色 #184992）
 
+# 对战切换色探针阈值（模板整图均值：灰 85,96,115；蓝 92,162,237；技能四红 253,138,62；蓝白 121,169,238）
+BATTLE_OUT_BR_GRAY_BLUE_SPLIT = 72  # 出战 b−r：灰≈30、蓝≈145
+BATTLE_SKILL4_RB_RED_MIN = 40  # 技能四 r−b：红偏大、蓝白为负
+
+# 对战切换精灵：打开面板→首次点槽；每点槽后→读出战/技能四探针前；选槽完成→单击出战前
+SWITCH_PANEL_OPEN_TO_FIRST_SLOT_SEC = 1.5
+SWITCH_PRE_READ_OUT_PROBE_SEC = 1.5
+SWITCH_PRE_DEPLOY_WAIT_SEC = 1.5
+
 # 入战收集pet ID的允许列表（超出则终端异常提醒）
 NIEO_ALLOWED_PET_IDS = {1100000, 10, 12, 16, 27, 77, 122, 164, 310, 312, 416, 418}
+# 尼奥/纯净能量野外入战提醒我方侧常见 ID（与主循环局部变量同名，供纯净能量等资源模式复用）
+NIEO_EXPECTED_IDS = {12, 312, 418}
 # 稀有模式公共基础：166/197/418 双塔三精灵 + 77/310/416 尼尔家族 + 1100000，各模式再加 target_pet_ids
 RARE_MODE_BASE_PET_IDS = {1100000, 166, 197, 418, 77, 310, 416}
 
 log = logging.getLogger(__name__)
 
 MANTIS_PET_ID = 122
-# 敌方含 122（螳螂）时保留原「高超高特高超」六档循环，与无敌首回合逻辑独立
+# 历史上敌方 122「高超高特高超」六档；现逻辑已全局改单档（见 _capsule_cycle_tiers_for_current_battle），仅 CSV 回溯仍识别此常量。
 LEGACY_CAPSULE_CYCLE_TIERS: Tuple[str, ...] = (
     "high",
     "high",
@@ -239,6 +250,11 @@ class DarRouteRunner:
     # kernel poll 节流
     KERNEL_POLL_SEC = 0.05
 
+    # 纯净能量(资源)：技能四（及同计数节奏的尼尔/逃跑）每满 N 场恢复精灵一体力
+    PEM_SKILL4_MAINTENANCE_EVERY_BATTLES = 30
+    # map27 前缀「纯净能量一」：不参与扫描/标定的路线点（仍保留区域文件）
+    PEM_ROUTE_SKIP_PURE_ENERGY_ONE = frozenset({"纯净能量一.8", "纯净能量一.9"})
+
     def _kernel_line_indicates_login_swf(self, line) -> bool:
         return line_has_login_swf(str(line))
 
@@ -339,7 +355,9 @@ class DarRouteRunner:
         self._rotation_time_check_window_active: bool = False  # 轮换模式时间检测窗口是否激活（双塔模式用）
         self._rotation_reconnect_executing: bool = False  # 是否正在执行轮换重连流程（防重入）
         self._rotation_total_stats: Optional[Dict[str, Any]] = None  # 轮换模式总统计
-        # 非敌方122（非螳螂战）时胶囊单档：super | high | special（默认 super）；敌方含122仍走 legacy 六档
+        # 「非尼奥」北京时间段选用的稀有：`shuangta` | `mantis`（时段仍由 _detect_rotation_mode 决定）
+        self._rotation_rare_slot: str = "shuangta"
+        # 几乎所有战斗投胶囊档位：super | high | special（默认 super，底栏三选一）；螳螂遇敌 122 仅在首回合无敌，仍用此单档收尾续回合。
         self._non_mantis_capsule_tier: str = "super"
         
         # ✅ 轮换模式测试常量（可更改）
@@ -354,6 +372,11 @@ class DarRouteRunner:
         # 尼尔家族切换精灵计数器（用于测试模式的轮流切换）
         self._nie_switch_counter = 0  # 0表示下次切换精灵二，1表示下次切换精灵三
         self._xiaodouya_nie_test_mode = False  # 小豆芽尼尔测试模式标志
+
+        # ✅ 测试模式：尼奥模式按地图强制切换尼尔家族流程（10→闪光艾菲亚=416，11→艾斯菲格=77）
+        self._nieo_test_force_switch: bool = False
+        # ✅ 测试模式：螳螂模式仅靠突变触发（绕过MP3）+ 全程超级胶囊（不使用无敌胶囊）
+        self._mantis_test_super_only: bool = False
         
         # 记录最后一次战斗的尼尔家族信息（用于恢复逻辑）
         self._last_nie_family_id: Optional[int] = None  # 最后一次战斗的尼尔家族ID（None表示没有尼尔家族）
@@ -363,6 +386,8 @@ class DarRouteRunner:
         
         # 当前战斗的尼尔家族ID（用于在stage2和stage3之间传递信息，不再使用pattern_valid）
         self._current_battle_nie_family_id: Optional[int] = None
+        # 野外：log_battle_start 配对 id，战斗收尾或超时/刷新重连时 log_battle_end 或交由 log_reconnect 冲刷
+        self._pending_battle_csv_id: Optional[str] = None
         
         # 探针扫描结果（用于战斗中切换精灵）
         self._flash_aifeia_pos: Optional[str] = None  # 闪光艾菲亚的位置（"二"或"三"）
@@ -385,6 +410,11 @@ class DarRouteRunner:
         self._dugulu_should_escape: bool = False  # 嘟咕噜模式是否需要逃跑
         self._dugulu_ocr_failed: bool = False  # 嘟咕噜模式OCR识别是否失败
         self._aisifeige_pos: Optional[str] = None  # 艾斯菲格的位置（"二"或"三"）
+
+        # ✅ 重连前清理缓存/tmp：用于“长时间无目标/无遇敌”的自愈策略
+        self._nieo_run_seen_nie_family: bool = False  # 本次 run 是否遇到过任意尼尔家族（77/310/416）
+        self._tmp_cleanup_attempted_this_run: bool = False  # 本次 run 是否已尝试清理 tmp（避免重连重试刷屏）
+        self._shuangta_last_battle_end_ts: Optional[float] = None  # 双塔：上次战斗结束时间戳（秒）
         
         # 稀有精灵模式：技能一控制循环状态
         self._last_skill1_round_rare: Optional[int] = None  # 上次使用技能一的回合
@@ -977,7 +1007,9 @@ class DarRouteRunner:
         test_nie: bool = False,  # 测试尼尔模式：普通精灵时第一回合切换，第二回合逃跑
         skip_nie_77: bool = False,  # 不捕捉尼尔（77执行逃跑，310/416正常捕捉）
         is_rotation_mode: bool = False,  # 新增参数：是否是轮换模式
-        next_switch_time: Optional[datetime] = None  # 新增参数：下一个切换时间点
+        next_switch_time: Optional[datetime] = None,  # 新增参数：下一个切换时间点
+        nieo_test_force_switch: bool = False,  # ✅ 测试模式：所有遭遇按地图强制切换（10→闪光艾菲亚 / 11→艾斯菲格）
+        pem: bool = False,  # 纯净能量(资源)：26/27 地图循环；全程战胜（技能四）；与尼奥逃跑/捕捉分流独立
     ) -> None:
         """
         尼奥模式：10/11地图循环模式
@@ -1020,13 +1052,28 @@ class DarRouteRunner:
                     )
                 self._emit(f"🔄 [尼奥模式-轮换] 下次切换时间：{next_switch_time.strftime('%Y-%m-%d %H:%M:%S')}", "INFO")
             
-            self._emit("🌊 尼奥模式启动（10/11地图循环）", "SYSTEM")
-            
+            if pem:
+                self._emit("⚡ [纯净能量(资源)] 模式启动（26/27 双图，全场技能四战胜）", "SYSTEM")
+            else:
+                self._emit("🌊 尼奥模式启动（10/11地图循环）", "SYSTEM")
+
+            # ✅ 测试模式：保存到实例属性，供战斗分流时使用
+            self._nieo_test_force_switch = bool(nieo_test_force_switch) and (not pem)
+            # ✅ 同时保存到下划线前缀属性，方便重连后递归调用时读取
+            self._test_nieo = bool(test_nieo)
+            self._test_nie = bool(test_nie)
+            self._skip_nie_77 = bool(skip_nie_77)
+            if self._nieo_test_force_switch:
+                self._emit(
+                    "🧪 [尼奥测试模式] 已启用：10图所有遭遇切闪光艾菲亚（416路径），11图所有遭遇切艾斯菲格（77路径）",
+                    "SYSTEM",
+                )
+
             # ✅ 停止上一个模式的1AND1监控（如果存在）
             self._stop_normal_1and1_monitoring()
             
             # ✅ 设置当前模式标志（用于重连时选择正确的脚本）
-            self._current_mode = "nieo"
+            self._current_mode = "pure_energy" if pem else "nieo"
             
             # ✅ 清空校准记录列表（每次运行都是新的记录）
             self._nieo_calibration_records.clear()
@@ -1054,8 +1101,12 @@ class DarRouteRunner:
             # ✅ 0-5000 非预期 pet ID：当前战斗后执行重连
             self._unexpected_pet_reconnect_pending = False
 
-            # CSV battle logger: new run (nieo)
-            self._battle_logger.new_run("尼奥")
+            # CSV battle logger: new run
+            self._battle_logger.new_run("纯净能量(资源)" if pem else "尼奥")
+            self._pending_battle_csv_id = None
+            self._nieo_run_seen_nie_family = False
+            self._tmp_cleanup_attempted_this_run = False
+            self._shuangta_last_battle_end_ts = None
             
             # 检查和补齐缺失的swf文件
             self._check_and_fill_missing_swf_files()
@@ -1064,60 +1115,162 @@ class DarRouteRunner:
                 self._emit("❌ 未检测到游戏窗口：请先在 Dashboard 点【启动游戏】", "ERROR")
                 return
             
-            # 注意：探针扫描将在第一次恢复流程中（1AND1结束后）进行，不在这里扫描
-            # 1. 在11号地图执行恢复精灵一（首次恢复时会进行探针扫描）
-            self._emit("💊 在11号地图执行恢复流程（恢复精灵一）", "SYSTEM")
-            self._is_recovering = True
-            # 使用一个虚拟的profile来调用恢复逻辑（只恢复精灵一，不涉及放回仓库）
-            from core.dar_route_runner import DEFAULT_PROFILE_DUGULU
-            temp_profile = DEFAULT_PROFILE_DUGULU
-            self._recover_pets(use_foreground, stop_event, skip_return_storage=True, nie_family_id=None, profile=temp_profile)
-            self._is_recovering = False
-            
-            # 2. 点击地图/10.json进入10号地图，等待10号地图+newNPC信号
-            self._emit("🗺️ 点击地图/10.json进入10号地图", "SYSTEM")
-            if not self._execute_map_entry_script(10, use_foreground, stop_event):
-                self._emit("⚠️ 地图/10.json执行失败，尝试继续", "WARN")
-            
-            if self.bot.stop_current or stop_event.is_set():
-                return
-            
-            # 等待10号地图+newNPC信号
-            try:
-                if not self._wait_for_map_id(10, stop_event, timeout_s=30.0):
-                    self._emit("⛔ 等待10号地图+newNPC信号超时/已停止", "WARN")
+            if pem:
+                self._emit("💊 [纯净能量(资源)] 开场恢复精灵一 → 地图/27 首次进图", "SYSTEM")
+                self._is_recovering = True
+                from core.dar_route_runner import DEFAULT_PROFILE_DUGULU
+                temp_profile_pe = DEFAULT_PROFILE_DUGULU
+                self._recover_pets(
+                    use_foreground, stop_event, skip_return_storage=True, nie_family_id=None, profile=temp_profile_pe
+                )
+                self._is_recovering = False
+                self._emit("🗺️ [纯净能量] 点击 地图/27.json 进入 27 号地图", "SYSTEM")
+                if not self._execute_map_entry_script(27, use_foreground, stop_event):
+                    self._emit("⚠️ 地图/27.json 执行失败，尝试继续", "WARN")
+                if self.bot.stop_current or stop_event.is_set():
+                    return
+                if not self._wait_for_map_id(27, stop_event, timeout_s=30.0):
+                    self._emit("⛔ [纯净能量] 等待地图27超时/停止", "WARN")
+                    if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                        self._emit("🛑 [纯净能量] 用户已请求停止", "INFO")
+                        return
+                    self._emit("🔄 [纯净能量-进图失败] 触发刷新重连", "WARN")
+                    self._current_mode = "pure_energy"
+                    self._execute_refresh_reconnect(
+                        temp_profile_pe, use_foreground, stop_event, reason="纯净能量-进入地图失败"
+                    )
+                    if getattr(self, "_reconnect_scripts_executing", False):
+                        mw = 300.0
+                        ws = time.time()
+                        while getattr(self, "_reconnect_scripts_executing", False) and (time.time() - ws) < mw:
+                            time.sleep(0.5)
+                    if getattr(self, "_should_restart_after_reconnect", False):
+                        self._should_restart_after_reconnect = False
+                        self._is_scanning_steady_state = False
+                        self._is_in_battle = False
+                        self._is_recovering = False
+                        self._stop_1and1_monitoring = False
+                        self._petswf_to_petitem_min_duration = None
+                        self._petswf_to_petitem_current_duration = None
+                        if self._unified_framework and hasattr(self._unified_framework, "_petswf_to_petitem_durations"):
+                            self._unified_framework._petswf_to_petitem_durations.clear()
+                        self.run_pure_energy_resource_mode(
+                            threading.Event(),
+                            use_foreground,
+                            nieo_pre_rotation_first=getattr(self, "_pem_pre_rotation_first", False),
+                            skip_nie_77=getattr(self, "_skip_nie_77", False),
+                        )
+                    return
+            else:
+                # 注意：探针扫描将在第一次恢复流程中（1AND1结束后）进行，不在这里扫描
+                # 1. 在11号地图执行恢复精灵一（首次恢复时会进行探针扫描）
+                self._emit("💊 在11号地图执行恢复流程（恢复精灵一）", "SYSTEM")
+                self._is_recovering = True
+                # 使用一个虚拟的profile来调用恢复逻辑（只恢复精灵一，不涉及放回仓库）
+                from core.dar_route_runner import DEFAULT_PROFILE_DUGULU
+                temp_profile = DEFAULT_PROFILE_DUGULU
+                self._recover_pets(use_foreground, stop_event, skip_return_storage=True, nie_family_id=None, profile=temp_profile)
+                self._is_recovering = False
+                
+                # 2. 点击地图/10.json进入10号地图，等待10号地图+newNPC信号
+                self._emit("🗺️ 点击地图/10.json进入10号地图", "SYSTEM")
+                if not self._execute_map_entry_script(10, use_foreground, stop_event):
+                    self._emit("⚠️ 地图/10.json执行失败，尝试继续", "WARN")
+                
+                if self.bot.stop_current or stop_event.is_set():
+                    return
+                
+                # 等待10号地图+newNPC信号
+                try:
+                    if not self._wait_for_map_id(10, stop_event, timeout_s=30.0):
+                        self._emit("⛔ 等待10号地图+newNPC信号超时/已停止", "WARN")
+                        # ✅ 用户主动停止时，不触发刷新重连
+                        if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                            self._emit("🛑 [尼奥模式] 用户已请求停止，不执行刷新重连", "INFO")
+                            return
+                        # ✅ 进入地图失败，触发尼奥模式普通重连
+                        self._emit("🔄 [尼奥模式-进入地图失败] 触发刷新重连", "WARN")
+                        # 使用虚拟profile（尼奥模式不需要真实的profile，但_execute_refresh_reconnect需要）
+                        # 确保_current_mode已设置
+                        self._current_mode = "nieo"
+                        # 执行刷新重连
+                        self._execute_refresh_reconnect(temp_profile, use_foreground, stop_event, reason="尼奥模式-进入地图失败")
+                        
+                        # ✅ 检查重连脚本是否正在执行
+                        if getattr(self, "_reconnect_scripts_executing", False):
+                            # 重连脚本正在执行，等待其完成
+                            self._emit("⏳ [尼奥模式-进入地图失败] 等待重连脚本执行完成...", "INFO")
+                            max_wait_time = 300.0  # 最多等待5分钟
+                            wait_start = time.time()
+                            while getattr(self, "_reconnect_scripts_executing", False) and (time.time() - wait_start) < max_wait_time:
+                                time.sleep(0.5)
+                            
+                            if getattr(self, "_reconnect_scripts_executing", False):
+                                self._emit("⚠️ [尼奥模式-进入地图失败] 等待重连脚本超时", "WARN")
+                            else:
+                                self._emit("✅ [尼奥模式-进入地图失败] 重连脚本执行完成，任务已自动重新启动", "SUCCESS")
+                        
+                        # ✅ 设置重启标志和stop_event，让模式退出并检查重启标志
+                        self._should_restart_after_reconnect = True
+                        stop_event.set()
+                        self._emit("🔄 [尼奥模式-进入地图失败] 已设置stop_event和重启标志，尼奥模式将退出并检查重启标志", "INFO")
+                        # ✅ 修复：try块内return会跳过后续重启检查，此处直接执行重启逻辑
+                        if getattr(self, "_should_restart_after_reconnect", False):
+                            self._should_restart_after_reconnect = False
+                            self._is_scanning_steady_state = False
+                            self._is_in_battle = False
+                            self._is_recovering = False
+                            self._stop_1and1_monitoring = False
+                            self._petswf_to_petitem_min_duration = None
+                            self._petswf_to_petitem_current_duration = None
+                            if self._unified_framework and hasattr(self._unified_framework, '_petswf_to_petitem_durations'):
+                                self._unified_framework._petswf_to_petitem_durations.clear()
+                            self._emit("🔄 [尼奥模式-进入地图失败] 重连完成，自动重新启动尼奥模式", "SYSTEM")
+                            new_stop_event = threading.Event()
+                            self.run_nieo_mode(
+                                new_stop_event,
+                                use_foreground,
+                                test_nieo,
+                                test_nie,
+                                skip_nie_77,
+                                is_rotation_mode=self._is_rotation_mode,
+                                next_switch_time=self._next_rotation_switch_time,
+                                nieo_test_force_switch=getattr(self, "_nieo_test_force_switch", False),
+                            )
+                        return
+                except Exception as e:
+                    self._emit(f"❌ 等待10号地图时发生异常: {e}", "ERROR")
+                    import traceback
+                    self._emit(f"📋 异常详情: {traceback.format_exc()}", "ERROR")
                     # ✅ 用户主动停止时，不触发刷新重连
                     if stop_event.is_set() or getattr(self.bot, "stop_current", False):
                         self._emit("🛑 [尼奥模式] 用户已请求停止，不执行刷新重连", "INFO")
                         return
-                    # ✅ 进入地图失败，触发尼奥模式普通重连
-                    self._emit("🔄 [尼奥模式-进入地图失败] 触发刷新重连", "WARN")
-                    # 使用虚拟profile（尼奥模式不需要真实的profile，但_execute_refresh_reconnect需要）
-                    from core.dar_route_runner import DEFAULT_PROFILE_DUGULU
-                    temp_profile = DEFAULT_PROFILE_DUGULU
+                    # ✅ 进入地图异常，触发尼奥模式普通重连
+                    self._emit("🔄 [尼奥模式-进入地图异常] 触发刷新重连", "WARN")
                     # 确保_current_mode已设置
                     self._current_mode = "nieo"
                     # 执行刷新重连
-                    self._execute_refresh_reconnect(temp_profile, use_foreground, stop_event, reason="尼奥模式-进入地图失败")
+                    self._execute_refresh_reconnect(temp_profile, use_foreground, stop_event, reason="尼奥模式-进入地图异常")
                     
                     # ✅ 检查重连脚本是否正在执行
                     if getattr(self, "_reconnect_scripts_executing", False):
                         # 重连脚本正在执行，等待其完成
-                        self._emit("⏳ [尼奥模式-进入地图失败] 等待重连脚本执行完成...", "INFO")
+                        self._emit("⏳ [尼奥模式-进入地图异常] 等待重连脚本执行完成...", "INFO")
                         max_wait_time = 300.0  # 最多等待5分钟
                         wait_start = time.time()
                         while getattr(self, "_reconnect_scripts_executing", False) and (time.time() - wait_start) < max_wait_time:
                             time.sleep(0.5)
                         
                         if getattr(self, "_reconnect_scripts_executing", False):
-                            self._emit("⚠️ [尼奥模式-进入地图失败] 等待重连脚本超时", "WARN")
+                            self._emit("⚠️ [尼奥模式-进入地图异常] 等待重连脚本超时", "WARN")
                         else:
-                            self._emit("✅ [尼奥模式-进入地图失败] 重连脚本执行完成，任务已自动重新启动", "SUCCESS")
+                            self._emit("✅ [尼奥模式-进入地图异常] 重连脚本执行完成，任务已自动重新启动", "SUCCESS")
                     
                     # ✅ 设置重启标志和stop_event，让模式退出并检查重启标志
                     self._should_restart_after_reconnect = True
                     stop_event.set()
-                    self._emit("🔄 [尼奥模式-进入地图失败] 已设置stop_event和重启标志，尼奥模式将退出并检查重启标志", "INFO")
+                    self._emit("🔄 [尼奥模式-进入地图异常] 已设置stop_event和重启标志，尼奥模式将退出并检查重启标志", "INFO")
                     # ✅ 修复：try块内return会跳过后续重启检查，此处直接执行重启逻辑
                     if getattr(self, "_should_restart_after_reconnect", False):
                         self._should_restart_after_reconnect = False
@@ -1129,65 +1282,19 @@ class DarRouteRunner:
                         self._petswf_to_petitem_current_duration = None
                         if self._unified_framework and hasattr(self._unified_framework, '_petswf_to_petitem_durations'):
                             self._unified_framework._petswf_to_petitem_durations.clear()
-                        self._emit("🔄 [尼奥模式-进入地图失败] 重连完成，自动重新启动尼奥模式", "SYSTEM")
+                        self._emit("🔄 [尼奥模式-进入地图异常] 重连完成，自动重新启动尼奥模式", "SYSTEM")
                         new_stop_event = threading.Event()
-                        self.run_nieo_mode(new_stop_event, use_foreground, test_nieo, test_nie, skip_nie_77,
-                                          is_rotation_mode=self._is_rotation_mode,
-                                          next_switch_time=self._next_rotation_switch_time)
+                        self.run_nieo_mode(
+                            new_stop_event,
+                            use_foreground,
+                            test_nieo,
+                            test_nie,
+                            skip_nie_77,
+                            is_rotation_mode=self._is_rotation_mode,
+                            next_switch_time=self._next_rotation_switch_time,
+                            nieo_test_force_switch=getattr(self, "_nieo_test_force_switch", False),
+                        )
                     return
-            except Exception as e:
-                self._emit(f"❌ 等待10号地图时发生异常: {e}", "ERROR")
-                import traceback
-                self._emit(f"📋 异常详情: {traceback.format_exc()}", "ERROR")
-                # ✅ 用户主动停止时，不触发刷新重连
-                if stop_event.is_set() or getattr(self.bot, "stop_current", False):
-                    self._emit("🛑 [尼奥模式] 用户已请求停止，不执行刷新重连", "INFO")
-                    return
-                # ✅ 进入地图异常，触发尼奥模式普通重连
-                self._emit("🔄 [尼奥模式-进入地图异常] 触发刷新重连", "WARN")
-                # 使用虚拟profile（尼奥模式不需要真实的profile，但_execute_refresh_reconnect需要）
-                from core.dar_route_runner import DEFAULT_PROFILE_DUGULU
-                temp_profile = DEFAULT_PROFILE_DUGULU
-                # 确保_current_mode已设置
-                self._current_mode = "nieo"
-                # 执行刷新重连
-                self._execute_refresh_reconnect(temp_profile, use_foreground, stop_event, reason="尼奥模式-进入地图异常")
-                
-                # ✅ 检查重连脚本是否正在执行
-                if getattr(self, "_reconnect_scripts_executing", False):
-                    # 重连脚本正在执行，等待其完成
-                    self._emit("⏳ [尼奥模式-进入地图异常] 等待重连脚本执行完成...", "INFO")
-                    max_wait_time = 300.0  # 最多等待5分钟
-                    wait_start = time.time()
-                    while getattr(self, "_reconnect_scripts_executing", False) and (time.time() - wait_start) < max_wait_time:
-                        time.sleep(0.5)
-                    
-                    if getattr(self, "_reconnect_scripts_executing", False):
-                        self._emit("⚠️ [尼奥模式-进入地图异常] 等待重连脚本超时", "WARN")
-                    else:
-                        self._emit("✅ [尼奥模式-进入地图异常] 重连脚本执行完成，任务已自动重新启动", "SUCCESS")
-                
-                # ✅ 设置重启标志和stop_event，让模式退出并检查重启标志
-                self._should_restart_after_reconnect = True
-                stop_event.set()
-                self._emit("🔄 [尼奥模式-进入地图异常] 已设置stop_event和重启标志，尼奥模式将退出并检查重启标志", "INFO")
-                # ✅ 修复：try块内return会跳过后续重启检查，此处直接执行重启逻辑
-                if getattr(self, "_should_restart_after_reconnect", False):
-                    self._should_restart_after_reconnect = False
-                    self._is_scanning_steady_state = False
-                    self._is_in_battle = False
-                    self._is_recovering = False
-                    self._stop_1and1_monitoring = False
-                    self._petswf_to_petitem_min_duration = None
-                    self._petswf_to_petitem_current_duration = None
-                    if self._unified_framework and hasattr(self._unified_framework, '_petswf_to_petitem_durations'):
-                        self._unified_framework._petswf_to_petitem_durations.clear()
-                    self._emit("🔄 [尼奥模式-进入地图异常] 重连完成，自动重新启动尼奥模式", "SYSTEM")
-                    new_stop_event = threading.Event()
-                    self.run_nieo_mode(new_stop_event, use_foreground, test_nieo, test_nie, skip_nie_77,
-                                      is_rotation_mode=self._is_rotation_mode,
-                                      next_switch_time=self._next_rotation_switch_time)
-                return
             
             # 5. 初始化统一框架（如果还没有初始化）
             if not self._unified_framework:
@@ -1199,28 +1306,37 @@ class DarRouteRunner:
                 from core.wild_mode_adapter import WildModeAdapter
                 self._wild_adapter = WildModeAdapter(self._unified_framework)
             
-            # 统计信息
-            nieo_stats = {
-                "普通逃跑": 0,  # 4只：3只我方+33/198
-                "稀有捕捉": 0,  # 4只：3只我方+108
-                "尼尔家族": 0,  # 5只：3只我方+地图精灵+尼尔家族
-                "108捕捉": 0,  # 108布鲁捕捉成功数
-                "77捕捉": 0,   # 77尼尔捕捉成功数
-                "310捕捉": 0,  # 310闪光尼尔捕捉成功数
-                "416捕捉": 0,  # 416尼奥捕捉成功数
-            }
-            
-            
-            # 当前地图ID（从10开始，启动前在11，然后点击10.json进入10）
-            current_map_id = 10
-            current_prefix = "尼奥一"  # 10号地图使用"尼奥一"
+            # 统计信息（纯净能量模式不写尼奥逃跑/捕捉统计）
+            if pem:
+                nieo_stats = None
+                current_map_id = 27
+                current_prefix = "纯净能量一"  # 27 图：选点脚本「一」→ 前缀 纯净能量一
+            else:
+                nieo_stats = {
+                    "普通逃跑": 0,  # 4只：3只我方+33/198
+                    "稀有捕捉": 0,  # 4只：3只我方+108
+                    "尼尔家族": 0,  # 5只：3只我方+地图精灵+尼尔家族
+                    "108捕捉": 0,  # 108布鲁捕捉成功数
+                    "77捕捉": 0,   # 77尼尔捕捉成功数
+                    "310捕捉": 0,  # 310闪光尼尔捕捉成功数
+                    "416捕捉": 0,  # 416尼奥捕捉成功数
+                }
+                
+                # 当前地图ID（从10开始，启动前在11，然后点击10.json进入10）
+                current_map_id = 10
+                current_prefix = "尼奥一"  # 10号地图使用"尼奥一"
             
             # 主循环：10/11地图循环
             while not stop_event.is_set() and not getattr(self.bot, "stop_current", False):
                 self._wait_if_paused(stop_event)
                 
                 # 根据当前地图ID确定前缀
-                if current_map_id == 10:
+                if pem:
+                    if current_map_id == 26:
+                        current_prefix = "纯净能量二"  # 26 图：选点脚本「二」
+                    else:
+                        current_prefix = "纯净能量一"  # 27 图
+                elif current_map_id == 10:
                     current_prefix = "尼奥一"
                 else:  # 11
                     current_prefix = "尼奥二"
@@ -1230,17 +1346,30 @@ class DarRouteRunner:
                 # 解析路线点（1-9）和Z点（尼奥模式不需要B点，使用Z点代替原来的A点）
                 try:
                     route_points, reg_z, _ = self._resolve_route_regions(current_prefix, require_b=False, use_z=True)
+                    n_route_resolved = len(route_points)
+                    if pem:
+                        skip_k = self.PEM_ROUTE_SKIP_PURE_ENERGY_ONE
+                        route_points = [(k, r) for k, r in route_points if k not in skip_k]
+                    manual_route_skipped = n_route_resolved - len(route_points)
+                    farthest_exclude = max(0, 2 - manual_route_skipped)
                 except KeyError as e:
                     self._emit(f"❌ 解析路线失败：{e}", "ERROR")
                     break
                 
-                # 计算并排序扫描顺序（基于距离），并排除最远的2个点，只保留7个点
-                # 对于map10（尼奥一）：按到"尼奥一.to二"的距离排序，排除最远的2个点
-                # 对于map11（尼奥二）：按到"尼奥二.to一"的距离排序，排除最远的2个点
+                # 所有图合计「跳过」至多 2：pem 在 27 图可手动不写 纯净能量一.8/.9，余量再按距入口剔最远
                 route_points_sorted = self._sort_route_points_by_distance(
-                    route_points, current_prefix, current_map_id, reg_z
+                    route_points,
+                    current_prefix,
+                    current_map_id,
+                    reg_z,
+                    farthest_exclude_count=farthest_exclude,
                 )
-                self._emit(f"📐 扫描顺序已优化（基于距离，排除最远2个点，只扫描7个点）", "INFO")
+                scan_note = (
+                    f"📐 [纯净能量] 手动跳过 {manual_route_skipped} + 按距剔除最远 {farthest_exclude}（合计≤2）→ {len(route_points_sorted)} 点扫描"
+                    if pem
+                    else "📐 扫描顺序已优化（基于距离，排除最远2个点，共7点参与扫描）"
+                )
+                self._emit(scan_note, "INFO")
                 
                 # 点击Z点（离开刷新点）- 等待0.3s后双击
                 self._emit(f"🧭 点击{current_prefix}.Z点（离开刷新点，等待0.3s后双击）", "SYSTEM")
@@ -1249,8 +1378,13 @@ class DarRouteRunner:
                 self._current_pos = self._region_center(reg_z)
                 self._sleep_abortable(stop_event, 1.0)
                 
-                # 标定基线（只标定7个点，排除最远的2个点）
-                self._emit(f"📏 标定{current_prefix}的7点基线（排除最远2个点）", "SYSTEM")
+                # 标定基线（与排序「跳过配额」一致：手动 + 最远 合计≤2）
+                baseline_note = (
+                    f"📏 标定{current_prefix}（pem：手动跳过{manual_route_skipped} / 最远再剔{farthest_exclude}）"
+                    if pem
+                    else f"📏 标定{current_prefix}的7点基线（排除最远2个点）"
+                )
+                self._emit(baseline_note, "SYSTEM")
                 baseline_start_time = time.time()
                 self._recalibrate_all(route_points_sorted, stop_event, map_id=current_map_id)
                 baseline_duration = time.time() - baseline_start_time
@@ -1280,8 +1414,13 @@ class DarRouteRunner:
                 selected_reg = None
                 change_found = False
                 
-                # 获取参考点（用于距离计算）
-                if current_map_id == 10:  # 尼奥一
+                # 获取参考点（用于距离计算）；pem 与尼奥相同：取向另一张图的 to二/to一端点
+                if pem:
+                    if current_map_id == 26:
+                        reference_key = "纯净能量二.to一"
+                    else:
+                        reference_key = "纯净能量一.to二"
+                elif current_map_id == 10:  # 尼奥一
                     reference_key = f"{current_prefix}.to二"
                 else:  # 尼奥二
                     reference_key = f"{current_prefix}.to一"
@@ -1300,7 +1439,10 @@ class DarRouteRunner:
                     if (time.time() - scan_start_time) > max_scan_duration:
                         self._emit(f"⏱️ 扫描超时（{max_scan_duration}s），未找到变化点，触发强制重连", "WARN")
                         # ✅ 修复：扫描变化点超时未找到变化点，应该强制重连（不依赖时间条件）
-                        self._check_nieo_reconnect_condition(use_foreground, stop_event, force_reconnect=True)
+                        if pem:
+                            self._check_pure_energy_reconnect_condition(use_foreground, stop_event, force_reconnect=True)
+                        else:
+                            self._check_nieo_reconnect_condition(use_foreground, stop_event, force_reconnect=True)
                         return  # 重连后会重新启动尼奥模式，这里直接返回
                     
                     # 快速遍历7个点，找到第一个变化点
@@ -1646,42 +1788,45 @@ class DarRouteRunner:
                                     self._emit("🛑 [尼奥模式] 用户已请求停止，不执行重连", "INFO")
                                     return
                                 self._emit(f"⚠️ [尼奥模式] 连续{self._nieo_consecutive_entry_failures}次入战失败，执行重连", "WARN")
-                                self._check_nieo_reconnect_condition(use_foreground, stop_event, force_reconnect=True)
+                                if pem:
+                                    self._check_pure_energy_reconnect_condition(use_foreground, stop_event, force_reconnect=True)
+                                else:
+                                    self._check_nieo_reconnect_condition(use_foreground, stop_event, force_reconnect=True)
                                 return
                         else:
                             self._emit(f"✅ [校准放弃] 校准成功后主动放弃，不计入入战失败次数", "INFO")
                     
 
-                        # 切换地图逻辑
-                        if current_map_id == 11:
-                            # 从11切回10：使用to一
-                            to_one_key = f"{current_prefix}.to一"
-                            self._emit(f"🗺️ 点击{to_one_key}返回10号地图", "SYSTEM")
-                            try:
-                                to_one_reg = self.regions.get(to_one_key)
-                                if to_one_reg:
-                                    self._click_region(to_one_reg, use_foreground)
-                                    if self._wait_for_map_id(10, stop_event, timeout_s=30.0):
-                                        current_map_id = 10
-                                        continue
-                            except Exception as e:
-                                self._emit(f"⚠️ 切换地图失败：{e}", "WARN")
-                        else:
-                            # 从10切到11
-                            self._emit(f"🗺️ 点击{current_prefix}.to二返回11号地图", "SYSTEM")
-                            try:
-                                to_two_reg = self.regions.get(f"{current_prefix}.to二")
-                                if to_two_reg:
-                                    self._click_region(to_two_reg, use_foreground)
-                                    if self._wait_for_map_id(11, stop_event, timeout_s=10.0):
-                                        current_map_id = 11
-                                        continue
-                            except Exception as e:
-                                self._emit(f"⚠️ 切换地图失败：{e}", "WARN")
+                        # 切换地图逻辑（尼奥 10↔11 / 纯净能量 26↔27）
+                        sw_to = self._neighbor_switch_twomap_after_fail(
+                            pem=pem,
+                            current_map_id=current_map_id,
+                            current_prefix=current_prefix,
+                            use_foreground=use_foreground,
+                            stop_event=stop_event,
+                        )
+                        if sw_to is not None:
+                            current_map_id = sw_to
                         continue
                     
                     tx, ty, collected_pet_ids = result
                     self._current_pos = (tx, ty)
+                    if pem:
+                        cps = set(collected_pet_ids) if collected_pet_ids else None
+                        nmid = self._pem_after_change_skill4_defeat(
+                            current_map_id=current_map_id,
+                            current_prefix=current_prefix,
+                            use_foreground=use_foreground,
+                            stop_event=stop_event,
+                            selected_key=selected_key or "",
+                            tx=tx,
+                            ty=ty,
+                            collected_pet_ids=cps,
+                        )
+                        if nmid is None:
+                            return
+                        current_map_id = nmid
+                        continue
                     
                     # 如果立即收集到了pet IDs，使用它们；否则再收集一次
                     if collected_pet_ids:
@@ -1741,7 +1886,19 @@ class DarRouteRunner:
                     self._check_pet_id_allowlist_anomaly(unique_ids, "nieo")
                     
                     # 简化的战斗类型判断：只检查关键ID（108已禁用，仅77/310/416）
-                    if found_key_ids & {77, 310, 416}:
+                    if self._nieo_test_force_switch:
+                        # ✅ 测试模式：强制按地图分流走尼尔家族战斗（10图→416闪光艾菲亚 / 11图→77艾斯菲格）
+                        forced_nie_id = 416 if current_map_id == 10 else 77
+                        target_label = "闪光艾菲亚(416路径)" if forced_nie_id == 416 else "艾斯菲格(77路径)"
+                        self._emit(
+                            f"🧪 [尼奥测试模式] 当前地图={current_map_id}，强制走尼尔家族战斗，切换→{target_label}",
+                            "SYSTEM",
+                        )
+                        battle_type = "nie_family"
+                        self._last_nie_family_id = forced_nie_id
+                    elif found_key_ids & {77, 310, 416}:
+                        # ✅ 只要遇到过尼尔家族（含“勾选不捕捉尼尔而逃跑”的情况），本 run 即视为“遇到过”
+                        self._nieo_run_seen_nie_family = True
                         # 有77、310或416 -> 尼尔家族战斗
                         nie_id = list(found_key_ids & {77, 310, 416})[0]
                         # 如果skip_nie_77为True且检测到77，执行逃跑策略
@@ -1868,7 +2025,8 @@ class DarRouteRunner:
                                 self.run_nieo_mode(stop_event, use_foreground, 
                                         getattr(self, '_test_nieo', False),
                                         getattr(self, '_test_nie', False),
-                                        getattr(self, '_skip_nie_77', False))
+                                        getattr(self, '_skip_nie_77', False),
+                                        nieo_test_force_switch=getattr(self, '_nieo_test_force_switch', False))
                             return
                         
                         if not success:
@@ -2041,7 +2199,8 @@ class DarRouteRunner:
                                 self.run_nieo_mode(stop_event, use_foreground, 
                                         getattr(self, '_test_nieo', False),
                                         getattr(self, '_test_nie', False),
-                                        getattr(self, '_skip_nie_77', False))
+                                        getattr(self, '_skip_nie_77', False),
+                                        nieo_test_force_switch=getattr(self, '_nieo_test_force_switch', False))
                             return
                         
                         if not success:
@@ -2244,7 +2403,8 @@ class DarRouteRunner:
                                 self.run_nieo_mode(stop_event, use_foreground, 
                                         getattr(self, '_test_nieo', False),
                                         getattr(self, '_test_nie', False),
-                                        getattr(self, '_skip_nie_77', False))
+                                        getattr(self, '_skip_nie_77', False),
+                                        nieo_test_force_switch=getattr(self, '_nieo_test_force_switch', False))
                             return
                         
                         if not success:
@@ -2407,23 +2567,27 @@ class DarRouteRunner:
                     # ✅ 恢复完成后，重新启动常态1AND1监控（如果适用，但尼奥模式不启用）
                     # 注意：尼奥模式不启用常态1AND1监控，所以这里不需要重新启动
             
-            # 输出最终统计
-            self._emit("📊 尼奥模式统计：", "SYSTEM")
-            self._emit(f"   普通逃跑：{nieo_stats['普通逃跑']}", "INFO")
-            self._emit(f"   稀有捕捉：{nieo_stats['稀有捕捉']}", "INFO")
-            self._emit(f"   尼尔家族：{nieo_stats['尼尔家族']}（77：{nieo_stats['77捕捉']}，310：{nieo_stats['310捕捉']}，416：{nieo_stats['416捕捉']}）", "INFO")
-            
-            # ✅ 轮换模式：累加统计数据到总统计
-            if self._is_rotation_mode and self._rotation_total_stats:
-                nieo_total = self._rotation_total_stats["nieo"]
-                nieo_total["普通逃跑"] += nieo_stats["普通逃跑"]
-                nieo_total["稀有捕捉"] += nieo_stats["稀有捕捉"]
-                nieo_total["尼尔家族"] += nieo_stats["尼尔家族"]
-                nieo_total["108捕捉"] += nieo_stats["108捕捉"]
-                nieo_total["77捕捉"] += nieo_stats["77捕捉"]
-                nieo_total["310捕捉"] += nieo_stats["310捕捉"]
-                nieo_total["416捕捉"] += nieo_stats["416捕捉"]
-                nieo_total["运行次数"] += 1
+            if nieo_stats is not None:
+                # 输出最终统计
+                self._emit("📊 尼奥模式统计：", "SYSTEM")
+                self._emit(f"   普通逃跑：{nieo_stats['普通逃跑']}", "INFO")
+                self._emit(f"   稀有捕捉：{nieo_stats['稀有捕捉']}", "INFO")
+                self._emit(
+                    f"   尼尔家族：{nieo_stats['尼尔家族']}（77：{nieo_stats['77捕捉']}，310：{nieo_stats['310捕捉']}，416：{nieo_stats['416捕捉']}）",
+                    "INFO",
+                )
+                
+                # ✅ 轮换模式：累加统计数据到总统计
+                if self._is_rotation_mode and self._rotation_total_stats:
+                    nieo_total = self._rotation_total_stats["nieo"]
+                    nieo_total["普通逃跑"] += nieo_stats["普通逃跑"]
+                    nieo_total["稀有捕捉"] += nieo_stats["稀有捕捉"]
+                    nieo_total["尼尔家族"] += nieo_stats["尼尔家族"]
+                    nieo_total["108捕捉"] += nieo_stats["108捕捉"]
+                    nieo_total["77捕捉"] += nieo_stats["77捕捉"]
+                    nieo_total["310捕捉"] += nieo_stats["310捕捉"]
+                    nieo_total["416捕捉"] += nieo_stats["416捕捉"]
+                    nieo_total["运行次数"] += 1
             
             # ✅ 输出校准记录总结 - 已禁用日志输出
             # if self._nieo_calibration_records:
@@ -2458,7 +2622,7 @@ class DarRouteRunner:
             # else:
             #     self._emit("📊 尼奥模式校准记录：无校准记录", "INFO")
             
-            self._emit("✅ 尼奥模式结束", "SUCCESS")
+            self._emit("✅ 纯净能量(资源) 模式结束" if pem else "✅ 尼奥模式结束", "SUCCESS")
             
         except Exception as e:
             self._emit(f"❌ 尼奥模式异常: {e}", "ERROR")
@@ -2507,13 +2671,47 @@ class DarRouteRunner:
                 self._unified_framework._petswf_to_petitem_durations.clear()
             self._emit("✅ [尼奥模式-重连重启] 时间计数器已重置", "INFO")
             
-            # ✅ 重新启动尼奥模式（使用统一的递归调用方式，与其他模式保持一致）
-            # 注意：重连脚本执行完成后，游戏已经通过to尼奥回到了地图，所以会从头开始执行
+            # 注意：重连脚本执行完成后，游戏已通过 to 脚本回到目标地图
             new_stop_event = threading.Event()
-            self.run_nieo_mode(new_stop_event, use_foreground, test_nieo, test_nie, skip_nie_77,
-                              is_rotation_mode=self._is_rotation_mode, 
-                              next_switch_time=self._next_rotation_switch_time)
+            if pem:
+                self._emit("🔄 [纯净能量-重连重启] 重新启动纯净能量模式", "SYSTEM")
+                self.run_pure_energy_resource_mode(
+                    new_stop_event,
+                    use_foreground,
+                    nieo_pre_rotation_first=getattr(self, "_pem_pre_rotation_first", False),
+                    skip_nie_77=getattr(self, "_skip_nie_77", False),
+                )
+            else:
+                self.run_nieo_mode(
+                    new_stop_event,
+                    use_foreground,
+                    test_nieo,
+                    test_nie,
+                    skip_nie_77,
+                    is_rotation_mode=self._is_rotation_mode,
+                    next_switch_time=self._next_rotation_switch_time,
+                    nieo_test_force_switch=getattr(self, "_nieo_test_force_switch", False),
+                )
             return  # 递归调用后直接返回
+
+    def run_pure_energy_resource_mode(
+        self,
+        stop_event: threading.Event,
+        use_foreground: bool,
+        nieo_pre_rotation_first: bool = False,
+        skip_nie_77: bool = False,
+    ) -> None:
+        """
+        纯净能量(资源)：重连 to纯净能量 → map26；首开进 27；之后 26↔27 与尼奥 10↔11 同构。
+        普通战技能四战胜；遇尼尔家族（77/310/416）走与尼奥相同的技能一→切换→捕捉→战后恢复入仓；
+        勾选「不捕捉尼尔」时遇 77 首回合逃跑。每满 ``PEM_SKILL4_MAINTENANCE_EVERY_BATTLES`` 场（当前 30）额外恢复精灵一。
+        （前置重连由 bot_thread / Dashboard；`skip_nie_77` 与尼奥勾选一致。）
+        """
+        self._pem_pre_rotation_first = bool(nieo_pre_rotation_first)
+        try:
+            self.run_nieo_mode(stop_event, use_foreground, pem=True, skip_nie_77=skip_nie_77)
+        finally:
+            self._pem_pre_rotation_first = False
 
     def run(
         self,
@@ -2524,7 +2722,8 @@ class DarRouteRunner:
         smart_tracking_mode: bool = False,  # 智能追踪模式：使用智能点击和追踪逻辑
         xiaodouya_nie_test_mode: bool = False,  # 小豆芽尼尔测试模式：捕捉16号精灵，测试切换精灵逻辑
         is_rotation_mode: bool = False,  # 新增参数：是否是轮换模式
-        next_switch_time: Optional[datetime] = None  # 新增参数：下一个切换时间点
+        next_switch_time: Optional[datetime] = None,  # 新增参数：下一个切换时间点
+        mantis_test_super_only: bool = False,  # ✅ 螳螂测试模式：仅突变触发（绕过MP3）+ 全程超级胶囊
     ) -> None:
         try:
             # ✅ 如果不是轮换模式，重置轮换模式相关状态（确保普通模式不受影响）
@@ -2537,15 +2736,17 @@ class DarRouteRunner:
             if is_rotation_mode and next_switch_time:
                 self._next_rotation_switch_time = next_switch_time
                 self._is_rotation_mode = True
+                rs = getattr(self, "_rotation_rare_slot", "shuangta") or "shuangta"
+                rn = "螳螂" if rs == "mantis" else "双塔"
                 # ✅ 测试模式：立即记录开始时间（用于固定时间间隔检测）
                 is_test_mode = self.ROTATION_TEST_MODE  # ✅ 使用统一开关
                 if is_test_mode:
                     self._test_mode_start_time = time.time()  # ✅ 立即记录开始时间，而不是等到首次检测
                     self._emit(
-                        f"🧪 [轮换模式-测试] 双塔模式启动，记录开始时间（将在{self.ROTATION_RECONNECT_INTERVAL_MINUTES_SHUANGTA}分钟后切换）",
+                        f"🧪 [轮换模式-测试] {rn}野外模式启动，记录开始时间（将在{self.ROTATION_RECONNECT_INTERVAL_MINUTES_SHUANGTA}分钟后切换）",
                         "INFO",
                     )
-                self._emit(f"🔄 [双塔模式-轮换] 下次切换时间：{next_switch_time.strftime('%Y-%m-%d %H:%M:%S')}", "INFO")
+                self._emit(f"🔄 [{rn}模式-轮换] 下次切换时间：{next_switch_time.strftime('%Y-%m-%d %H:%M:%S')}", "INFO")
             
             profile = profile or DEFAULT_PROFILE_MANTIS
             # ✅ 保存当前profile，供刷新重连时使用
@@ -2558,6 +2759,23 @@ class DarRouteRunner:
                 self._current_mode = "dugulu"
             else:
                 self._current_mode = None  # 其他模式（螳螂、小豆芽等）
+
+            # ✅ 螳螂测试模式：仅突变触发（绕过MP3）+ 全程超级胶囊（不使用无敌胶囊）
+            #    - 仅在螳螂 profile 下生效；非螳螂 profile 强制忽略（避免误用）
+            is_mantis_profile = "螳螂" in profile_name_lower or int(getattr(profile, "target_pet_id", 0) or 0) == MANTIS_PET_ID
+            if mantis_test_super_only and not is_mantis_profile:
+                self._emit("⚠️ [测试模式] mantis_test_super_only 仅对螳螂 profile 生效，已忽略", "WARN")
+                mantis_test_super_only = False
+            self._mantis_test_super_only = bool(mantis_test_super_only)
+            if self._mantis_test_super_only:
+                # 同步打开 test_mode（让稀有捕捉主循环跳过 MP3 武装条件）；
+                # 但 BattleConfig.test_mode_capsule_only_mid 不再随之打开（在 _handle_battle_trigger 中显式处理）。
+                test_mode = True
+                self._emit(
+                    "🧪 [螳螂测试模式] 已启用：仅突变触发（绕过MP3）+ 全程超级胶囊（不使用无敌胶囊）",
+                    "SYSTEM",
+                )
+                self._check_and_fill_missing_swf_files()
             
             # ✅ 停止上一个模式的1AND1监控（如果存在）- 在启动新模式前先停止旧监控
             self._stop_normal_1and1_monitoring()
@@ -2578,6 +2796,14 @@ class DarRouteRunner:
             
             # CSV battle logger: new run
             self._battle_logger.new_run(profile.name)
+            self._pending_battle_csv_id = None
+            self._tmp_cleanup_attempted_this_run = False
+            if self._current_mode == "shuangta":
+                self._shuangta_last_battle_end_ts = time.time()
+            else:
+                self._shuangta_last_battle_end_ts = None
+            if self._current_mode != "nieo":
+                self._nieo_run_seen_nie_family = False
 
             # ✅ 重置该任务的统计（每次运行开始时重置，不累加）
             task_name = profile.name
@@ -2596,8 +2822,8 @@ class DarRouteRunner:
             else:
                 self._emit(f"🌲 野外捕捉启动：profile={profile.route_hint} 前台={use_foreground}", "SYSTEM")
             
-            # 注意：野外捕捉模式（包括螳螂模式）不会执行swf文件恢复
-            # swf文件恢复仅在run_nieo_mode()中执行
+            # 注意：普通野外捕捉不执行 swf 补齐；尼奥模式在 run_nieo_mode 内补齐；
+            # 螳螂测试模式（mantis_test_super_only）在启用时已在上文调用 _check_and_fill_missing_swf_files。
             
             # 保存smart_tracking_mode和xiaodouya_nie_test_mode以供后续使用
             self._smart_tracking_mode = smart_tracking_mode
@@ -2650,7 +2876,7 @@ class DarRouteRunner:
                             self._unified_framework._petswf_to_petitem_durations.clear()
                         self._emit("🔄 [闪光皮皮-进入地图失败] 重连完成，自动重新启动", "SYSTEM")
                         new_stop_event = threading.Event()
-                        self.run(new_stop_event, use_foreground, profile, test_mode, smart_tracking_mode, xiaodouya_nie_test_mode, is_rotation_mode=is_rotation_mode, next_switch_time=self._next_rotation_switch_time)
+                        self.run(new_stop_event, use_foreground, profile, test_mode, smart_tracking_mode, xiaodouya_nie_test_mode, is_rotation_mode=is_rotation_mode, next_switch_time=self._next_rotation_switch_time, mantis_test_super_only=self._mantis_test_super_only)
                     return
                 self._emit("✅ [闪光皮皮] 已进入10号地图：开始解析路线", "SUCCESS")
                 
@@ -2695,7 +2921,7 @@ class DarRouteRunner:
                             self._unified_framework._petswf_to_petitem_durations.clear()
                         self._emit("🔄 [眼球-进入地图失败] 重连完成，自动重新启动", "SYSTEM")
                         new_stop_event = threading.Event()
-                        self.run(new_stop_event, use_foreground, profile, test_mode, smart_tracking_mode, xiaodouya_nie_test_mode, is_rotation_mode=is_rotation_mode, next_switch_time=self._next_rotation_switch_time)
+                        self.run(new_stop_event, use_foreground, profile, test_mode, smart_tracking_mode, xiaodouya_nie_test_mode, is_rotation_mode=is_rotation_mode, next_switch_time=self._next_rotation_switch_time, mantis_test_super_only=self._mantis_test_super_only)
                     return
                 self._emit("✅ [眼球] 已进入60号地图：开始解析路线", "SUCCESS")
                 
@@ -2705,44 +2931,60 @@ class DarRouteRunner:
                 # 5) ✅ 检测是否到达A或B点（标定A点，点击A点，2秒检测；如果未到达，标定B点，点击B点）
                 reached_point = self._wait_until_reached_ab_point(reg_a, reg_b, use_foreground, stop_event)
             else:
-                # 普通流程：先执行恢复逻辑（不包含放回仓库）
-                self._emit("💊 执行恢复流程（进入地图前）", "SYSTEM")
-                self._recover_pets(use_foreground, stop_event, skip_return_storage=True, profile=profile)
-                
-                # 2) 执行地图进入脚本（从 地图\\{map_swf_id}.json 读取）
-                self._emit(f"🗺️ 执行地图进入脚本：地图\\{profile.map_swf_id}.json", "SYSTEM")
-                if not self._execute_map_entry_script(profile.map_swf_id, use_foreground, stop_event):
-                    self._emit("⚠️ 地图进入脚本执行失败，尝试继续", "WARN")
-                
-                # 3) 等待进入地图（检测map+npc信号）
-                self._emit(f"⏳ 等待进入地图：/resource/map/{profile.map_swf_id}.swf + newNpc...", "SYSTEM")
-                if not self._wait_for_map_ready(profile, stop_event):
-                    self._emit("⛔ 等待地图进入超时/已停止", "WARN")
-                    # ✅ 用户主动停止时，不执行刷新重连
-                    if stop_event.is_set() or getattr(self.bot, "stop_current", False):
-                        self._emit("🛑 用户已请求停止，不执行刷新重连", "INFO")
+                # 普通流程。
+                # 达尔 map11（螳螂/小豆芽）：已到 map11 时跳过重复进图（见 _dal_map11_already_ready_for_wild_capture）。
+                # 螳螂：与轮换前置一致，to螳螂 后直接执行 地图/11 + 等待就绪（不经由日志强验 map10）。
+                # 小豆芽等：进图前仍走 skip_return_storage 恢复。
+                dal11_ready = self._dal_map11_already_ready_for_wild_capture(profile)
+                if dal11_ready:
+                    self._emit(
+                        "💊 [达尔路线] map11+newNpc 已就位：跳过云上开场恢复与重复进图（地图/11），避免在 11 上再跑开场恢复",
+                        "SYSTEM",
+                    )
+                else:
+                    mantis_dar11 = (
+                        int(getattr(profile, "target_pet_id", 0) or 0) == MANTIS_PET_ID
+                        and int(getattr(profile, "map_swf_id", 0) or 0) == 11
+                        and str(getattr(profile, "route_hint", "") or "").strip() == "达尔"
+                    )
+                    if mantis_dar11:
+                        self._emit("🛤️ [螳螂] 执行 to螳螂，随后直接进入 map11（与轮换前置重连一致）", "SYSTEM")
+                        if hasattr(self.bot, "daily_runner"):
+                            self.bot.daily_runner.run_single_script("to螳螂", bg_mode=(not use_foreground))
+                        self._sleep_abortable(stop_event, 2.0)
+                    else:
+                        self._emit("💊 执行恢复流程（进入地图前）", "SYSTEM")
+                        self._recover_pets(use_foreground, stop_event, skip_return_storage=True, profile=profile)
+                    self._emit(f"🗺️ 执行地图进入脚本：地图\\{profile.map_swf_id}.json", "SYSTEM")
+                    if not self._execute_map_entry_script(profile.map_swf_id, use_foreground, stop_event):
+                        self._emit("⚠️ 地图进入脚本执行失败，尝试继续", "WARN")
+                    self._emit(f"⏳ 等待进入地图：/resource/map/{profile.map_swf_id}.swf + newNpc...", "SYSTEM")
+                    if not self._wait_for_map_ready(profile, stop_event):
+                        self._emit("⛔ 等待地图进入超时/已停止", "WARN")
+                        # ✅ 用户主动停止时，不执行刷新重连
+                        if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                            self._emit("🛑 用户已请求停止，不执行刷新重连", "INFO")
+                            return
+                        # ✅ 进入地图失败，执行刷新重连（轮换模式和非轮换模式都执行）
+                        self._handle_map_entry_timeout(profile, use_foreground, stop_event, is_rotation_mode, "进入地图失败")
+                        # ✅ 重连成功后需在此检查重启标志（双塔、嘟咕噜等）
+                        if getattr(self, "_should_restart_after_reconnect", False):
+                            self._should_restart_after_reconnect = False
+                            self._is_scanning_steady_state = False
+                            self._is_in_battle = False
+                            self._is_recovering = False
+                            self._stop_1and1_monitoring = False
+                            if self.bot:
+                                self.bot.stop_current = False
+                            self._petswf_to_petitem_min_duration = None
+                            self._petswf_to_petitem_current_duration = None
+                            if self._unified_framework and hasattr(self._unified_framework, '_petswf_to_petitem_durations'):
+                                self._unified_framework._petswf_to_petitem_durations.clear()
+                            self._emit(f"🔄 [{profile.name}-进入地图失败] 重连完成，自动重新启动", "SYSTEM")
+                            new_stop_event = threading.Event()
+                            self.run(new_stop_event, use_foreground, profile, test_mode, smart_tracking_mode, xiaodouya_nie_test_mode, is_rotation_mode=is_rotation_mode, next_switch_time=self._next_rotation_switch_time, mantis_test_super_only=self._mantis_test_super_only)
                         return
-                    # ✅ 进入地图失败，执行刷新重连（轮换模式和非轮换模式都执行）
-                    self._handle_map_entry_timeout(profile, use_foreground, stop_event, is_rotation_mode, "进入地图失败")
-                    # ✅ 重连成功后需在此检查重启标志（双塔、嘟咕噜等）
-                    if getattr(self, "_should_restart_after_reconnect", False):
-                        self._should_restart_after_reconnect = False
-                        self._is_scanning_steady_state = False
-                        self._is_in_battle = False
-                        self._is_recovering = False
-                        self._stop_1and1_monitoring = False
-                        if self.bot:
-                            self.bot.stop_current = False
-                        self._petswf_to_petitem_min_duration = None
-                        self._petswf_to_petitem_current_duration = None
-                        if self._unified_framework and hasattr(self._unified_framework, '_petswf_to_petitem_durations'):
-                            self._unified_framework._petswf_to_petitem_durations.clear()
-                        self._emit(f"🔄 [{profile.name}-进入地图失败] 重连完成，自动重新启动", "SYSTEM")
-                        new_stop_event = threading.Event()
-                        self.run(new_stop_event, use_foreground, profile, test_mode, smart_tracking_mode, xiaodouya_nie_test_mode, is_rotation_mode=is_rotation_mode, next_switch_time=self._next_rotation_switch_time)
-                    return
                 self._emit("✅ 已进入地图：开始解析路线", "SUCCESS")
-
 
                 # 4) 解析路线点 & A/B
                 route_points, reg_a, reg_b = self._resolve_route_regions(profile.route_hint)
@@ -3422,6 +3664,7 @@ class DarRouteRunner:
                         xiaodouya_nie_test_mode,
                         is_rotation_mode=self._is_rotation_mode,
                         next_switch_time=self._next_rotation_switch_time,
+                        mantis_test_super_only=self._mantis_test_super_only,
                     )
                     return  # 递归调用后直接返回
         finally:
@@ -3991,7 +4234,7 @@ class DarRouteRunner:
         - 闪光皮皮：删除 10
         - 眼球：删除 232, 233, 234, 207
         - 小豆芽：删除 16
-        - 螳螂：删除 16, 27
+        - 螳螂：删除 16, 27（螳螂测试模式 mantis_test_super_only 时不删，与补齐占位一致）
         - 尼奥：检查并恢复所有野外稀有精灵要删除的序号的并集（10, 16, 27, 104, 144, 252）
         """
         try:
@@ -4018,7 +4261,9 @@ class DarRouteRunner:
             elif "小豆芽" in profile_name_lower:
                 files_to_delete.add(16)
             elif "螳螂" in profile_name_lower:
-                files_to_delete.update([16, 27])
+                # 普通螳螂挂机删 16/27（减资源占位）；螳螂测试模式会先补齐占位 swf，此处不删否则会立刻抵消补齐
+                if not getattr(self, "_mantis_test_super_only", False):
+                    files_to_delete.update([16, 27])
             # ✅ 尼奥模式不在这里删除swf文件（尼奥模式在run_nieo_mode中调用_check_and_fill_missing_swf_files来恢复补齐）
             # 注意：尼奥模式使用run_nieo_mode方法，不会调用此方法，但为了代码清晰性，这里明确跳过
             
@@ -4047,6 +4292,28 @@ class DarRouteRunner:
             self._emit(f"⚠️ swf文件删除异常: {e}，继续执行", "WARN")
             import traceback
             self._emit(traceback.format_exc(), "DEBUG")
+
+    def _try_delete_game_tmp_dir(self, *, log_tag: str = "") -> None:
+        """
+        尝试删除游戏目录下的 tmp 文件夹（用于清缓存/自愈）。
+        失败不抛异常；若文件被占用则仅记录日志。
+        """
+        try:
+            import shutil
+            from config import GAME_PATH
+        except Exception as e:
+            self._emit(f"⚠️ [{log_tag}] 无法读取 config.GAME_PATH / shutil：{e}", "WARN")
+            return
+        try:
+            game_root = os.path.dirname(os.path.abspath(GAME_PATH))
+            tmp_dir = os.path.join(game_root, "tmp")
+            if not os.path.isdir(tmp_dir):
+                self._emit(f"ℹ️ [{log_tag}] 未找到 tmp，跳过删除：{tmp_dir}", "INFO")
+                return
+            shutil.rmtree(tmp_dir)
+            self._emit(f"✅ [{log_tag}] 已删除 tmp：{tmp_dir}", "SUCCESS")
+        except Exception as e:
+            self._emit(f"⚠️ [{log_tag}] 删除 tmp 失败（可能被占用）：{e}", "WARN")
     
     def _check_and_fill_missing_swf_files(self):
         """
@@ -4118,9 +4385,16 @@ class DarRouteRunner:
         except Exception as e:
             self._emit(f"⚠️ [捕捉成功] 截图保存失败: {e}，继续执行", "WARN")
 
-    def _save_client_screenshot(self, tag: str, level: Optional[int] = None) -> Optional[str]:
+    def _save_client_screenshot(
+        self,
+        tag: str,
+        level: Optional[int] = None,
+        *,
+        category: Optional[str] = None,
+    ) -> Optional[str]:
         """
-        通用：对整个client截图并保存到 screenshots/client/，返回保存路径（失败返回None）。
+        通用：对整个 client 截图；默认保存到 screenshots/client/。
+        若传入 category（如 rotation / reconnect_four / round_timeout），则保存到 screenshots/client/<category>/。
         """
         try:
             if not (self.bot and hasattr(self.bot, "project_root")):
@@ -4132,7 +4406,16 @@ class DarRouteRunner:
 
             safe_tag = str(tag).replace(" ", "_")
             lvl_part = f"_lvl{int(level)}" if level is not None else ""
-            save_dir = screenshots_subdir(self.bot.project_root, "client")
+            base = screenshots_subdir(self.bot.project_root, "client")
+            if category:
+                sub = "".join(
+                    c if (c.isalnum() or c in ("_", "-")) else "_"
+                    for c in str(category).strip()
+                ).strip("_") or "misc"
+                save_dir = os.path.join(base, sub)
+                os.makedirs(save_dir, exist_ok=True)
+            else:
+                save_dir = base
 
             client_img = window_manager.grab_game_bbox(0, 0, GAME_LOGIC_W, GAME_LOGIC_H)
             if client_img is None:
@@ -4145,11 +4428,13 @@ class DarRouteRunner:
             return None
 
     def _maybe_save_rotation_pre_switch_screenshot(self, tag_suffix: str) -> None:
-        """轮换模式（_is_rotation_mode）下，在打开切换面板、点选精灵出战前，保存整幅 client 截图到 screenshots/client/。"""
+        """轮换模式（_is_rotation_mode）下，在打开切换面板、点选精灵出战前，保存整幅 client 截图到 screenshots/client/rotation/。"""
         if not getattr(self, "_is_rotation_mode", False):
             return
         try:
-            path = self._save_client_screenshot(f"轮换_切换精灵出战前_{tag_suffix}")
+            path = self._save_client_screenshot(
+                f"轮换_切换精灵出战前_{tag_suffix}", category="rotation"
+            )
             if path:
                 self._emit(f"📸 [轮换] 切换前已保存client截图：{path}", "INFO")
         except Exception as e:
@@ -4202,7 +4487,9 @@ class DarRouteRunner:
                 if not self._try_select_pet_four_with_timeout(use_foreground, stop_event):
                     self._emit("⚠️ [放回仓库] 5秒内选中四一直为蓝色，执行重连四", "WARN")
                     # ✅ debug：选中四失败 -> 重连前截图（与「放回仓库前」同属调试用，存 screenshots/client/）
-                    screenshot_path = self._save_client_screenshot("重连四_选中四失败")
+                    screenshot_path = self._save_client_screenshot(
+                        "重连四_选中四失败", category="reconnect_four"
+                    )
                     if screenshot_path:
                         self._emit(f"📸 [重连四-debug] 已保存client截图：{screenshot_path}", "INFO")
                     if profile is None:
@@ -4288,28 +4575,20 @@ class DarRouteRunner:
                 # 注意：这里先不扫描探针，而是在恢复和1AND1之后扫描
                 # 恢复逻辑暂时使用默认位置，稍后会在1AND1后扫描并更新
                 if nie_family_id == 416:
-                    # 416（尼奥）：需要恢复闪光艾菲亚（使用扫描位置或默认精灵二）
-                    if self._flash_aifeia_pos:
-                        recover_pos = self._flash_aifeia_pos
-                        self._emit(f"🔄 [416尼奥] 恢复闪光艾菲亚（精灵{recover_pos}，使用扫描位置）", "INFO")
-                    else:
-                        recover_pos = "二"  # 默认位置
-                        self._emit(f"🔄 [416尼奥] 恢复闪光艾菲亚（精灵{recover_pos}，默认位置，稍后会扫描更新）", "INFO")
+                    hint416 = self._flash_aifeia_pos or "二"
+                    recover_pos = self._bag_ensure_slot_for_recover_kind(
+                        "flash_aifeia",
+                        "nieo",
+                        use_foreground,
+                        hint_pos=hint416,
+                    )
+                    self._emit(
+                        f"🔄 [416尼奥] 恢复闪光艾菲亚（精灵{recover_pos}，技能四探针选槽）",
+                        "INFO",
+                    )
                     
-                    # 双击目标精灵
-                    self._emit(f"🐾 双击精灵{recover_pos}（准备恢复）", "INFO")
-                    pet_key = f"精灵背包.精灵{recover_pos}"
-                    pet_btn_key = f"精灵背包.精灵{recover_pos}按钮"
-                    try:
-                        self._click_region_twice(pet_btn_key, use_foreground)
-                    except KeyError:
-                        self._click_region_twice(pet_key, use_foreground)
-                    
-                    # 双击后等待0.5s
-                    self._sleep_abortable(stop_event, 0.5)
-                    
-                    # 点击"精灵恢复"
-                    self._emit("💊 点击精灵恢复（精灵一）", "INFO")
+                    self._sleep_abortable(stop_event, 0.3)
+                    self._emit(f"💊 点击精灵恢复（当前选中精灵{recover_pos}）", "INFO")
                     recover_key = "精灵背包.精灵恢复"
                     recover_btn_key = "精灵背包.精灵恢复按钮"
                     try:
@@ -4334,7 +4613,7 @@ class DarRouteRunner:
                     # ✅ 新增：1AND1确认后（无论是否超时），等待0.5s让UI稳定
                     self._sleep_abortable(stop_event, 0.5)
                     
-                    # 在1AND1消失后，扫描探针（虽然恢复的是精灵一，但需要更新探针位置供后续使用）
+                    # 在1AND1消失后，扫描精灵二/三技能四探针并更新位置供切换使用
                     self._emit("🔍 在1AND1消失后，扫描精灵二和精灵三探针，识别闪光艾菲亚和艾斯菲格", "INFO")
                     flash_aifeia_pos, aisifeige_pos = self._scan_pet_probes_to_identify_pets(use_foreground, mode="nieo")
                     # 更新实例变量，供后续使用
@@ -4356,29 +4635,20 @@ class DarRouteRunner:
                     self._sleep_abortable(stop_event, 1.0)
                     
                 elif nie_family_id in (77, 310):
-                    # 77/310（尼尔/闪光尼尔）：需要恢复艾斯菲格（使用扫描到的位置）
-                    # 如果还没有扫描过，使用默认位置精灵三
-                    if self._aisifeige_pos:
-                        recover_pos = self._aisifeige_pos
-                        self._emit(f"🔄 [77/310尼尔] 恢复艾斯菲格（精灵{recover_pos}，使用扫描位置）", "INFO")
-                    else:
-                        recover_pos = "三"  # 默认位置
-                        self._emit(f"🔄 [77/310尼尔] 恢复艾斯菲格（精灵{recover_pos}，默认位置，稍后会扫描更新）", "INFO")
+                    hint310 = self._aisifeige_pos or "三"
+                    recover_pos = self._bag_ensure_slot_for_recover_kind(
+                        "aisifeige",
+                        "nieo",
+                        use_foreground,
+                        hint_pos=hint310,
+                    )
+                    self._emit(
+                        f"🔄 [77/310尼尔] 恢复艾斯菲格（精灵{recover_pos}，技能四探针选槽）",
+                        "INFO",
+                    )
                     
-                    # 双击目标精灵
-                    self._emit(f"🐾 双击精灵{recover_pos}（准备恢复）", "INFO")
-                    pet_key = f"精灵背包.精灵{recover_pos}"
-                    pet_btn_key = f"精灵背包.精灵{recover_pos}按钮"
-                    try:
-                        self._click_region_twice(pet_btn_key, use_foreground)
-                    except KeyError:
-                        self._click_region_twice(pet_key, use_foreground)
-                    
-                    # 双击后等待0.5s
-                    self._sleep_abortable(stop_event, 0.5)
-                    
-                    # 点击"精灵恢复"
-                    self._emit("💊 点击精灵恢复（精灵三）", "INFO")
+                    self._sleep_abortable(stop_event, 0.3)
+                    self._emit(f"💊 点击精灵恢复（当前选中精灵{recover_pos}）", "INFO")
                     recover_key = "精灵背包.精灵恢复"
                     recover_btn_key = "精灵背包.精灵恢复按钮"
                     try:
@@ -4439,27 +4709,37 @@ class DarRouteRunner:
                     # 正常情况（没有尼尔家族）：判断是否是稀有精灵模式
                     # 如果是稀有精灵模式（有亚梅丝位置），恢复亚梅丝；否则恢复精灵一
                     if profile and hasattr(self, '_yameisi_pos') and self._yameisi_pos:
-                        # 稀有精灵模式：恢复亚梅丝
-                        recover_pos = self._yameisi_pos
-                        self._emit(f"🔄 [稀有精灵-目标精灵] 恢复亚梅丝（精灵{recover_pos}）", "INFO")
+                        hint_y = (
+                            self._yameisi_pos
+                            if self._yameisi_pos in ("二", "三")
+                            else "二"
+                        )
+                        recover_pos = self._bag_ensure_slot_for_recover_kind(
+                            "yameisi",
+                            "rare",
+                            use_foreground,
+                            hint_pos=hint_y,
+                        )
+                        self._emit(
+                            f"🔄 [稀有精灵-目标精灵] 恢复亚梅丝（精灵{recover_pos}，技能四探针选槽）",
+                            "INFO",
+                        )
                     else:
-                        # 非稀有精灵模式或其他情况：恢复精灵一
                         recover_pos = "一"
                         self._emit(f"🔄 [正常] 恢复精灵一", "INFO")
+                        self._emit(f"🐾 双击精灵一（准备恢复）", "INFO")
+                        pet_one_key = "精灵背包.精灵一"
+                        pet_one_btn_key = "精灵背包.精灵一按钮"
+                        try:
+                            self._click_region_twice(pet_one_btn_key, use_foreground)
+                        except KeyError:
+                            self._click_region_twice(pet_one_key, use_foreground)
+                        self._sleep_abortable(stop_event, 0.5)
+
+                    if recover_pos != "一":
+                        self._emit(f"🐾 已选中精灵{recover_pos}（技能四探针对齐），准备恢复", "INFO")
                     
-                    # 双击目标精灵（准备恢复）
-                    self._emit(f"🐾 双击精灵{recover_pos}（准备恢复）", "INFO")
-                    pet_key = f"精灵背包.精灵{recover_pos}"
-                    pet_btn_key = f"精灵背包.精灵{recover_pos}按钮"
-                    
-                    try:
-                        self._click_region_twice(pet_btn_key, use_foreground)
-                    except KeyError:
-                        self._click_region_twice(pet_key, use_foreground)
-                    
-                    # 双击后等待0.5s
-                    self._sleep_abortable(stop_event, 0.5)
-                    
+                    self._sleep_abortable(stop_event, 0.3)
                     # 4. 点击"精灵恢复"
                     self._emit("💊 点击精灵恢复", "INFO")
                     recover_key = "精灵背包.精灵恢复"
@@ -4932,7 +5212,23 @@ class DarRouteRunner:
         except Exception as e:
             self._emit(f"⚠️ 获取最后map ID失败: {e}", "DEBUG")
             return None
-    
+
+    def _dal_map11_already_ready_for_wild_capture(self, profile: WildCaptureProfile) -> bool:
+        """
+        达尔挂机图（map_swf_id=11）：to 脚本后通常在云上(map10)再点 11.json，
+        云上「开场恢复」只应在进 11 前执行。若前置轮换重连 / 重连已落定 map11+newNpc，
+        则不应在 11 再跑一遍开场恢复，也无需重复执行 地图/11.json。
+        """
+        try:
+            if int(getattr(profile, "map_swf_id", 0) or 0) != 11:
+                return False
+            if str(getattr(profile, "route_hint", "") or "").strip() != "达尔":
+                return False
+            cm, has_npc = self._check_last_map_and_newnpc(11, initial_pause_s=0.6)
+            return cm == 11 and has_npc
+        except Exception:
+            return False
+
     def _wait_for_map_ready(self, profile: WildCaptureProfile, stop_event: threading.Event) -> bool:
         """
         等待进入目标地图（支持在等待过程中被停止）
@@ -6108,7 +6404,7 @@ class DarRouteRunner:
         pet_ids = self._immediate_collected_pet_ids  # 使用立即收集到的pet IDs
         nie_family_id = None
         
-        # ✅ 螳螂模式特殊逻辑：除非出现尼尔家族，否则都使用无敌胶囊
+        # ✅ 螳螂模式：仅敌方含野怪 122（对手螳螂）时第一回合无敌；其余走技能一单档胶囊（由 _non_mantis_capsule_tier 驱动）
         invincible_first_round = False
         is_mantis_mode = "螳螂" in profile.name.lower() or profile.target_pet_id == 122
         
@@ -6122,10 +6418,10 @@ class DarRouteRunner:
                 self._immediate_collected_pet_ids = retry_pet_ids  # 更新立即收集到的pet IDs
                 self._emit(f"✅ [螳螂模式] 重新收集成功：{sorted(pet_ids)}", "SUCCESS")
             else:
-                self._emit("⚠️ [螳螂模式] 重新收集仍然失败，默认使用无敌胶囊（安全措施）", "WARN")
-                # 螳螂模式下，如果收集不到pet IDs，默认使用无敌胶囊（因为无法判断是否有尼尔家族）
-                invincible_first_round = True
-                self._emit("🛡️ [螳螂模式] 由于pet IDs收集失败，默认使用无敌精灵胶囊（安全措施）", "SYSTEM")
+                self._emit(
+                    "⚠️ [螳螂模式] 无法判定敌方是否含 122，第一回合不使用无敌胶囊（按默认技能一单档胶囊）",
+                    "WARN",
+                )
         
         if pet_ids:
             unique_ids = set(pet_ids)
@@ -6153,18 +6449,32 @@ class DarRouteRunner:
                 # 没有尼尔家族
                 self._last_nie_family_id = None
                 
-                # ✅ 螳螂模式：除非出现尼尔家族，否则都使用无敌胶囊
                 if is_mantis_mode:
-                    invincible_first_round = True
-                    self._emit("🛡️ [螳螂模式] 未检测到尼尔家族，使用无敌精灵胶囊", "SYSTEM")
+                    if MANTIS_PET_ID in unique_ids:
+                        invincible_first_round = True
+                        self._emit(
+                            "🛡️ [螳螂模式] 检测到敌方包含 122，第一回合使用无敌精灵胶囊",
+                            "SYSTEM",
+                        )
+                    else:
+                        self._emit(
+                            "ℹ️ [螳螂模式] 敌方不含 122，第一回合不按无敌胶囊（与普通野外一致开局）",
+                            "INFO",
+                        )
                 else:
                     self._emit("🎯 [对战类型] 目标精灵（正常稀有精灵抓捕逻辑）", "SYSTEM")
         else:
             # 非螳螂模式：未收集到pet IDs，使用默认逻辑
             if not is_mantis_mode:
                 self._emit("⚠️ 未收集到pet IDs，使用默认逻辑", "WARN")
-            # 螳螂模式：如果收集不到pet IDs，默认使用无敌胶囊（已在上面处理）
-        
+            # 螳螂模式且仍无 IDs：不按无敌胶囊（已在上面给出 WARN）
+
+        # ✅ 螳螂测试模式：强制禁用第一回合无敌胶囊，全程改投超级胶囊（由 _capsule_cycle_tiers_for_current_battle 提供单档循环）
+        if getattr(self, "_mantis_test_super_only", False) and is_mantis_mode and nie_family_id is None:
+            if invincible_first_round:
+                self._emit("🧪 [螳螂测试模式] 强制取消第一回合无敌精灵胶囊", "SYSTEM")
+            invincible_first_round = False
+
         # ✅ 第二步：如果统一框架已初始化，使用统一框架等待PetItem并执行第一回合动作
         if self._unified_framework and self._wild_adapter:
             from core.unified_battle_framework import BattleConfig, BattleMode
@@ -6229,6 +6539,10 @@ class DarRouteRunner:
                         self._emit("🏃 [嘟咕噜逃跑] 第二回合检查到逃跑条件（OCR延迟完成），执行逃跑", "SUCCESS")
                         return "escape"
                 
+                # ✅ 螳螂测试模式：所有回合（含第一回合，含尼尔家族）都改投胶囊（通过 capsule cycle 单档=超级）
+                if getattr(self, "_mantis_test_super_only", False) and is_mantis_mode:
+                    return "capsule"
+
                 # ✅ 如果有尼尔家族，执行尼尔家族逻辑（所有尼尔家族都正常捕捉）
                 if nie_family_id is not None:
                     if round_idx == 1:
@@ -6252,11 +6566,10 @@ class DarRouteRunner:
                     # 正常模式：螳螂逻辑/稀有逻辑
                     if round_idx == 1:
                         if invincible_first_round:
-                            return "capsule"  # 螳螂：第一回合无敌精灵胶囊（与 Stage2 PetItem 处执行一致）
+                            return "capsule"  # 仅螳螂遇 122：第一回合无敌胶囊
                         else:
                             return "skill"
-                    # 第2回合开始：捕捉逻辑（只使用高级胶囊）
-                    return "capsule_high"
+                    return "capsule"
             
             # ✅ 双塔模式：启动敌方信息监控（在后台线程中运行）
             is_dugulu_mode = "嘟咕噜" in profile.name.lower()
@@ -6590,14 +6903,26 @@ class DarRouteRunner:
                                                 else:
                                                     # 回退到技能一
                                                     self._click_region_twice("对战.使用技能一", use_foreground, gap=0.06)
+                                                    battle_panel_key = "对战.切换战斗面板"
+                                                    if self.regions.get(battle_panel_key):
+                                                        self._emit("🔄 第一回合：技能后双击切换对战面板", "INFO")
+                                                        self._click_region_twice(battle_panel_key, use_foreground, gap=0.06)
                                                     self._emit("⚠️ 无敌胶囊区域缺失，回退为技能一", "WARN")
                                             else:
                                                 # 回退到技能一
                                                 self._click_region_twice("对战.使用技能一", use_foreground, gap=0.06)
+                                                battle_panel_key = "对战.切换战斗面板"
+                                                if self.regions.get(battle_panel_key):
+                                                    self._emit("🔄 第一回合：技能后双击切换对战面板", "INFO")
+                                                    self._click_region_twice(battle_panel_key, use_foreground, gap=0.06)
                                                 self._emit("⚠️ 切换捕捉面板区域缺失，回退为技能一", "WARN")
                                         else:
                                             # 第一回合使用技能一
                                             self._click_region_twice("对战.使用技能一", use_foreground, gap=0.06)
+                                            battle_panel_key = "对战.切换战斗面板"
+                                            if self.regions.get(battle_panel_key):
+                                                self._emit("🔄 第一回合：技能后双击切换对战面板", "INFO")
+                                                self._click_region_twice(battle_panel_key, use_foreground, gap=0.06)
                                             self._emit("⚔️ 补执行第一回合：技能一", "INFO")
                         except Exception as e:
                             self._emit(f"⚠️ 补执行第一回合动作时出错: {e}", "WARN")
@@ -6609,6 +6934,14 @@ class DarRouteRunner:
         # 战斗计数（在战斗开始前）
         battle_num = self._battle_count + 1  # 即将开始的战斗编号
         self._emit(f"⚔️ [第 {battle_num} 次战斗] 开始战斗/捕捉流程", "SYSTEM")
+
+        self._pending_battle_csv_id = None
+        try:
+            if getattr(self, "_battle_logger", None) and self._should_log_csv_battle_start(profile):
+                e0 = self._enemy_pet_ids_for_battle_csv(profile)
+                self._pending_battle_csv_id = self._battle_logger.log_battle_start(enemy_pet_ids=e0)
+        except Exception:
+            self._pending_battle_csv_id = None
         
         # 执行战斗并获取结果
         # ✅ 传递task_stats以便在on_petitem_detected回调中更新统计
@@ -6631,28 +6964,47 @@ class DarRouteRunner:
         else:
             battle_result = "captured" if capture_success else "battled"
 
-        # CSV battle log — only record the meaningful target ID
+        # CSV battle log：先录入 start 再行尾补录 end（paired battle_instance_id）
         try:
-            nie_id = getattr(self, '_current_battle_nie_family_id', None)
-            if nie_id:
-                enemy_ids = [nie_id]
-            else:
-                all_ids = set(getattr(self, '_immediate_collected_pet_ids', None) or [])
-                target_set = set(profile.target_pet_ids) if profile.target_pet_ids else {profile.target_pet_id}
-                enemy_ids = sorted(all_ids & target_set) or sorted(all_ids & {77, 310, 416})
+            enemy_ids = self._enemy_pet_ids_for_battle_csv(profile)
             ubf = self._unified_framework
             cycle_mode, cycle_tiers = self._capsule_cycle_log_fields()
-            self._battle_logger.log_battle(
-                enemy_pet_ids=enemy_ids,
-                total_rounds=ubf._round_idx if ubf else 0,
-                result=battle_result,
-                battle_duration_s=ubf._battle_duration if ubf else 0.0,
-                capsule_counts=ubf._battle_capsule_counts if ubf else {},
-                capsule_cycle_mode=cycle_mode,
-                capsule_cycle_tiers=cycle_tiers,
-            )
+            pend = getattr(self, "_pending_battle_csv_id", None)
+            if pend and getattr(self, "_battle_logger", None):
+                ok_pair = self._battle_logger.log_battle_end(
+                    pend,
+                    enemy_pet_ids=enemy_ids,
+                    total_rounds=ubf._round_idx if ubf else 0,
+                    result=battle_result,
+                    battle_duration_s=ubf._battle_duration if ubf else 0.0,
+                    capsule_counts=ubf._battle_capsule_counts if ubf else {},
+                    capsule_cycle_mode=cycle_mode,
+                    capsule_cycle_tiers=cycle_tiers,
+                )
+                if not ok_pair:
+                    self._battle_logger.log_battle(
+                        enemy_pet_ids=enemy_ids,
+                        total_rounds=ubf._round_idx if ubf else 0,
+                        result=battle_result,
+                        battle_duration_s=ubf._battle_duration if ubf else 0.0,
+                        capsule_counts=ubf._battle_capsule_counts if ubf else {},
+                        capsule_cycle_mode=cycle_mode,
+                        capsule_cycle_tiers=cycle_tiers,
+                    )
+                self._pending_battle_csv_id = None
+            elif getattr(self, "_battle_logger", None):
+                self._battle_logger.log_battle(
+                    enemy_pet_ids=enemy_ids,
+                    total_rounds=ubf._round_idx if ubf else 0,
+                    result=battle_result,
+                    battle_duration_s=ubf._battle_duration if ubf else 0.0,
+                    capsule_counts=ubf._battle_capsule_counts if ubf else {},
+                    capsule_cycle_mode=cycle_mode,
+                    capsule_cycle_tiers=cycle_tiers,
+                )
         except Exception:
             pass
+        self._pending_battle_csv_id = None
 
         return battle_result
     
@@ -7070,7 +7422,8 @@ class DarRouteRunner:
                 action_callback=action_callback,
                 abort_check=lambda: stop_event.is_set() or getattr(self.bot, "stop_current", False),
                 invincible_first_round=invincible_first_round,
-                test_mode_capsule_only_mid=test_mode,  # 测试模式：后续回合只使用中级胶囊
+                # ✅ 螳螂测试模式启用时，不再强制走中级胶囊（用 capsule_cycle_tiers_override=("super",) 改为全程超级）
+                test_mode_capsule_only_mid=test_mode and not getattr(self, "_mantis_test_super_only", False),
                 test_mode=test_mode,  # 测试模式标志（用于战斗内恢复判断）
                 on_petitem_detected=on_petitem_detected,  # ✅ 传递PetItem检测回调，用于更新统计
                 round_timeout_sec=60.0,  # 单回合等待灰变蓝或战斗结束超过60s则重连
@@ -7505,25 +7858,166 @@ class DarRouteRunner:
             self._emit(f"⚠️ 未知的模式: {mode}，无法识别精灵类型", "WARN")
             return None
 
+    def _mean_rgb_for_region_key(self, region_key: str) -> Optional[Tuple[int, int, int]]:
+        """截取区域并返回 RGB 均值（失败返回 None）。"""
+        try:
+            reg = self.regions.get(region_key)
+            if reg is None:
+                return None
+            x1, y1, x2, y2 = reg.outer_bbox()
+            img = window_manager.grab_game_bbox(x1, y1, x2, y2)
+            if img is None:
+                return None
+            arr = np.asarray(img.convert("RGB"), dtype=np.uint8)
+            if arr.size == 0:
+                return None
+            m = np.round(arr.mean(axis=(0, 1))).astype(int)
+            return int(m[0]), int(m[1]), int(m[2])
+        except Exception:
+            return None
+
+    def _classify_bag_skill4_mean_rgb(
+        self, rgb: Tuple[int, int, int], mode: str
+    ) -> Optional[str]:
+        """背包「精灵背包.技能四探针」均值：偏红→艾斯菲格；否则蓝白→尼奥闪光艾菲亚 / 稀有亚梅丝。"""
+        r, g, b = rgb
+        rb = r - b
+        if rb >= BATTLE_SKILL4_RB_RED_MIN:
+            return "aisifeige"
+        if mode == "nieo":
+            return "flash_aifeia"
+        return "yameisi"
+
+    def _read_bag_skill4_probe_kind(self, mode: str) -> Optional[str]:
+        rgb = self._mean_rgb_for_region_key("精灵背包.技能四探针")
+        if rgb is None:
+            return None
+        return self._classify_bag_skill4_mean_rgb(rgb, mode)
+
+    def _click_bag_pet_slot_double(self, pos_cn: str, use_foreground: bool) -> None:
+        pet_btn_key = f"精灵背包.精灵{pos_cn}按钮"
+        pet_key = f"精灵背包.精灵{pos_cn}"
+        try:
+            self._click_region_twice(pet_btn_key, use_foreground)
+        except KeyError:
+            self._click_region_twice(pet_key, use_foreground)
+
+    def _bag_select_slot_by_skill4_probe(
+        self, wanted_kind: str, mode: str, use_foreground: bool
+    ) -> Optional[str]:
+        """依次双击精灵二、三并读技能四探针，返回首个与 wanted_kind 一致的槽位。"""
+        for pos_cn in ("二", "三"):
+            self._click_bag_pet_slot_double(pos_cn, use_foreground)
+            time.sleep(0.5)
+            k = self._read_bag_skill4_probe_kind(mode)
+            self._emit(
+                f"📋 [背包技能四探针] 选中精灵{pos_cn} → {k}",
+                "DEBUG",
+            )
+            if k == wanted_kind:
+                self._emit(
+                    f"✅ [背包选槽] 精灵{pos_cn} 匹配目标 {wanted_kind}，用于恢复",
+                    "SUCCESS",
+                )
+                return pos_cn
+        return None
+
+    def _bag_ensure_slot_for_recover_kind(
+        self,
+        wanted_kind: str,
+        mode: str,
+        use_foreground: bool,
+        hint_pos: Optional[str] = None,
+    ) -> str:
+        """恢复前选中正确二/三槽：探针顺序试二、三；均不匹配则回退双击 hint（默认可「二」）。"""
+        sel = self._bag_select_slot_by_skill4_probe(wanted_kind, mode, use_foreground)
+        if sel is not None:
+            return sel
+        fb = hint_pos if hint_pos in ("二", "三") else "二"
+        self._emit(
+            f"⚠️ [背包恢复] 技能四探针未匹配 {wanted_kind}，回退双击精灵{fb}",
+            "WARN",
+        )
+        self._click_bag_pet_slot_double(fb, use_foreground)
+        time.sleep(0.5)
+        return fb
+
+    def _detect_battle_switch_pet_type_color_probes(
+        self, use_foreground: bool, mode: str = "nieo"
+    ) -> Optional[str]:
+        """
+        对战切换：先读「出战探针」区分灰/蓝；偏灰则为波克尔系，不再读技能四。
+        偏蓝则读「技能四探针」：偏红 → 艾斯菲格；偏蓝白 → 尼奥闪光艾菲亚 / 稀有亚梅丝。
+
+        Returns:
+            nieo: boker | aisifeige | flash_aifeia
+            rare: flash_boker | aisifeige | yameisi
+            None: 区域缺失或无法判别
+        """
+        _ = use_foreground
+        out_key = "对战切换.出战探针"
+        sk_key = "对战切换.技能四探针"
+        out_rgb = self._mean_rgb_for_region_key(out_key)
+        if out_rgb is None:
+            self._emit("⚠️ [对战切换色探针] 无法读取出战探针区域", "WARN")
+            return None
+        r, g, b = out_rgb
+        br = b - r
+        out_is_blue = br >= BATTLE_OUT_BR_GRAY_BLUE_SPLIT
+        self._emit(
+            f"📋 [对战切换色探针] 出战 RGB=({r},{g},{b}) B-R={br} → "
+            f"{'偏蓝' if out_is_blue else '偏灰'}",
+            "DEBUG",
+        )
+        if not out_is_blue:
+            label = "波克尔" if mode == "nieo" else "闪光波克尔"
+            self._emit(f"📋 [对战切换色探针] 出战偏灰 → {label}（跳过技能四探针）", "DEBUG")
+            return "boker" if mode == "nieo" else "flash_boker"
+
+        sk_rgb = self._mean_rgb_for_region_key(sk_key)
+        if sk_rgb is None:
+            self._emit("⚠️ [对战切换色探针] 出战偏蓝但无法读取技能四探针", "WARN")
+            return None
+        r4, g4, b4 = sk_rgb
+        rb = r4 - b4
+        self._emit(
+            f"📋 [对战切换色探针] 技能四 RGB=({r4},{g4},{b4}) R-B={rb}",
+            "DEBUG",
+        )
+        if rb >= BATTLE_SKILL4_RB_RED_MIN:
+            self._emit("📋 [对战切换色探针] 技能四偏红 → 艾斯菲格", "DEBUG")
+            return "aisifeige"
+        if mode == "nieo":
+            self._emit("📋 [对战切换色探针] 技能四偏蓝白 → 闪光艾菲亚", "DEBUG")
+            return "flash_aifeia"
+        self._emit("📋 [对战切换色探针] 技能四偏蓝白 → 亚梅丝", "DEBUG")
+        return "yameisi"
+
+    def _resolve_pet_type_at_current_switch_slot(
+        self, use_foreground: bool, mode: str = "nieo"
+    ) -> Optional[str]:
+        """色探针优先，失败则回退四字/五字黄字探针。"""
+        pt = self._detect_battle_switch_pet_type_color_probes(use_foreground, mode)
+        if pt is not None:
+            return pt
+        cr = (
+            self._detect_nieo_switch_probe_chars(use_foreground)
+            if mode == "nieo"
+            else self._detect_rare_switch_probe_chars(use_foreground)
+        )
+        if cr is None:
+            return None
+        return self._identify_pet_by_chars(cr, mode=mode)
+
     def _detect_switch_probe_pet_type(self, use_foreground: bool, mode: str = "nieo") -> Optional[str]:
         """
-        检测切换探针区域，判断当前选中的精灵类型
+        检测当前选中精灵类型：优先「对战切换」出战/技能四 RGB；失败则回退旧尼奥/稀有切换探针距离法。
         
-        尼奥模式：
-        - "aisifeige" 表示艾斯菲格
-        - "flash_aifeia" 表示闪光艾菲亚
-        
-        稀有精灵模式：
-        - "aisifeige" 表示艾斯菲格
-        - "yameisi" 表示亚梅丝
-        
-        Args:
-            use_foreground: 是否前台运行
-            mode: 模式，"nieo" 表示尼奥模式，"rare" 表示稀有精灵模式
-        
-        Returns:
-            根据模式返回不同的精灵类型标识，None表示检测失败
+        尼奥模式返回值含 boker / aisifeige / flash_aifeia；稀有模式含 flash_boker / aisifeige / yameisi。
         """
+        pt = self._detect_battle_switch_pet_type_color_probes(use_foreground, mode)
+        if pt is not None:
+            return pt
         try:
             # 根据模式选择不同的探针区域
             if mode == "nieo":
@@ -7621,16 +8115,12 @@ class DarRouteRunner:
         test_mode: bool = False,
     ) -> bool:
         """
-        根据尼尔家族ID使用智能切换流程切换精灵（尼奥模式新逻辑）
+        根据尼尔家族ID使用智能切换流程切换精灵（尼奥模式）。
         
-        智能切换流程：
-        1. 根据背包扫描结果确定第一个检测位置（目标精灵在背包中的位置）
-        2. 先切换到第一个位置，使用新的字符检测方法扫描
-        3. 如果检测到目标精灵，直接出战
-        4. 如果不是目标精灵，再检测另一个位置（精灵2或3中的另一个）
-        5. 如果第二个位置是目标，出战
-        6. 如果第二个位置也不是，那么精灵1一定是目标，切换到精灵1
-        注意：对战界面中精灵位置可能与背包不一致，所以需要实际检测
+        使用「对战切换.出战探针 / 技能四探针」均值 RGB：出战偏灰视为波克尔（不读技能四）；
+        出战偏蓝则读技能四，偏红为艾斯菲格，偏蓝白为闪光艾菲亚。
+        按背包顺序依次点槽检测，一旦识别到目标精灵即出战；否则继续下一槽，三槽仍无匹配则回退精灵一。
+        色探针失败时回退四字/五字黄字探针。
         
         Args:
             nie_family_id: 尼尔家族ID（77/310/416）
@@ -7669,7 +8159,7 @@ class DarRouteRunner:
                     switch_panel_key = "战斗.切换精灵面板"
                     self._click_region_twice(switch_panel_key, use_foreground)
                 
-                time.sleep(0.5)
+                time.sleep(SWITCH_PANEL_OPEN_TO_FIRST_SLOT_SEC)
                 pet_num_chinese = {1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六"}.get(pet_num, str(pet_num))
                 switch_pet_key = f"对战.切换精灵.切换精灵{pet_num_chinese}"
                 try:
@@ -7678,15 +8168,14 @@ class DarRouteRunner:
                     self._emit(f"⚠️ 找不到切换精灵{pet_num_chinese}（{pet_num}）的区域，切换失败", "WARN")
                     return False
                 
-                time.sleep(0.3)
+                time.sleep(SWITCH_PRE_DEPLOY_WAIT_SEC)
                 battle_key = "战斗.出战"
                 try:
-                    self._click_region_twice(battle_key, use_foreground)
+                    self._click_region(battle_key, use_foreground)
                 except KeyError:
                     self._emit(f"⚠️ 找不到出战区域，切换失败", "WARN")
                     return False
                 
-                time.sleep(0.5)
                 self._emit(f"✅ 测试模式：成功切换到精灵{pet_num}", "SUCCESS")
                 return True
             
@@ -7700,148 +8189,86 @@ class DarRouteRunner:
             
             # 尼奥线智能切换：出战前整屏（轮换时便于对照背包/对战 UI）
             self._maybe_save_rotation_pre_switch_screenshot(f"nieo_nie{nie_family_id}_{target_pet_type}")
-            # ✅ 正常模式：使用新的智能切换流程
-            # 根据背包扫描结果确定第一个检测位置
+            # ✅ 正常模式：出战/技能四色探针；识别到目标即出战，否则按顺序试下一槽
             first_pet_num = None
             if nie_family_id == 416:
-                # 尼奥：需要闪光艾菲亚
                 if self._flash_aifeia_pos:
                     first_pet_num = 2 if self._flash_aifeia_pos == "二" else 3
-                    self._emit(f"🔍 [智能切换] 根据背包扫描结果，先检测精灵{first_pet_num}（闪光艾菲亚）", "INFO")
+                    self._emit(f"🔍 [智能切换] 根据背包扫描结果，扫描顺序首槽=精灵{first_pet_num}（闪光艾菲亚）", "INFO")
                 else:
-                    # 如果背包扫描失败，使用默认逻辑（精灵2）
                     first_pet_num = 2
-                    self._emit(f"⚠️ [智能切换] 背包扫描结果不可用，使用默认逻辑（精灵2）", "WARN")
+                    self._emit(f"⚠️ [智能切换] 背包扫描结果不可用，默认扫描顺序首槽=精灵2", "WARN")
             elif nie_family_id in (77, 310):
-                # 尼尔/闪光尼尔：需要艾斯菲格
                 if self._aisifeige_pos:
                     first_pet_num = 2 if self._aisifeige_pos == "二" else 3
-                    self._emit(f"🔍 [智能切换] 根据背包扫描结果，先检测精灵{first_pet_num}（艾斯菲格）", "INFO")
+                    self._emit(f"🔍 [智能切换] 根据背包扫描结果，扫描顺序首槽=精灵{first_pet_num}（艾斯菲格）", "INFO")
                 else:
-                    # 如果背包扫描失败，使用默认逻辑（精灵3）
                     first_pet_num = 3
-                    self._emit(f"⚠️ [智能切换] 背包扫描结果不可用，使用默认逻辑（精灵3）", "WARN")
-            
-            # 确定第二个检测位置（另一个位置）
+                    self._emit(f"⚠️ [智能切换] 背包扫描结果不可用，默认扫描顺序首槽=精灵3", "WARN")
+
             second_pet_num = 3 if first_pet_num == 2 else 2
-            
-            # 1. 双击切换精灵面板
+            slot_scan_order = [first_pet_num, second_pet_num, 1]
+
             self._emit(f"🔄 双击切换精灵面板", "INFO")
             switch_panel_key = "对战.切换精灵.切换精灵面板"
             try:
                 self._click_region_twice(switch_panel_key, use_foreground)
             except KeyError:
-                # 尝试使用"战斗"前缀
                 switch_panel_key = "战斗.切换精灵面板"
                 self._click_region_twice(switch_panel_key, use_foreground)
-            
-            time.sleep(0.5)  # 等待面板打开
-            
-            # 2. 智能切换流程：先切换到第一个位置（根据背包扫描结果），检测
-            self._emit(f"🔍 [智能切换] 第一步：切换到精灵{first_pet_num}，检测精灵类型", "INFO")
-            pet_num_chinese_first = {2: "二", 3: "三"}.get(first_pet_num, str(first_pet_num))
-            switch_pet_key_2 = f"对战.切换精灵.切换精灵{pet_num_chinese_first}"
-            try:
-                self._click_region_twice(switch_pet_key_2, use_foreground)
-            except KeyError:
-                self._emit(f"⚠️ 找不到切换精灵{pet_num_chinese_first}（{first_pet_num}）的区域，切换失败", "WARN")
-                return False
-            
-            time.sleep(0.5)  # 等待切换生效（增加到0.5秒）
-            
-            # 检测第一个位置（根据背包扫描结果）的类型
-            detected_pet_type_first = None
-            self._current_switching_pet_num = first_pet_num  # 记录当前切换的精灵编号
-            char_result_first = self._detect_nieo_switch_probe_chars(use_foreground)
-            probe_img_4_first = getattr(self, '_current_probe_img_4', None)
-            probe_img_5_first = getattr(self, '_current_probe_img_5', None)
-            
-            if char_result_first is None:
-                self._emit(f"⚠️ 无法检测精灵{first_pet_num}的字符探针，检测失败", "WARN")
-                detected_pet_type_first = None
-            else:
-                detected_pet_type_first = self._identify_pet_by_chars(char_result_first)
-                if detected_pet_type_first == target_pet_type:
-                    self._emit(f"✅ [智能切换] 精灵{first_pet_num}是目标精灵（{target_pet_type}），直接出战", "SUCCESS")
-                    
-                    battle_key = "战斗.出战"
-                    try:
-                        self._click_region_twice(battle_key, use_foreground)
-                    except KeyError:
-                        self._emit(f"⚠️ 找不到出战区域，切换失败", "WARN")
-                        return False
-                    time.sleep(0.5)
-                    return True
-            
-            # 如果执行到这里，说明第一个位置不是目标
-            if detected_pet_type_first:
-                self._emit(f"📋 [智能切换] 精灵{first_pet_num}不是目标精灵（检测到：{detected_pet_type_first}），继续检测精灵{second_pet_num}", "INFO")
-            else:
-                self._emit(f"📋 [智能切换] 精灵{first_pet_num}检测失败，继续检测精灵{second_pet_num}", "INFO")
-            
-            # 3. 第一个位置不是目标，切换到第二个位置，检测
-            self._emit(f"🔍 [智能切换] 第二步：切换到精灵{second_pet_num}，检测精灵类型", "INFO")
-            pet_num_chinese_second = {2: "二", 3: "三"}.get(second_pet_num, str(second_pet_num))
-            switch_pet_key_3 = f"对战.切换精灵.切换精灵{pet_num_chinese_second}"
-            try:
-                self._click_region_twice(switch_pet_key_3, use_foreground)
-            except KeyError:
-                self._emit(f"⚠️ 找不到切换精灵{pet_num_chinese_second}（{second_pet_num}）的区域，切换失败", "WARN")
-                return False
-            
-            time.sleep(0.5)  # 等待切换生效（增加到0.5秒）
-            
-            # 检测第二个位置的类型
-            self._current_switching_pet_num = second_pet_num  # 记录当前切换的精灵编号
-            char_result_second = self._detect_nieo_switch_probe_chars(use_foreground)
-            probe_img_4_second = getattr(self, '_current_probe_img_4', None)
-            probe_img_5_second = getattr(self, '_current_probe_img_5', None)
-            
-            if char_result_second is None:
-                self._emit(f"⚠️ 无法检测精灵{second_pet_num}的字符探针，检测失败", "WARN")
-                detected_pet_type_second = None
-                # 第二个位置检测失败，那么精灵1一定是目标
-                self._emit(f"📋 [智能切换] 精灵{second_pet_num}检测失败，精灵1一定是目标，切换到精灵1", "INFO")
-            else:
-                detected_pet_type_second = self._identify_pet_by_chars(char_result_second)
-                if detected_pet_type_second == target_pet_type:
-                    self._emit(f"✅ [智能切换] 精灵{second_pet_num}是目标精灵（{target_pet_type}），直接出战", "SUCCESS")
-                    
-                    battle_key = "战斗.出战"
-                    try:
-                        self._click_region_twice(battle_key, use_foreground)
-                    except KeyError:
-                        self._emit(f"⚠️ 找不到出战区域，切换失败", "WARN")
-                        return False
-                    time.sleep(0.5)
-                    return True
-                else:
-                    # 第二个位置也不是目标，那么精灵1一定是目标
-                    self._emit(f"📋 [智能切换] 精灵{second_pet_num}也不是目标精灵（检测到：{detected_pet_type_second}），精灵1一定是目标，切换到精灵1", "INFO")
-            
-            # 4. 第一个和第二个位置都不是目标，切换到精灵1
-            pet_num_chinese_1 = "一"
-            switch_pet_key_1 = f"对战.切换精灵.切换精灵{pet_num_chinese_1}"
-            try:
-                self._click_region_twice(switch_pet_key_1, use_foreground)
-            except KeyError:
-                self._emit(f"⚠️ 找不到切换精灵{pet_num_chinese_1}（1）的区域，切换失败", "WARN")
-                return False
-            
-            time.sleep(0.5)  # 等待切换生效（增加到0.5秒）
-            
-            # 5. 双击出战
-            self._emit(f"🔄 双击出战（精灵1）", "INFO")
+
+            time.sleep(SWITCH_PANEL_OPEN_TO_FIRST_SLOT_SEC)
+
+            idx_cn = {1: "一", 2: "二", 3: "三"}
+            results: Dict[int, Optional[str]] = {}
+            chosen_slot: Optional[int] = None
+            last_scanned: Optional[int] = None
+            for pet_num in slot_scan_order:
+                self._emit(f"🔍 [智能切换] 扫描精灵{pet_num}（色探针优先，出战灰则跳过技能四）", "INFO")
+                sk = f"对战.切换精灵.切换精灵{idx_cn[pet_num]}"
+                try:
+                    self._click_region_twice(sk, use_foreground)
+                except KeyError:
+                    self._emit(f"⚠️ 找不到切换精灵{idx_cn[pet_num]}（{pet_num}）的区域，切换失败", "WARN")
+                    return False
+                time.sleep(SWITCH_PRE_READ_OUT_PROBE_SEC)
+                self._current_switching_pet_num = pet_num
+                pt = self._resolve_pet_type_at_current_switch_slot(use_foreground, "nieo")
+                results[pet_num] = pt
+                last_scanned = pet_num
+                self._emit(f"📋 [智能切换] 精灵{pet_num} → {pt or '未知'}", "INFO")
+                if pt == target_pet_type:
+                    chosen_slot = pet_num
+                    self._emit(
+                        f"✅ [智能切换] 精灵{pet_num} 已匹配目标（{target_pet_type}），直接出战",
+                        "SUCCESS",
+                    )
+                    break
+
+            if chosen_slot is None:
+                self._emit(
+                    "⚠️ [智能切换] 未匹配到目标类型，回退假定精灵1为目标",
+                    "WARN",
+                )
+                chosen_slot = 1
+
+            if chosen_slot != last_scanned:
+                sk = f"对战.切换精灵.切换精灵{idx_cn[chosen_slot]}"
+                try:
+                    self._click_region_twice(sk, use_foreground)
+                except KeyError:
+                    self._emit(f"⚠️ 找不到切换精灵{idx_cn[chosen_slot]}，切换失败", "WARN")
+                    return False
+
+            time.sleep(SWITCH_PRE_DEPLOY_WAIT_SEC)
+            self._emit(f"🔄 单击出战（精灵{chosen_slot}，目标={target_pet_type}）", "INFO")
             battle_key = "战斗.出战"
             try:
-                self._click_region_twice(battle_key, use_foreground)
+                self._click_region(battle_key, use_foreground)
             except KeyError:
                 self._emit(f"⚠️ 找不到出战区域，切换失败", "WARN")
                 return False
-            
-            time.sleep(0.5)  # 等待切换完成
-            
-            self._emit(f"✅ [智能切换] 成功切换到精灵1（目标精灵）", "SUCCESS")
+            self._emit(f"✅ [智能切换] 已出战精灵{chosen_slot}", "SUCCESS")
             return True
             
         except Exception as e:
@@ -7857,16 +8284,10 @@ class DarRouteRunner:
         stop_event: threading.Event,
     ) -> bool:
         """
-        稀有精灵模式：根据目标精灵类型使用智能切换流程切换精灵
+        稀有精灵模式：根据目标精灵类型切换精灵。
         
-        智能切换流程：
-        1. 根据背包扫描结果确定第一个检测位置（目标精灵在背包中的位置）
-        2. 先切换到第一个位置，使用新的字符检测方法扫描
-        3. 如果检测到目标精灵，直接出战
-        4. 如果不是目标精灵，再检测另一个位置（精灵2或3中的另一个）
-        5. 如果第二个位置是目标，出战
-        6. 如果第二个位置也不是，那么精灵1一定是目标（在对战中，精灵1是亚梅丝，不是闪光波克尔），切换到精灵1
-        注意：对战界面中精灵位置可能与背包不一致，所以需要实际检测。在对战中，精灵1是亚梅丝，不是闪光波克尔（闪光波克尔只在背包中是首发）
+        与尼奥线相同色探针规则：出战偏灰为闪光波克尔；偏蓝则技能四偏红为艾斯菲格、偏蓝白为亚梅丝。
+        识别到目标即出战；否则试下一槽；均不匹配则回退精灵一。失败回退四字/五字探针。
         
         Args:
             target_pet_type: 目标精灵类型，"yameisi" 表示亚梅丝，"aisifeige" 表示艾斯菲格
@@ -7906,126 +8327,69 @@ class DarRouteRunner:
                     first_pet_num = 3
                     self._emit(f"⚠️ [智能切换-稀有] 背包扫描结果不可用，使用默认逻辑（精灵3）", "WARN")
             
-            # 确定第二个检测位置（另一个位置）
             second_pet_num = 3 if first_pet_num == 2 else 2
-            
-            # ✅ 使用新的智能切换流程
-            # 1. 双击切换精灵面板
+            slot_scan_order = [first_pet_num, second_pet_num, 1]
+
             self._emit(f"🔄 双击切换精灵面板", "INFO")
             switch_panel_key = "对战.切换精灵.切换精灵面板"
             try:
                 self._click_region_twice(switch_panel_key, use_foreground)
             except KeyError:
-                # 尝试使用"战斗"前缀
                 switch_panel_key = "战斗.切换精灵面板"
                 self._click_region_twice(switch_panel_key, use_foreground)
-            
-            time.sleep(0.5)  # 等待面板打开
-            
-            # 2. 智能切换流程：先切换到第一个位置（根据背包扫描结果），检测
-            self._emit(f"🔍 [智能切换-稀有] 第一步：切换到精灵{first_pet_num}，检测精灵类型", "INFO")
-            pet_num_chinese_first = {2: "二", 3: "三"}.get(first_pet_num, str(first_pet_num))
-            switch_pet_key_2 = f"对战.切换精灵.切换精灵{pet_num_chinese_first}"
-            try:
-                self._click_region_twice(switch_pet_key_2, use_foreground)
-            except KeyError:
-                self._emit(f"⚠️ 找不到切换精灵{pet_num_chinese_first}（{first_pet_num}）的区域，切换失败", "WARN")
-                return False
-            
-            time.sleep(0.5)  # 等待切换生效（增加到0.5秒）
-            
-            # 检测第一个位置（根据背包扫描结果）的类型
-            detected_pet_type_first = None
-            self._current_switching_pet_num = first_pet_num  # 记录当前切换的精灵编号
-            char_result_first = self._detect_rare_switch_probe_chars(use_foreground)
-            probe_img_4_first = getattr(self, '_current_probe_img_4', None)
-            probe_img_5_first = getattr(self, '_current_probe_img_5', None)
-            
-            if char_result_first is None:
-                self._emit(f"⚠️ 无法检测精灵{first_pet_num}的字符探针，检测失败", "WARN")
-                detected_pet_type_first = None
-            else:
-                detected_pet_type_first = self._identify_pet_by_chars(char_result_first, mode="rare")
-                if detected_pet_type_first == target_pet_type:
-                    self._emit(f"✅ [智能切换-稀有] 精灵{first_pet_num}是目标精灵（{target_pet_type}），直接出战", "SUCCESS")
-                    
-                    battle_key = "战斗.出战"
-                    try:
-                        self._click_region_twice(battle_key, use_foreground)
-                    except KeyError:
-                        self._emit(f"⚠️ 找不到出战区域，切换失败", "WARN")
-                        return False
-                    time.sleep(0.5)
-                    return True
-            
-            # 如果执行到这里，说明第一个位置不是目标
-            if detected_pet_type_first:
-                self._emit(f"📋 [智能切换-稀有] 精灵{first_pet_num}不是目标精灵（检测到：{detected_pet_type_first}），继续检测精灵{second_pet_num}", "INFO")
-            else:
-                self._emit(f"📋 [智能切换-稀有] 精灵{first_pet_num}检测失败，继续检测精灵{second_pet_num}", "INFO")
-            
-            # 3. 第一个位置不是目标，切换到第二个位置，检测
-            self._emit(f"🔍 [智能切换-稀有] 第二步：切换到精灵{second_pet_num}，检测精灵类型", "INFO")
-            pet_num_chinese_second = {2: "二", 3: "三"}.get(second_pet_num, str(second_pet_num))
-            switch_pet_key_3 = f"对战.切换精灵.切换精灵{pet_num_chinese_second}"
-            try:
-                self._click_region_twice(switch_pet_key_3, use_foreground)
-            except KeyError:
-                self._emit(f"⚠️ 找不到切换精灵{pet_num_chinese_second}（{second_pet_num}）的区域，切换失败", "WARN")
-                return False
-            
-            time.sleep(0.5)  # 等待切换生效（增加到0.5秒）
-            
-            # 检测第二个位置的类型
-            self._current_switching_pet_num = second_pet_num  # 记录当前切换的精灵编号
-            char_result_second = self._detect_rare_switch_probe_chars(use_foreground)
-            probe_img_4_second = getattr(self, '_current_probe_img_4', None)
-            probe_img_5_second = getattr(self, '_current_probe_img_5', None)
-            
-            if char_result_second is None:
-                self._emit(f"⚠️ 无法检测精灵{second_pet_num}的字符探针，检测失败", "WARN")
-                detected_pet_type_second = None
-                # 第二个位置检测失败，那么精灵1一定是目标（在对战中，精灵1是亚梅丝，不是闪光波克尔）
-                self._emit(f"📋 [智能切换-稀有] 精灵{second_pet_num}检测失败，精灵1一定是目标（亚梅丝），切换到精灵1", "INFO")
-            else:
-                detected_pet_type_second = self._identify_pet_by_chars(char_result_second, mode="rare")
-                if detected_pet_type_second == target_pet_type:
-                    self._emit(f"✅ [智能切换-稀有] 精灵{second_pet_num}是目标精灵（{target_pet_type}），直接出战", "SUCCESS")
-                    
-                    battle_key = "战斗.出战"
-                    try:
-                        self._click_region_twice(battle_key, use_foreground)
-                    except KeyError:
-                        self._emit(f"⚠️ 找不到出战区域，切换失败", "WARN")
-                        return False
-                    time.sleep(0.5)
-                    return True
-                else:
-                    # 第二个位置也不是目标，那么精灵1一定是目标（在对战中，精灵1是亚梅丝，不是闪光波克尔）
-                    self._emit(f"📋 [智能切换-稀有] 精灵{second_pet_num}也不是目标精灵（检测到：{detected_pet_type_second}），精灵1一定是目标（亚梅丝），切换到精灵1", "INFO")
-            
-            # 4. 第一个和第二个位置都不是目标，切换到精灵1
-            pet_num_chinese_1 = "一"
-            switch_pet_key_1 = f"对战.切换精灵.切换精灵{pet_num_chinese_1}"
-            try:
-                self._click_region_twice(switch_pet_key_1, use_foreground)
-            except KeyError:
-                self._emit(f"⚠️ 找不到切换精灵{pet_num_chinese_1}（1）的区域，切换失败", "WARN")
-                return False
-            
-            time.sleep(0.5)  # 等待切换生效（增加到0.5秒）
-            
-            # 5. 双击出战
-            self._emit(f"🔄 双击出战（精灵1）", "INFO")
+
+            time.sleep(SWITCH_PANEL_OPEN_TO_FIRST_SLOT_SEC)
+
+            idx_cn = {1: "一", 2: "二", 3: "三"}
+            results: Dict[int, Optional[str]] = {}
+            chosen_slot: Optional[int] = None
+            last_scanned: Optional[int] = None
+            for pet_num in slot_scan_order:
+                self._emit(f"🔍 [智能切换-稀有] 扫描精灵{pet_num}（色探针优先）", "INFO")
+                sk = f"对战.切换精灵.切换精灵{idx_cn[pet_num]}"
+                try:
+                    self._click_region_twice(sk, use_foreground)
+                except KeyError:
+                    self._emit(f"⚠️ 找不到切换精灵{idx_cn[pet_num]}（{pet_num}）的区域，切换失败", "WARN")
+                    return False
+                time.sleep(SWITCH_PRE_READ_OUT_PROBE_SEC)
+                self._current_switching_pet_num = pet_num
+                pt = self._resolve_pet_type_at_current_switch_slot(use_foreground, "rare")
+                results[pet_num] = pt
+                last_scanned = pet_num
+                self._emit(f"📋 [智能切换-稀有] 精灵{pet_num} → {pt or '未知'}", "INFO")
+                if pt == target_pet_type:
+                    chosen_slot = pet_num
+                    self._emit(
+                        f"✅ [智能切换-稀有] 精灵{pet_num} 已匹配目标（{target_pet_type}），直接出战",
+                        "SUCCESS",
+                    )
+                    break
+
+            if chosen_slot is None:
+                self._emit(
+                    "⚠️ [智能切换-稀有] 未匹配到目标类型，回退假定精灵1为目标",
+                    "WARN",
+                )
+                chosen_slot = 1
+
+            if chosen_slot != last_scanned:
+                sk = f"对战.切换精灵.切换精灵{idx_cn[chosen_slot]}"
+                try:
+                    self._click_region_twice(sk, use_foreground)
+                except KeyError:
+                    self._emit(f"⚠️ 找不到切换精灵{idx_cn[chosen_slot]}，切换失败", "WARN")
+                    return False
+
+            time.sleep(SWITCH_PRE_DEPLOY_WAIT_SEC)
+            self._emit(f"🔄 单击出战（精灵{chosen_slot}，目标={target_pet_type}）", "INFO")
             battle_key = "战斗.出战"
             try:
-                self._click_region_twice(battle_key, use_foreground)
+                self._click_region(battle_key, use_foreground)
             except KeyError:
                 self._emit(f"⚠️ 找不到出战区域，切换失败", "WARN")
                 return False
-            time.sleep(0.5)
-            
-            self._emit(f"✅ [智能切换-稀有] 成功切换到精灵1（目标精灵：{target_pet_type}）", "SUCCESS")
+            self._emit(f"✅ [智能切换-稀有] 已出战精灵{chosen_slot}", "SUCCESS")
             return True
             
         except Exception as e:
@@ -8042,161 +8406,74 @@ class DarRouteRunner:
     
     def _scan_pet_probes_to_identify_pets(self, use_foreground: bool, mode: str = "nieo") -> Tuple[Optional[str], Optional[str]]:
         """
-        扫描精灵二和精灵三的探针，识别精灵类型
-        
-        尼奥模式（mode="nieo"）：
-        - 如果探针颜色全部是 #184992（纯色），那么这只精灵是艾斯菲格（77/310需要切换和恢复的精灵）
-        - 如果颜色不纯（不是全部184992），则这只精灵是闪光艾菲亚（416尼奥需要切换和恢复的精灵）
-        
-        稀有精灵模式（mode="rare"）：
-        - 如果探针颜色全部是 #184992（纯色），那么这只精灵是亚梅丝
-        - 如果颜色不纯（蓝色混合白色），则这只精灵是艾斯菲格
-        
-        Args:
-            use_foreground: 是否前台运行
-            mode: 模式，"nieo" 表示尼奥模式，"rare" 表示稀有精灵模式
+        依次双击精灵二、精灵三，读取「精灵背包.技能四探针」均值 RGB（与对战切换技能四规则一致）：
+        - 偏红 → 艾斯菲格
+        - 偏蓝白 → 尼奥：闪光艾菲亚；稀有：亚梅丝
+        精灵一固定为波克尔/闪光波克尔，不参与本扫描。
         
         Returns:
-            (pet1_pos, pet2_pos) - 根据模式返回不同的精灵位置
-                - 尼奥模式: (flash_aifeia_pos, aisifeige_pos) - 闪光艾菲亚位置和艾斯菲格位置
-                - 稀有精灵模式: (yameisi_pos, aisifeige_pos) - 亚梅丝位置和艾斯菲格位置
+            (pet1_pos, pet2_pos)：尼奥为 (闪光艾菲亚位, 艾斯菲格位)；稀有为 (亚梅丝位, 艾斯菲格位)
         """
-        COLOR_TARGET = (24, 73, 146)  # #184992 - 纯蓝色
-        COLOR_TOLERANCE = 5  # 颜色容差
-        
+        _ = use_foreground
         if mode == "nieo":
-            probe_prefix = "精灵背包.尼奥精灵"
-            self._emit("🔍 开始扫描精灵二和精灵三探针，识别闪光艾菲亚和艾斯菲格", "INFO")
+            self._emit(
+                "🔍 [背包探针] 扫描精灵二、三（精灵背包.技能四探针：红=艾斯菲格，蓝白=闪光艾菲亚）",
+                "INFO",
+            )
             pet1_name = "闪光艾菲亚"
-            pet2_name = "艾斯菲格"
-        else:  # rare
-            probe_prefix = "精灵背包.稀有精灵"
-            self._emit("🔍 开始扫描精灵二和精灵三探针，识别亚梅丝和艾斯菲格", "INFO")
-            pet1_name = "亚梅丝"
-            pet2_name = "艾斯菲格"
-        
-        probe_results = {}  # {pos: (mean_rgb, match_ratio, distance)}
-        
-        # 扫描精灵二和精灵三的探针，收集所有结果
-        for pos in ["二", "三"]:
-            try:
-                probe_key = f"{probe_prefix}{pos}探针"
-                probe_reg = self.regions.require(probe_key)
-                
-                # 获取探针区域的图像
-                from core.utils import window_manager
-                x1, y1, x2, y2 = probe_reg.outer_bbox()
-                img = window_manager.grab_game_bbox(x1, y1, x2, y2)
-                if img is None:
-                    self._emit(f"⚠️ [探针扫描] 精灵{pos}探针无法获取图像", "WARN")
-                    continue
-                
-                # 转换为numpy数组进行检查
-                import numpy as np
-                arr = np.asarray(img.convert("RGB"), dtype=np.uint8)
-                if arr.size == 0:
-                    self._emit(f"⚠️ [探针扫描] 精灵{pos}探针图像为空", "WARN")
-                    continue
-                
-                # 计算平均RGB
-                mean_rgb = np.round(arr.mean(axis=(0, 1))).astype(int)
-                
-                # 检查所有像素是否都在目标颜色的容差范围内
-                tr, tg, tb = COLOR_TARGET
-                # 创建一个布尔掩码，表示每个像素是否在容差范围内
-                r_match = np.abs(arr[:, :, 0].astype(np.int16) - tr) <= COLOR_TOLERANCE
-                g_match = np.abs(arr[:, :, 1].astype(np.int16) - tg) <= COLOR_TOLERANCE
-                b_match = np.abs(arr[:, :, 2].astype(np.int16) - tb) <= COLOR_TOLERANCE
-                all_match = r_match & g_match & b_match
-                
-                # 计算匹配的像素比例
-                total_pixels = arr.shape[0] * arr.shape[1]
-                matched_pixels = np.sum(all_match)
-                match_ratio = matched_pixels / total_pixels if total_pixels > 0 else 0.0
-                
-                # 计算平均RGB与目标颜色的欧几里得距离
-                distance = ((mean_rgb[0] - tr) ** 2 + (mean_rgb[1] - tg) ** 2 + (mean_rgb[2] - tb) ** 2) ** 0.5
-                
-                # 保存结果
-                probe_results[pos] = (mean_rgb, match_ratio, distance)
-                
-                self._emit(f"📋 [探针扫描] 精灵{pos}探针：匹配比例={match_ratio*100:.1f}%，平均RGB=({mean_rgb[0]}, {mean_rgb[1]}, {mean_rgb[2]})，距离目标颜色={distance:.1f}", "INFO")
-                    
-            except KeyError:
-                self._emit(f"⚠️ [探针扫描] 找不到区域：{probe_key}", "WARN")
-                continue
-            except Exception as e:
-                self._emit(f"⚠️ [探针扫描] 检测精灵{pos}探针时发生异常：{e}", "WARN")
-                continue
-        
-        # 根据收集的结果判断
-        pet1_pos = None
-        pet2_pos = None
-        
-        if len(probe_results) == 2:
-            # 有两个结果，比较距离目标颜色的距离
-            pos_list = list(probe_results.keys())
-            pos1, pos2 = pos_list[0], pos_list[1]
-            _, _, dist1 = probe_results[pos1]
-            _, _, dist2 = probe_results[pos2]
-            
-            if mode == "nieo":
-                # 尼奥模式：距离更小的（更接近纯蓝色）是艾斯菲格（纯色），另一个是闪光艾菲亚（非纯色）
-                if dist1 < dist2:
-                    pet2_pos = pos1  # 艾斯菲格
-                    pet1_pos = pos2  # 闪光艾菲亚
-                else:
-                    pet2_pos = pos2  # 艾斯菲格
-                    pet1_pos = pos1  # 闪光艾菲亚
-                
-                self._emit(f"🔷 [探针扫描] 精灵{pet2_pos}是{pet2_name}（更接近纯蓝色 #184992，距离={min(dist1, dist2):.1f}）", "INFO")
-                self._emit(f"✨ [探针扫描] 精灵{pet1_pos}是{pet1_name}（非纯色，距离={max(dist1, dist2):.1f}）", "SUCCESS")
-            else:  # rare
-                # 稀有精灵模式：距离更小的（更接近纯蓝色）是亚梅丝（纯色），另一个是艾斯菲格（非纯色）
-                if dist1 < dist2:
-                    pet1_pos = pos1  # 亚梅丝
-                    pet2_pos = pos2  # 艾斯菲格
-                else:
-                    pet1_pos = pos2  # 亚梅丝
-                    pet2_pos = pos1  # 艾斯菲格
-                
-                self._emit(f"🔷 [探针扫描] 精灵{pet1_pos}是{pet1_name}（更接近纯蓝色 #184992，距离={min(dist1, dist2):.1f}）", "INFO")
-                self._emit(f"✨ [探针扫描] 精灵{pet2_pos}是{pet2_name}（非纯色，距离={max(dist1, dist2):.1f}）", "SUCCESS")
-        elif len(probe_results) == 1:
-            # 只有一个结果，使用匹配比例方法作为后备
-            pos = list(probe_results.keys())[0]
-            mean_rgb, match_ratio, distance = probe_results[pos]
-            is_pure_color = match_ratio >= 0.95  # 95%以上像素匹配认为是纯色
-            
-            if mode == "nieo":
-                if is_pure_color:
-                    pet2_pos = pos  # 艾斯菲格
-                    self._emit(f"🔷 [探针扫描] 精灵{pos}是{pet2_name}（纯色184992，匹配比例={match_ratio*100:.1f}%）", "INFO")
-                else:
-                    pet1_pos = pos  # 闪光艾菲亚
-                    self._emit(f"✨ [探针扫描] 精灵{pos}是{pet1_name}（非纯色，匹配比例={match_ratio*100:.1f}%）", "SUCCESS")
-            else:  # rare
-                if is_pure_color:
-                    pet1_pos = pos  # 亚梅丝
-                    self._emit(f"🔷 [探针扫描] 精灵{pos}是{pet1_name}（纯色184992，匹配比例={match_ratio*100:.1f}%）", "INFO")
-                else:
-                    pet2_pos = pos  # 艾斯菲格
-                    self._emit(f"✨ [探针扫描] 精灵{pos}是{pet2_name}（非纯色，匹配比例={match_ratio*100:.1f}%）", "SUCCESS")
-        
-        # 根据"纯色和非纯色一定各有一个"的规则，如果只识别到一个，推断另一个
-        if pet1_pos and pet2_pos:
-            self._emit(f"✅ [探针扫描] 识别完成：{pet1_name}=精灵{pet1_pos}，{pet2_name}=精灵{pet2_pos}", "SUCCESS")
-        elif pet1_pos:
-            other_pos = "三" if pet1_pos == "二" else "二"
-            pet2_pos = other_pos
-            self._emit(f"✅ [探针扫描] 识别到{pet1_name}=精灵{pet1_pos}，推断{pet2_name}=精灵{pet2_pos}（纯色和非纯色一定各有一个）", "INFO")
-        elif pet2_pos:
-            other_pos = "三" if pet2_pos == "二" else "二"
-            pet1_pos = other_pos
-            self._emit(f"✅ [探针扫描] 识别到{pet2_name}=精灵{pet2_pos}，推断{pet1_name}=精灵{pet1_pos}（纯色和非纯色一定各有一个）", "INFO")
         else:
-            self._emit("❌ [探针扫描] 未识别到任何精灵类型，无法推断", "WARN")
-        
+            self._emit(
+                "🔍 [背包探针] 扫描精灵二、三（精灵背包.技能四探针：红=艾斯菲格，蓝白=亚梅丝）",
+                "INFO",
+            )
+            pet1_name = "亚梅丝"
+
+        slot_kind: Dict[str, Optional[str]] = {}
+        for pos_cn in ("二", "三"):
+            self._click_bag_pet_slot_double(pos_cn, use_foreground)
+            time.sleep(0.55)
+            rgb = self._mean_rgb_for_region_key("精灵背包.技能四探针")
+            if rgb is None:
+                self._emit(f"⚠️ [背包探针] 精灵{pos_cn} 无法读取技能四探针", "WARN")
+                slot_kind[pos_cn] = None
+                continue
+            r, g, b = rgb
+            kind = self._classify_bag_skill4_mean_rgb(rgb, mode)
+            slot_kind[pos_cn] = kind
+            self._emit(
+                f"📋 [背包探针] 精灵{pos_cn} RGB=({r},{g},{b}) → {kind}",
+                "INFO",
+            )
+
+        pet1_pos: Optional[str] = None
+        pet2_pos: Optional[str] = None
+        for pos_cn in ("二", "三"):
+            k = slot_kind.get(pos_cn)
+            if k == "aisifeige":
+                pet2_pos = pos_cn
+            elif k in ("flash_aifeia", "yameisi"):
+                pet1_pos = pos_cn
+
+        if pet1_pos and not pet2_pos:
+            pet2_pos = "三" if pet1_pos == "二" else "二"
+            self._emit(
+                f"📋 [背包探针] 仅辨明{pet1_name}，推断艾斯菲格=精灵{pet2_pos}",
+                "INFO",
+            )
+        elif pet2_pos and not pet1_pos:
+            pet1_pos = "三" if pet2_pos == "二" else "二"
+            self._emit(
+                f"📋 [背包探针] 仅辨明艾斯菲格，推断{pet1_name}=精灵{pet1_pos}",
+                "INFO",
+            )
+        elif pet1_pos and pet2_pos:
+            self._emit(
+                f"✅ [背包探针] {pet1_name}=精灵{pet1_pos}，艾斯菲格=精灵{pet2_pos}",
+                "SUCCESS",
+            )
+        else:
+            self._emit("❌ [背包探针] 未能识别精灵二/三类型", "WARN")
+
         return (pet1_pos, pet2_pos)
     
     def _handle_hengmu_before_to_script(
@@ -10220,7 +10497,7 @@ class DarRouteRunner:
             return utc_now.astimezone(beijing_tz)
 
     def set_non_mantis_capsule_tier(self, tier: str) -> None:
-        """非螳螂战胶囊单档：super（超级）/ high（高级）/ special（特级）。"""
+        """投捕捉胶囊单档：super（超级）/ high（高级）/ special（特级）；全模式默认用此档（含螳螂遇非 122）。"""
         t = str(tier or "").lower().strip()
         if t in ("super", "high", "special"):
             self._non_mantis_capsule_tier = t
@@ -10233,18 +10510,12 @@ class DarRouteRunner:
 
     def _capsule_cycle_tiers_for_current_battle(self) -> Optional[Tuple[str, ...]]:
         """
-        敌方含螳螂(122)：沿用 legacy 六档循环（无敌首回合逻辑不变）。
-        其余：由 _non_mantis_capsule_tier 决定单档（超级/高级/特级）。
+        全局单档：`(_non_mantis_capsule_tier,)`（底栏三选一），含螳螂野外、螳螂遇其他野怪等。
+        例外：螳螂测试模式仍强制 `(\"super\",)`。
+        「第一回合无敌」仅螳螂且敌方含 122 时在战斗入口设定，与此处档位无关。
         """
-        ids = getattr(self, "_immediate_collected_pet_ids", None)
-        if ids is None:
-            pet_set: set = set()
-        elif isinstance(ids, set):
-            pet_set = set(ids)
-        else:
-            pet_set = set(ids)
-        mantis_by_profile = False
         prof = getattr(self, "_current_profile", None)
+        mantis_by_profile = False
         if prof is not None:
             try:
                 if "螳螂" in (getattr(prof, "name", "") or "").lower():
@@ -10256,8 +10527,8 @@ class DarRouteRunner:
                     mantis_by_profile = True
             except Exception:
                 pass
-        if MANTIS_PET_ID in pet_set or mantis_by_profile:
-            return LEGACY_CAPSULE_CYCLE_TIERS
+        if getattr(self, "_mantis_test_super_only", False) and mantis_by_profile:
+            return ("super",)
         t = getattr(self, "_non_mantis_capsule_tier", "super")
         if t not in ("super", "high", "special"):
             t = "super"
@@ -10611,6 +10882,108 @@ class DarRouteRunner:
                     next_switch_time=self._next_rotation_switch_time,
                 )
                 return
+    
+    def _check_pure_energy_reconnect_condition(self, use_foreground: bool, stop_event: threading.Event, force_reconnect: bool = False) -> None:
+        """与 `_check_nieo_reconnect_condition` 同类：时间/硬线重连，`to纯净能量.json` Step3."""
+        pem_pre = getattr(self, "_pem_pre_rotation_first", False)
+
+        if force_reconnect:
+            battles_since_last_reconnect = self._battle_count - self._last_reconnect_battle_count
+            self._emit(f"⚠️ [重连检查-纯净能量] 连续入战失败，强制执行重连", "WARN")
+            self._emit(f"📊 [重连统计-纯净能量] 本次重连前战斗 {battles_since_last_reconnect} 次", "INFO")
+            from core.dar_route_runner import DEFAULT_PROFILE_DUGULU
+            temp_profile = DEFAULT_PROFILE_DUGULU
+            self._current_mode = "pure_energy"
+            self._execute_refresh_reconnect(
+                temp_profile, use_foreground, stop_event, reason="纯净能量-强制重连", retry_count=0, max_retries=None
+            )
+            self._petswf_to_petitem_min_duration = None
+            self._petswf_to_petitem_current_duration = None
+            self._petswf_to_petitem_consecutive_over_threshold = 0
+            self._nieo_consecutive_entry_failures = 0
+            self._last_reconnect_battle_count = self._battle_count
+            self._last_reconnect_time = time.time()
+            if self._unified_framework and hasattr(self._unified_framework, "_petswf_to_petitem_durations"):
+                self._unified_framework._petswf_to_petitem_durations.clear()
+            max_wait_time = 300.0
+            wait_start = time.time()
+            while getattr(self, "_reconnect_scripts_executing", False) and (time.time() - wait_start) < max_wait_time:
+                time.sleep(0.5)
+            if getattr(self, "_should_restart_after_reconnect", False):
+                self._should_restart_after_reconnect = False
+                self.run_pure_energy_resource_mode(
+                    stop_event=threading.Event(),
+                    use_foreground=use_foreground,
+                    nieo_pre_rotation_first=pem_pre,
+                    skip_nie_77=getattr(self, "_skip_nie_77", False),
+                )
+            return
+
+        should_reconnect = False
+        reconnect_reason = ""
+        _pm = self.PETSWF_TO_PETITEM_MIN_MULTIPLIER
+        if self._petswf_to_petitem_current_duration is not None:
+            if self._petswf_to_petitem_current_duration >= self.PETSWF_TO_PETITEM_HARD_LIMIT_SEC:
+                should_reconnect = True
+                reconnect_reason = (
+                    f"petswf到PetItem ({self._petswf_to_petitem_current_duration:.3f}s) "
+                    f"超过{self.PETSWF_TO_PETITEM_HARD_LIMIT_SEC:.1f}s硬线"
+                )
+        if not should_reconnect:
+            if self._petswf_to_petitem_current_duration is not None and self._petswf_to_petitem_min_duration is not None:
+                threshold = self._petswf_to_petitem_min_duration * _pm
+                self._emit(
+                    f"🔍 [重连检查-纯净能量] 当前={self._petswf_to_petitem_current_duration:.3f}s, "
+                    f"最小={self._petswf_to_petitem_min_duration:.3f}s, "
+                    f"阈值(×{_pm:g})={threshold:.3f}s",
+                    "DEBUG",
+                )
+                if self._petswf_to_petitem_current_duration >= threshold:
+                    self._petswf_to_petitem_consecutive_over_threshold += 1
+                    if self._petswf_to_petitem_consecutive_over_threshold >= 1:
+                        should_reconnect = True
+                        reconnect_reason = (
+                            f"petswf到PetItem超过最小值{_pm:g}倍 "
+                            f"(当前={self._petswf_to_petitem_current_duration:.3f}s)"
+                        )
+                else:
+                    self._petswf_to_petitem_consecutive_over_threshold = 0
+
+        if should_reconnect:
+            battles_since_last_reconnect = self._battle_count - self._last_reconnect_battle_count
+            self._emit(f"⚠️ [重连检查-纯净能量] {reconnect_reason}，执行重连", "WARN")
+            self._emit(f"📊 [重连统计-纯净能量] 重连前战斗 {battles_since_last_reconnect} 次", "INFO")
+            from core.dar_route_runner import DEFAULT_PROFILE_DUGULU
+            temp_profile = DEFAULT_PROFILE_DUGULU
+            self._current_mode = "pure_energy"
+            self._execute_refresh_reconnect(
+                temp_profile,
+                use_foreground,
+                stop_event,
+                reason=f"纯净能量-{reconnect_reason}",
+                retry_count=0,
+                max_retries=None,
+            )
+            self._petswf_to_petitem_min_duration = None
+            self._petswf_to_petitem_current_duration = None
+            self._petswf_to_petitem_consecutive_over_threshold = 0
+            self._nieo_consecutive_entry_failures = 0
+            self._last_reconnect_battle_count = self._battle_count
+            self._last_reconnect_time = time.time()
+            if self._unified_framework and hasattr(self._unified_framework, "_petswf_to_petitem_durations"):
+                self._unified_framework._petswf_to_petitem_durations.clear()
+            max_wait_time = 300.0
+            wait_start = time.time()
+            while getattr(self, "_reconnect_scripts_executing", False) and (time.time() - wait_start) < max_wait_time:
+                time.sleep(0.5)
+            if getattr(self, "_should_restart_after_reconnect", False):
+                self._should_restart_after_reconnect = False
+                self.run_pure_energy_resource_mode(
+                    stop_event=threading.Event(),
+                    use_foreground=use_foreground,
+                    nieo_pre_rotation_first=pem_pre,
+                    skip_nie_77=getattr(self, "_skip_nie_77", False),
+                )
     
     def _get_rotation_place_pets_mode(self, profile: Optional[WildCaptureProfile]) -> str:
         """
@@ -11462,6 +11835,12 @@ class DarRouteRunner:
         if getattr(self._unified_framework, "_stage3_exit_reason", None) != "round_timeout":
             return False
         reason = "回合超时60s重连"
+        try:
+            pre_path = self._save_client_screenshot(f"{reason}前", category="round_timeout")
+            if pre_path:
+                self._emit(f"📸 [{reason}] 重连前已保存 client 截图：{pre_path}", "INFO")
+        except Exception as e:
+            self._emit(f"⚠️ [{reason}] 重连前截图失败: {e}，继续重连", "WARN")
         self._emit(f"⚠️ 对战{reason}，执行刷新重连", "WARN")
         self._is_scanning_steady_state = False
         self._is_in_battle = False
@@ -11469,6 +11848,52 @@ class DarRouteRunner:
         if self.bot:
             self.bot.stop_current = False
             self._emit(f"✅ [{reason}] 已清除stop_current标志，确保重连流程不被中断", "INFO")
+
+        # ✅ 重要：即使战斗在回合内卡死并触发重连，也要把本场写入 battle_log（用于分析卡死/掉线）
+        try:
+            ubf = self._unified_framework
+            cycle_mode, cycle_tiers = self._capsule_cycle_log_fields()
+            enemy_ids = self._enemy_pet_ids_for_battle_csv(profile)
+            pend = getattr(self, "_pending_battle_csv_id", None)
+            if pend and getattr(self, "_battle_logger", None):
+                ok = self._battle_logger.log_battle_end(
+                    pend,
+                    enemy_pet_ids=enemy_ids,
+                    total_rounds=ubf._round_idx if ubf else 0,
+                    result="round_timeout",
+                    battle_duration_s=ubf._battle_duration if ubf else 0.0,
+                    reconnect_reason=reason,
+                    capsule_counts=ubf._battle_capsule_counts if ubf else {},
+                    capsule_cycle_mode=cycle_mode,
+                    capsule_cycle_tiers=cycle_tiers,
+                )
+                if not ok:
+                    self._battle_logger.log_battle(
+                        enemy_pet_ids=enemy_ids,
+                        total_rounds=ubf._round_idx if ubf else 0,
+                        result="round_timeout",
+                        battle_duration_s=ubf._battle_duration if ubf else 0.0,
+                        reconnect_reason=reason,
+                        capsule_counts=ubf._battle_capsule_counts if ubf else {},
+                        capsule_cycle_mode=cycle_mode,
+                        capsule_cycle_tiers=cycle_tiers,
+                    )
+                self._pending_battle_csv_id = None
+            elif getattr(self, "_battle_logger", None):
+                self._battle_logger.log_battle(
+                    enemy_pet_ids=enemy_ids,
+                    total_rounds=ubf._round_idx if ubf else 0,
+                    result="round_timeout",
+                    battle_duration_s=ubf._battle_duration if ubf else 0.0,
+                    reconnect_reason=reason,
+                    capsule_counts=ubf._battle_capsule_counts if ubf else {},
+                    capsule_cycle_mode=cycle_mode,
+                    capsule_cycle_tiers=cycle_tiers,
+                )
+            self._emit(f"🧾 [{reason}] 已记录卡死退出战斗日志（result=round_timeout）", "INFO")
+        except Exception:
+            pass
+
         self._execute_refresh_reconnect(profile, use_foreground, stop_event, reason=reason)
         if getattr(self, "_reconnect_scripts_executing", False):
             self._emit(f"⏳ [{reason}] 等待重连脚本执行完成...", "INFO")
@@ -11551,6 +11976,41 @@ class DarRouteRunner:
             
             # ✅ 重要：在刷新流程前关闭1AND1监控（避免重连过程中1AND1监控干扰）
             self._stop_normal_1and1_monitoring()
+
+            # ✅ 记录“本 run 因重连结束”的原因（写入 battle_log 最后；同 run 只记一次）
+            try:
+                if getattr(self, "_battle_logger", None):
+                    bid = getattr(self, "_pending_battle_csv_id", None)
+                    self._battle_logger.log_reconnect_marker_once(
+                        reason=reason, flush_pending_battle_id=bid
+                    )
+                    self._pending_battle_csv_id = None
+            except Exception:
+                pass
+
+            # ✅ 需求：特定场景下重连前尝试“清除缓存/删除 tmp”（自愈）
+            try:
+                if not getattr(self, "_tmp_cleanup_attempted_this_run", False):
+                    should_cleanup = False
+                    tag = ""
+                    cm = getattr(self, "_current_mode", None)
+                    if cm == "nieo":
+                        # 尼奥：本 run 期间完全没遇到任何尼尔家族时，重连前清理一次
+                        if not getattr(self, "_nieo_run_seen_nie_family", False):
+                            should_cleanup = True
+                            tag = "尼奥-本run未遇尼尔家族"
+                    elif cm == "shuangta":
+                        # 双塔：距离上次战斗结束 >= 30min 且期间无遇敌/无战斗时，重连前清理一次
+                        last_end = getattr(self, "_shuangta_last_battle_end_ts", None)
+                        if last_end is not None and (time.time() - float(last_end)) >= 30.0 * 60.0:
+                            should_cleanup = True
+                            tag = "双塔-30min无战斗"
+                    if should_cleanup:
+                        self._tmp_cleanup_attempted_this_run = True
+                        self._emit(f"🗑️ [{reason}] 满足清理条件（{tag}），尝试删除游戏 tmp…", "INFO")
+                        self._try_delete_game_tmp_dir(log_tag=f"{reason}/{tag}")
+            except Exception:
+                pass
             
             # ✅ 前台化nieo窗口
             import win32gui
@@ -11658,6 +12118,14 @@ class DarRouteRunner:
             profile_name_lower = profile.name.lower()
             if current_mode == "nieo":
                 self._execute_reconnect_scripts_for_nieo(
+                    use_foreground,
+                    reconnect_stop_event,
+                    retry_count=actual_retry_count,
+                    max_retries=actual_max_retries,
+                    is_capture_verify_four=is_capture_verify_four,
+                )
+            elif current_mode == "pure_energy":
+                self._execute_reconnect_scripts_for_pure_energy(
                     use_foreground,
                     reconnect_stop_event,
                     retry_count=actual_retry_count,
@@ -11784,6 +12252,30 @@ class DarRouteRunner:
             is_retry=True  # 标记为重试调用
         )
     
+    def _execute_refresh_flow_and_wait_login_for_pure_energy(
+        self, use_foreground: bool, stop_event: threading.Event, retry_count: int = 0, max_retries: Optional[int] = None
+    ) -> None:
+        """纯净能量 Step3 失败时：从 Step1 重走刷新，再回到 `to纯净能量`。须先 `_current_mode = pure_energy`。"""
+        self._current_mode = "pure_energy"
+        virtual_profile = WildCaptureProfile(
+            name="纯净能量(资源)",
+            route_hint="纯净能量",
+            map_swf_id=26,
+            target_mp3_id=416,
+            target_pet_id=416,
+            excluded_pet_ids=(),
+        )
+        self._execute_refresh_reconnect(
+            profile=virtual_profile,
+            use_foreground=use_foreground,
+            stop_event=stop_event,
+            is_capture_verify_four=False,
+            reason="刷新流程-纯净能量",
+            retry_count=retry_count,
+            max_retries=max_retries,
+            is_retry=True,
+        )
+    
     def _execute_reconnect_scripts_for_nieo(self, use_foreground: bool, stop_event: Optional[threading.Event] = None, retry_count: int = 0, max_retries: Optional[int] = None, is_capture_verify_four: bool = False) -> None:
         """
         **Step3（尼奥）**：须由 `_execute_refresh_reconnect` 已跑完 Step1+Step2 后调用。
@@ -11907,6 +12399,90 @@ class DarRouteRunner:
         finally:
             self._reconnect_scripts_executing = False
     
+    def _execute_reconnect_scripts_for_pure_energy(
+        self,
+        use_foreground: bool,
+        stop_event: Optional[threading.Event] = None,
+        retry_count: int = 0,
+        max_retries: Optional[int] = None,
+        is_capture_verify_four: bool = False,
+    ) -> None:
+        """
+        **Step3（纯净能量）**：与尼奥同构：`to纯净能量.json` → 校验 **map 26 + newNPC**。
+        """
+        if stop_event and stop_event.is_set():
+            self._emit("⛔ [重连脚本-纯净能量] 停止重试", "WARN")
+            return
+        if getattr(self.bot, "stop_current", False):
+            self._emit("⛔ [重连脚本-纯净能量] stop_current被设置，停止重试", "WARN")
+            return
+        self._reconnect_scripts_executing = True
+        try:
+            self._emit(
+                "🔄 [Step3·重连脚本-纯净能量] 开始 → map500001 / 轮换 / to纯净能量 / map26检测",
+                "SYSTEM",
+            )
+            if not hasattr(self.bot, "daily_runner"):
+                self._emit("⚠️ [重连脚本-纯净能量] bot.daily_runner 不存在", "WARN")
+                return
+            daily_runner = self.bot.daily_runner
+            bg_mode = not use_foreground
+            if not self._consume_reconnect_core_map500001_skip_if_set():
+                login_map_id, login_has_newNPC = self._check_last_map_and_newnpc(self.MAP_ID_AFTER_LOGIN, timeout_s=10.0)
+                if login_map_id != self.MAP_ID_AFTER_LOGIN or not login_has_newNPC:
+                    actual_stop_event = stop_event if stop_event is not None else threading.Event()
+                    self._execute_refresh_flow_and_wait_login_for_pure_energy(
+                        use_foreground, actual_stop_event, retry_count, max_retries
+                    )
+                    return
+            temp_stop_event = threading.Event()
+            self._emit("🔄 [Step3·纯净能量] 轮换：清空背包、取尼奥三精灵、设置跟随", "INFO")
+            if not self._rotation_step2_clear_backpack(use_foreground, temp_stop_event):
+                actual_stop_event = stop_event if stop_event is not None else threading.Event()
+                self._execute_refresh_flow_and_wait_login_for_pure_energy(
+                    use_foreground, actual_stop_event, retry_count, max_retries
+                )
+                return
+            self._rotation_step3_place_pets("nieo", use_foreground, temp_stop_event)
+            if not self._rotation_step4_set_companion(use_foreground, temp_stop_event):
+                actual_stop_event = stop_event if stop_event is not None else threading.Event()
+                self._execute_refresh_flow_and_wait_login_for_pure_energy(
+                    use_foreground, actual_stop_event, retry_count, max_retries
+                )
+                return
+            if daily_runner.run_single_script("to纯净能量", bg_mode=bg_mode):
+                self._emit("✅ [重连脚本-纯净能量] to纯净能量 执行完成", "SUCCESS")
+            else:
+                self._emit("⚠️ [重连脚本-纯净能量] to纯净能量 执行失败", "WARN")
+            time.sleep(2.0)
+            if self.bot:
+                self.bot.stop_current = False
+            last_map_id, has_newNPC = self._check_last_map_and_newnpc(26, timeout_s=10.0)
+            if last_map_id == 26 and has_newNPC:
+                self._emit("✅ [重连脚本-纯净能量] 检测到 map 26 + newNPC", "SUCCESS")
+                self._reconnect_scripts_executing = False
+                self._petswf_to_petitem_min_duration = None
+                self._petswf_to_petitem_current_duration = None
+                if self._unified_framework and hasattr(self._unified_framework, "_petswf_to_petitem_durations"):
+                    self._unified_framework._petswf_to_petitem_durations.clear()
+                self._should_restart_after_reconnect = True
+                self._emit("🔄 [重连脚本-纯净能量] 已置重启标志", "INFO")
+                return
+            max_retries_str = f"/{max_retries}" if max_retries is not None else ""
+            self._emit(
+                f"⚠️ [重连脚本-纯净能量] map 门控失败（map={last_map_id}, npc={has_newNPC}），"
+                f"第 {retry_count + 1}{max_retries_str} 次刷新重试",
+                "WARN",
+            )
+            actual_stop_event = stop_event if stop_event is not None else threading.Event()
+            self._execute_refresh_flow_and_wait_login_for_pure_energy(use_foreground, actual_stop_event, retry_count, max_retries)
+        except Exception as e:
+            self._emit(f"❌ [重连脚本-纯净能量] 异常: {e}", "ERROR")
+            import traceback
+            self._emit(f"📋 {traceback.format_exc()}", "ERROR")
+        finally:
+            self._reconnect_scripts_executing = False
+
     def _execute_reconnect_scripts_for_shuangta(self, profile: WildCaptureProfile, use_foreground: bool, stop_event: Optional[threading.Event] = None, retry_count: int = 0, max_retries: Optional[int] = None, is_capture_verify_four: bool = False) -> None:
         """
         **Step3（双塔）**：`_execute_reconnect_scripts_core` 入口；map315+newNPC 为目标。须先经 `_execute_refresh_reconnect` 的 Step1+Step2。
@@ -12329,41 +12905,69 @@ class DarRouteRunner:
         return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2
     
     def _sort_route_points_by_distance(
-        self, 
-        route_points: List[Tuple[str, Region]], 
-        prefix: str, 
-        map_id: int, 
-        reg_z: Region
+        self,
+        route_points: List[Tuple[str, Region]],
+        prefix: str,
+        map_id: int,
+        reg_z: Region,
+        *,
+        farthest_exclude_count: int = 2,
     ) -> List[Tuple[str, Region]]:
         """
-        根据距离对路线点进行排序，并直接排除距离最远的两个点
+        根据距离对路线点排序，并剔除若干「最远」点。
+
+        「跳过」配额由调用方掌控：通常为手动剔除 + farthest_exclude_count，合计至多 2
+        （例如 pem 不写 九点时 farthest_exclude_count=1）。
         
         Args:
             route_points: 原始路线点列表 (key, Region)
             prefix: 当前前缀（"尼奥一"或"尼奥二"）
             map_id: 当前地图ID（10或11）
             reg_z: Z点区域（不再使用，保留以兼容）
+            farthest_exclude_count: 剔除距参考点最远的前若干个点（默认 2）
         
         Returns:
-            排序后的路线点列表（只返回7个点，排除最远的2个点，距离近的在前）
+            排序后的路线点列表（近的在前）；长度 = len(route_points) - farthest_exclude_count（不足则全长）
         """
+        k_drop = max(0, int(farthest_exclude_count))
+        def trim_farthest(seq: List, k: int):
+            if k <= 0:
+                return seq
+            return seq[:-k] if len(seq) > k else seq
+        
         # 确定参考点（用于距离计算）：基于地图切换点
         if map_id == 10:  # 尼奥一（10号地图）：使用"尼奥一.to二"区域
             reference_key = f"{prefix}.to二"
             reference_reg = self.regions.get(reference_key)
             if not reference_reg:
                 self._emit(f"⚠️ 未找到参考点{reference_key}，使用默认顺序", "WARN")
-                # 如果找不到参考点，排除最后两个点
-                return route_points[:-2] if len(route_points) > 2 else route_points
+                # 如果找不到参考点，排除最远若干个点
+                return trim_farthest(route_points, k_drop)
             reference_center = self._region_center(reference_reg)
-        else:  # map11（尼奥二）：使用"尼奥二.to一"区域
+        elif map_id == 11:  # map11（尼奥二）：使用"尼奥二.to一"区域
             reference_key = f"{prefix}.to一"
             reference_reg = self.regions.get(reference_key)
             if not reference_reg:
                 self._emit(f"⚠️ 未找到参考点{reference_key}，使用默认顺序", "WARN")
-                # 如果找不到参考点，排除最后两个点
-                return route_points[:-2] if len(route_points) > 2 else route_points
+                return trim_farthest(route_points, k_drop)
             reference_center = self._region_center(reference_reg)
+        elif map_id == 26:  # map26，路线前缀「纯净能量二」：取向 27 的入口
+            reference_key = "纯净能量二.to一"
+            reference_reg = self.regions.get(reference_key)
+            if not reference_reg:
+                self._emit(f"⚠️ 未找到参考点{reference_key}，使用默认顺序", "WARN")
+                return trim_farthest(route_points, k_drop)
+            reference_center = self._region_center(reference_reg)
+        elif map_id == 27:  # map27，前缀「纯净能量一」：取向 26（``纯净能量一.to二``）
+            reference_key = "纯净能量一.to二"
+            reference_reg = self.regions.get(reference_key)
+            if not reference_reg:
+                self._emit(f"⚠️ 未找到参考点{reference_key}，使用默认顺序", "WARN")
+                return trim_farthest(route_points, k_drop)
+            reference_center = self._region_center(reference_reg)
+        else:
+            self._emit(f"⚠️ map_id={map_id} 未知的双图路线排序前缀，使用默认顺序", "WARN")
+            return trim_farthest(route_points, k_drop)
         
         # 计算每个点到参考点的距离
         def calc_distance(key_reg: Tuple[str, Region]) -> Tuple[float, str, Region]:
@@ -12378,9 +12982,7 @@ class DarRouteRunner:
         # 按距离排序（距离近的在前）
         point_distances.sort(key=lambda x: x[0])
         
-        # ✅ 直接排除最远的两个点，只返回7个点
-        # 取前7个点（排除最后2个最远的点）
-        filtered_points = point_distances[:-2] if len(point_distances) > 2 else point_distances
+        filtered_points = trim_farthest(point_distances, k_drop)
         
         sorted_points = [(key, reg) for _, key, reg in filtered_points]
         
@@ -12390,6 +12992,543 @@ class DarRouteRunner:
         # self._emit(f"📐 [map{map_id}] 扫描顺序（距{reference_key}由近到远，排除最远2个点）：扫描={', '.join([k for k, _ in sorted_points])} | 排除={', '.join(excluded_keys)}", "DEBUG")
         
         return sorted_points
+
+    def _neighbor_switch_twomap_after_fail(
+        self,
+        *,
+        pem: bool,
+        current_map_id: int,
+        current_prefix: str,
+        use_foreground: bool,
+        stop_event: threading.Event,
+    ) -> Optional[int]:
+        """尼奥 10↔11 或 纯净能量 26↔27；成功切换后返回新 map id。
+
+        纯净能量侧与尼奥同源：``.to二`` / ``.to一`` 成对表示双图来往的两个入口；按当前 map id 取应点的
+        region（26→27 用 ``纯净能量二.to一``，27→26 用 ``纯净能量一.to二``），与尼奥由 map 选对侧逻辑一致。
+        """
+        if pem:
+            # pem：与尼奥 10/11 同构的选 key 方式，仅录点文件名与坐标不同
+            if current_map_id == 26:
+                reg = self.regions.get("纯净能量二.to一")
+                if not reg:
+                    self._emit("⚠️ [纯净能量] 缺少纯净能量二.to一 区域", "WARN")
+                    return None
+                self._emit("🗺️ [纯净能量] 点击纯净能量二.to一 进入地图27", "SYSTEM")
+                self._click_region(reg, use_foreground)
+                if self._wait_for_map_id(27, stop_event, timeout_s=45.0):
+                    return 27
+            elif current_map_id == 27:
+                reg = self.regions.get("纯净能量一.to二")
+                if not reg:
+                    self._emit("⚠️ [纯净能量] 缺少纯净能量一.to二 区域", "WARN")
+                    return None
+                self._emit("🗺️ [纯净能量] 点击纯净能量一.to二 返回地图26", "SYSTEM")
+                self._click_region(reg, use_foreground)
+                if self._wait_for_map_id(26, stop_event, timeout_s=45.0):
+                    return 26
+            return None
+
+        # 尼奥 10/11
+        if current_map_id == 11:
+            to_one_key = f"{current_prefix}.to一"
+            self._emit(f"🗺️ 点击{to_one_key}返回10号地图", "SYSTEM")
+            try:
+                to_one_reg = self.regions.get(to_one_key)
+                if to_one_reg:
+                    self._click_region(to_one_reg, use_foreground)
+                    if self._wait_for_map_id(10, stop_event, timeout_s=30.0):
+                        return 10
+            except Exception as e:
+                self._emit(f"⚠️ 切换地图失败：{e}", "WARN")
+        else:
+            self._emit(f"🗺️ 点击{current_prefix}.to二返回11号地图", "SYSTEM")
+            try:
+                to_two_reg = self.regions.get(f"{current_prefix}.to二")
+                if to_two_reg:
+                    self._click_region(to_two_reg, use_foreground)
+                    if self._wait_for_map_id(11, stop_event, timeout_s=10.0):
+                        return 11
+            except Exception as e:
+                self._emit(f"⚠️ 切换地图失败：{e}", "WARN")
+        return None
+
+    def _pem_recover_pet_one_maintenance(self, use_foreground: bool, stop_event: threading.Event) -> None:
+        """每若干场战斗后的精灵一体力恢复（与 _recover_pets 内『每40场』段落同构）。"""
+        bag_open_key = "精灵背包.打开精灵背包"
+        bag_open_btn_key = "精灵背包.打开精灵背包按钮"
+        try:
+            self._emit("💼 [纯净能量(资源)] 打开精灵背包（定期恢复精灵一）", "INFO")
+            try:
+                self._click_region(bag_open_btn_key, use_foreground)
+            except KeyError:
+                self._click_region(bag_open_key, use_foreground)
+            self._sleep_abortable(stop_event, self.BAG_OPEN_STABILITY_SEC)
+            pet_one_key = "精灵背包.精灵一"
+            pet_one_btn_key = "精灵背包.精灵一按钮"
+            self._emit("🐾 双击精灵一（准备恢复）", "INFO")
+            try:
+                self._click_region_twice(pet_one_btn_key, use_foreground)
+            except KeyError:
+                self._click_region_twice(pet_one_key, use_foreground)
+            self._sleep_abortable(stop_event, 0.5)
+            recover_key = "精灵背包.精灵恢复"
+            recover_btn_key = "精灵背包.精灵恢复按钮"
+            try:
+                self._click_region(recover_btn_key, use_foreground)
+            except KeyError:
+                self._click_region(recover_key, use_foreground)
+            self._sleep_abortable(stop_event, 1.0)
+            if self._unified_framework:
+                from core.unified_battle_framework import BattleConfig, BattleMode
+
+                temp_config = BattleConfig(
+                    mode=BattleMode.WILD,
+                    use_foreground=use_foreground,
+                    abort_check=lambda: stop_event.is_set() or getattr(self.bot, "stop_current", False),
+                )
+                self._unified_framework._wait_for_confirm_probes(temp_config, timeout_s=2.0)
+            self._sleep_abortable(stop_event, 0.5)
+            self._emit("💼 恢复精灵一完成，关闭精灵背包", "INFO")
+            try:
+                self._click_region(bag_open_btn_key, use_foreground)
+            except KeyError:
+                self._click_region(bag_open_key, use_foreground)
+            self._sleep_abortable(stop_event, 1.0)
+            self._emit("✅ [纯净能量(资源)] 定期恢复精灵一完成", "SUCCESS")
+        except Exception as e:
+            self._emit(f"⚠️ [纯净能量(资源)] 恢复精灵一异常: {e}，继续", "WARN")
+
+    def _pem_pure_energy_neighbor_switch_finish(
+        self,
+        *,
+        current_map_id: int,
+        current_prefix: str,
+        use_foreground: bool,
+        stop_event: threading.Event,
+    ) -> int:
+        self._is_in_battle = False
+        self._is_scanning_steady_state = True
+        nxt = self._neighbor_switch_twomap_after_fail(
+            pem=True,
+            current_map_id=current_map_id,
+            current_prefix=current_prefix,
+            use_foreground=use_foreground,
+            stop_event=stop_event,
+        )
+        return nxt if nxt is not None else current_map_id
+
+    def _pem_pure_energy_calibration_reconnect_restart(
+        self, use_foreground: bool, stop_event: threading.Event, reason_tag: str
+    ) -> None:
+        from core.dar_route_runner import DEFAULT_PROFILE_DUGULU
+
+        self._emit(f"🔄 [纯净能量] 校准检测到非目标 map（{reason_tag}），刷新重连", "WARN")
+        self._execute_refresh_reconnect(
+            DEFAULT_PROFILE_DUGULU,
+            use_foreground,
+            stop_event,
+            reason=f"校准后重连-纯净能量-{reason_tag}",
+        )
+        self.run_pure_energy_resource_mode(
+            threading.Event(),
+            use_foreground,
+            nieo_pre_rotation_first=getattr(self, "_pem_pre_rotation_first", False),
+            skip_nie_77=getattr(self, "_skip_nie_77", False),
+        )
+
+    def _pem_pure_energy_petitem_logging_cb(self) -> None:
+        if self._unified_framework and hasattr(self._unified_framework, "_petswf_to_petitem_durations"):
+            durs = self._unified_framework._petswf_to_petitem_durations
+            if durs:
+                cur = durs[-1]
+                self._petswf_to_petitem_current_duration = cur
+                if (
+                    self._petswf_to_petitem_min_duration is None
+                    or cur < self._petswf_to_petitem_min_duration
+                ):
+                    self._petswf_to_petitem_min_duration = cur
+
+    def _pem_pure_energy_maybe_rotation_then_exit(self, stop_event: threading.Event, tag: str) -> bool:
+        if not self._check_rotation_switch_time():
+            return False
+        self._emit(
+            f"✅ [轮换检测-纯净能量·{tag}] 到达切换时间，设置stop_event退出当前模式",
+            "SUCCESS",
+        )
+        stop_event.set()
+        return True
+
+    def _pem_pure_energy_after_battle_counters(self, use_foreground: bool, stop_event: threading.Event) -> None:
+        n = self.PEM_SKILL4_MAINTENANCE_EVERY_BATTLES
+        if self._battle_count % n == 0:
+            self._emit(
+                f"🔄 [纯净能量] 已满{n}场，下场战斗前恢复精灵一（与战胜分支相同节奏）",
+                "INFO",
+            )
+            self._pem_recover_pet_one_maintenance(use_foreground, stop_event)
+        self._check_pure_energy_reconnect_condition(use_foreground, stop_event)
+
+    def _pem_pure_energy_escape77_like_nieo(
+        self,
+        *,
+        current_map_id: int,
+        current_prefix: str,
+        use_foreground: bool,
+        stop_event: threading.Event,
+    ) -> Optional[int]:
+        """勾选不捉 77 时：纯能量资源模式首回合逃跑，地图切换走 26↔27。"""
+        from core.unified_battle_framework import BattleConfig, BattleMode
+        from core.logger import kernel_cursor
+        from core.dar_route_runner import DEFAULT_PROFILE_DUGULU
+
+        self._emit("🎯 [纯净能量] 勾选不捕捉77尼尔，执行首回合逃跑（同尼奥逃跑）", "SYSTEM")
+        self._is_in_battle = True
+        self._is_scanning_steady_state = False
+        self._last_nie_family_id = 77
+
+        cfg = BattleConfig(
+            mode=BattleMode.WILD,
+            use_foreground=use_foreground,
+            skill_key="对战.使用技能一",
+            action_callback=lambda _r: "escape",
+            abort_check=lambda: stop_event.is_set() or getattr(self.bot, "stop_current", False),
+            on_petitem_detected=self._pem_pure_energy_petitem_logging_cb,
+            round_timeout_sec=60.0,
+        )
+        stage2_cursor = kernel_cursor()
+        ok, calib_result = self._unified_framework.stage2_calibration_and_petitem(
+            trigger_callback=None,
+            use_foreground=use_foreground,
+            timeout_s=15.0,
+            skip_stage1=True,
+            config=cfg,
+            initial_cursor=stage2_cursor,
+        )
+        if calib_result == "reconnect_needed":
+            self._pem_pure_energy_calibration_reconnect_restart(use_foreground, stop_event, "逃跑")
+            return None
+        if not ok:
+            return self._pem_pure_energy_neighbor_switch_finish(
+                current_map_id=current_map_id,
+                current_prefix=current_prefix,
+                use_foreground=use_foreground,
+                stop_event=stop_event,
+            )
+        bs = self._unified_framework.stage3_battle_loop(cfg)
+        if not bs:
+            if self._handle_stage3_round_timeout_reconnect(DEFAULT_PROFILE_DUGULU, use_foreground, stop_event, is_nieo=False):
+                return None
+            return self._pem_pure_energy_neighbor_switch_finish(
+                current_map_id=current_map_id,
+                current_prefix=current_prefix,
+                use_foreground=use_foreground,
+                stop_event=stop_event,
+            )
+        self._unified_framework.stage4_post_battle(cfg, is_training_room=False)
+        self._battle_count += 1
+        self._csv_log_battle("escape", [])
+        self._emit("✅ [纯净能量] 77 尼尔逃跑完成", "SUCCESS")
+        self._last_nie_family_id = None
+        if self._pem_pure_energy_maybe_rotation_then_exit(stop_event, "逃跑"):
+            return None
+        if self._is_rotation_mode and getattr(self, "_pending_rotation_switch", False):
+            return None
+        if getattr(self, "_unexpected_pet_reconnect_pending", False):
+            self._unexpected_pet_reconnect_pending = False
+            self._emit(
+                "⚠️ [纯净能量-异常] 检测到非预期 pet ID，当前战斗后执行重连",
+                "WARN",
+            )
+            self._check_pure_energy_reconnect_condition(use_foreground, stop_event, force_reconnect=True)
+            return None
+        self._pem_pure_energy_after_battle_counters(use_foreground, stop_event)
+        return self._pem_pure_energy_neighbor_switch_finish(
+            current_map_id=current_map_id,
+            current_prefix=current_prefix,
+            use_foreground=use_foreground,
+            stop_event=stop_event,
+        )
+
+    def _pem_pure_energy_nie_family_like_nieo(
+        self,
+        *,
+        nie_id: int,
+        current_map_id: int,
+        current_prefix: str,
+        use_foreground: bool,
+        stop_event: threading.Event,
+    ) -> Optional[int]:
+        """尼尔家族（77/310/416）：技能一 → 切换 → 高级胶囊链路，战后恢复放回仓库对齐尼奥。"""
+        from core.unified_battle_framework import BattleConfig, BattleMode, LastActionType
+        from core.logger import kernel_cursor
+        from core.dar_route_runner import DEFAULT_PROFILE_DUGULU
+
+        self._emit(
+            f"🎯 [纯净能量] 尼尔家族 nie_id={nie_id}：技能一切换捕捉（同源尼奥尼尔分支），战后恢复入仓",
+            "SYSTEM",
+        )
+        self._is_in_battle = True
+        self._is_scanning_steady_state = False
+        self._last_nie_family_id = nie_id
+
+        def nie_action_cb(round_idx: int) -> str:
+            if round_idx == 1:
+                return "skill"
+            if round_idx == 2:
+                self._switch_pet_for_nie_family(nie_id, use_foreground, stop_event, test_mode=False)
+                return "switch"
+            if round_idx == 3:
+                return "capsule_high"
+            return "capsule_high"
+
+        cycle_ov = self._capsule_cycle_tiers_for_current_battle()
+        cfg = BattleConfig(
+            mode=BattleMode.WILD,
+            use_foreground=use_foreground,
+            skill_key="对战.使用技能一",
+            action_callback=nie_action_cb,
+            abort_check=lambda: stop_event.is_set() or getattr(self.bot, "stop_current", False),
+            on_petitem_detected=self._pem_pure_energy_petitem_logging_cb,
+            round_timeout_sec=60.0,
+            capsule_cycle_tiers_override=cycle_ov,
+        )
+
+        stage2_cursor = kernel_cursor()
+        ok, calib_result = self._unified_framework.stage2_calibration_and_petitem(
+            trigger_callback=None,
+            use_foreground=use_foreground,
+            timeout_s=15.0,
+            skip_stage1=True,
+            config=cfg,
+            initial_cursor=stage2_cursor,
+        )
+        if calib_result == "reconnect_needed":
+            self._pem_pure_energy_calibration_reconnect_restart(use_foreground, stop_event, "尼尔家族")
+            return None
+        if not ok:
+            return self._pem_pure_energy_neighbor_switch_finish(
+                current_map_id=current_map_id,
+                current_prefix=current_prefix,
+                use_foreground=use_foreground,
+                stop_event=stop_event,
+            )
+        bs = self._unified_framework.stage3_battle_loop(cfg)
+        if not bs:
+            if self._handle_stage3_round_timeout_reconnect(DEFAULT_PROFILE_DUGULU, use_foreground, stop_event, is_nieo=False):
+                return None
+            return self._pem_pure_energy_neighbor_switch_finish(
+                current_map_id=current_map_id,
+                current_prefix=current_prefix,
+                use_foreground=use_foreground,
+                stop_event=stop_event,
+            )
+
+        self._unified_framework.stage4_post_battle(cfg, is_training_room=False)
+        self._battle_count += 1
+        if self._unified_framework._last_action == LastActionType.CAPSULE:
+            self._csv_log_battle("captured", [nie_id] if nie_id else [])
+            self._emit(f"✅ [纯净能量] 尼尔家族 {nie_id} 捕捉动作完成，执行恢复并入仓（同尼奥）", "SUCCESS")
+            self._sleep_abortable(stop_event, 3.0)
+            self._stop_1and1_monitoring = True
+            self._is_recovering = True
+            self._recover_pets(use_foreground, stop_event, skip_return_storage=False, nie_family_id=nie_id, profile=DEFAULT_PROFILE_DUGULU)
+            self._is_recovering = False
+            self._stop_1and1_monitoring = False
+            self._last_nie_family_id = None
+        else:
+            self._emit("🎯 [纯净能量] 尼尔家族战胜（非胶囊收尾），检查后处理", "INFO")
+            self._last_nie_family_id = None
+
+        if self._pem_pure_energy_maybe_rotation_then_exit(stop_event, "尼尔家族"):
+            return None
+        if self._is_rotation_mode and getattr(self, "_pending_rotation_switch", False):
+            return None
+        if getattr(self, "_unexpected_pet_reconnect_pending", False):
+            self._unexpected_pet_reconnect_pending = False
+            self._emit(
+                "⚠️ [纯净能量-异常] 检测到非预期 pet ID，当前战斗后执行重连",
+                "WARN",
+            )
+            self._check_pure_energy_reconnect_condition(use_foreground, stop_event, force_reconnect=True)
+            return None
+        self._pem_pure_energy_after_battle_counters(use_foreground, stop_event)
+        return self._pem_pure_energy_neighbor_switch_finish(
+            current_map_id=current_map_id,
+            current_prefix=current_prefix,
+            use_foreground=use_foreground,
+            stop_event=stop_event,
+        )
+
+    def _pem_after_change_skill4_defeat(
+        self,
+        *,
+        current_map_id: int,
+        current_prefix: str,
+        use_foreground: bool,
+        stop_event: threading.Event,
+        selected_key: str,
+        tx: float,
+        ty: float,
+        collected_pet_ids: Optional[set],
+    ) -> Optional[int]:
+        """入战成功后：普通敌方全程技能四；遇尼尔家族走尼奥同源捕捉链；每场后可能 26↔27。返回下一 map id；None=应停止。"""
+        from core.unified_battle_framework import BattleConfig, BattleMode
+        from core.logger import kernel_cursor
+        from core.dar_route_runner import DEFAULT_PROFILE_DUGULU
+
+        pet_ids: List[int]
+        if collected_pet_ids:
+            pet_ids = sorted(collected_pet_ids)
+            self._emit(f"📋 [纯净能量] 已收集战斗精灵 ID: {pet_ids}", "SUCCESS")
+        else:
+            ids_set = self._collect_fight_pet_ids(timeout=4.5, collect_window=0.55, stop_event=stop_event)
+            if not ids_set:
+                self._emit("⚠️ [纯净能量] 未收集到战斗精灵 ID，切换地图重试", "WARN")
+                return self._neighbor_switch_twomap_after_fail(
+                    pem=True,
+                    current_map_id=current_map_id,
+                    current_prefix=current_prefix,
+                    use_foreground=use_foreground,
+                    stop_event=stop_event,
+                ) or current_map_id
+            pet_ids = sorted(ids_set)
+
+        unique_ids = set(pet_ids)
+        self._immediate_collected_pet_ids = set(unique_ids)
+
+        if not (unique_ids & NIEO_EXPECTED_IDS):
+            self._emit(
+                "⚠️ [纯净能量提醒] 入战独特ID="
+                + str(sorted(unique_ids))
+                + "，不包含尼奥侧预期任一ID（12/312/418）；若误报可忽略",
+                "WARN",
+            )
+
+        self._check_pet_id_allowlist_anomaly(unique_ids, "nieo")
+
+        nf_keys = unique_ids & {77, 310, 416}
+        if nf_keys:
+            self._nieo_run_seen_nie_family = True
+            nie_pick = list(nf_keys)[0]
+            if getattr(self, "_skip_nie_77", False) and nie_pick == 77:
+                return self._pem_pure_energy_escape77_like_nieo(
+                    current_map_id=current_map_id,
+                    current_prefix=current_prefix,
+                    use_foreground=use_foreground,
+                    stop_event=stop_event,
+                )
+            return self._pem_pure_energy_nie_family_like_nieo(
+                nie_id=nie_pick,
+                current_map_id=current_map_id,
+                current_prefix=current_prefix,
+                use_foreground=use_foreground,
+                stop_event=stop_event,
+            )
+
+        self._is_in_battle = True
+        self._is_scanning_steady_state = False
+
+        def defeat_action(round_idx: int) -> str:
+            return "skill4"
+
+        cycle_ov = self._capsule_cycle_tiers_for_current_battle()
+        cfg = BattleConfig(
+            mode=BattleMode.WILD,
+            use_foreground=use_foreground,
+            skill_key="对战.使用技能四",
+            action_callback=defeat_action,
+            abort_check=lambda: stop_event.is_set() or getattr(self.bot, "stop_current", False),
+            round_timeout_sec=60.0,
+            capsule_cycle_tiers_override=cycle_ov,
+        )
+
+        def on_pi():
+            if self._unified_framework and hasattr(self._unified_framework, "_petswf_to_petitem_durations"):
+                durs = self._unified_framework._petswf_to_petitem_durations
+                if durs:
+                    cur = durs[-1]
+                    self._petswf_to_petitem_current_duration = cur
+                    if (
+                        self._petswf_to_petitem_min_duration is None
+                        or cur < self._petswf_to_petitem_min_duration
+                    ):
+                        self._petswf_to_petitem_min_duration = cur
+
+        cfg.on_petitem_detected = on_pi
+
+        self._emit("🔍 [纯净能量] Stage2 等待 PetItem…", "INFO")
+        stage2_cursor = kernel_cursor()
+        ok, calib_result = self._unified_framework.stage2_calibration_and_petitem(
+            trigger_callback=None,
+            use_foreground=use_foreground,
+            timeout_s=15.0,
+            skip_stage1=True,
+            config=cfg,
+            initial_cursor=stage2_cursor,
+        )
+
+        if calib_result == "reconnect_needed":
+            self._emit("🔄 [纯净能量] 校准检测到非目标 map，刷新重连", "WARN")
+            self._execute_refresh_reconnect(
+                DEFAULT_PROFILE_DUGULU, use_foreground, stop_event, reason="校准后重连-纯净能量"
+            )
+            self.run_pure_energy_resource_mode(
+                threading.Event(),
+                use_foreground,
+                nieo_pre_rotation_first=getattr(self, "_pem_pre_rotation_first", False),
+                skip_nie_77=getattr(self, "_skip_nie_77", False),
+            )
+            return None
+
+        if not ok:
+            self._emit("❌ [纯净能量] Stage2 失败，切换地图", "WARN")
+            self._is_in_battle = False
+            self._is_scanning_steady_state = True
+            return self._neighbor_switch_twomap_after_fail(
+                pem=True,
+                current_map_id=current_map_id,
+                current_prefix=current_prefix,
+                use_foreground=use_foreground,
+                stop_event=stop_event,
+            ) or current_map_id
+
+        bs = self._unified_framework.stage3_battle_loop(cfg)
+        if not bs:
+            if self._handle_stage3_round_timeout_reconnect(DEFAULT_PROFILE_DUGULU, use_foreground, stop_event, is_nieo=False):
+                return None
+            self._is_in_battle = False
+            self._is_scanning_steady_state = True
+            return self._neighbor_switch_twomap_after_fail(
+                pem=True,
+                current_map_id=current_map_id,
+                current_prefix=current_prefix,
+                use_foreground=use_foreground,
+                stop_event=stop_event,
+            ) or current_map_id
+
+        self._unified_framework.stage4_post_battle(cfg, is_training_room=False)
+        self._battle_count += 1
+        self._csv_log_battle("defeat", sorted(unique_ids))
+
+        n = self.PEM_SKILL4_MAINTENANCE_EVERY_BATTLES
+        if self._battle_count % n == 0:
+            self._emit(f"🔄 [纯净能量] 已满{n}场战胜，下场战斗前恢复精灵一", "INFO")
+            self._pem_recover_pet_one_maintenance(use_foreground, stop_event)
+
+        self._check_pure_energy_reconnect_condition(use_foreground, stop_event)
+
+        self._is_in_battle = False
+        self._is_scanning_steady_state = True
+
+        nxt = self._neighbor_switch_twomap_after_fail(
+            pem=True,
+            current_map_id=current_map_id,
+            current_prefix=current_prefix,
+            use_foreground=use_foreground,
+            stop_event=stop_event,
+        )
+        return nxt if nxt is not None else current_map_id
     
     def _get_farthest_two_points(
         self,
@@ -13016,6 +14155,31 @@ class DarRouteRunner:
 
         self._emit(f"🛑 {label}模式已停止，共完成 {self._battle_count} 场战斗", "SYSTEM")
 
+    def _enemy_pet_ids_for_battle_csv(self, profile: WildCaptureProfile) -> list:
+        """与战斗结束写入 CSV 的目标 enemy 字段一致。"""
+        nie_id = getattr(self, "_current_battle_nie_family_id", None)
+        if nie_id:
+            return [nie_id]
+        all_ids = set(getattr(self, "_immediate_collected_pet_ids", None) or [])
+        target_set = set(profile.target_pet_ids) if profile.target_pet_ids else {profile.target_pet_id}
+        overlap = sorted(all_ids & target_set)
+        if overlap:
+            return overlap
+        nie_overlap = sorted(all_ids & {77, 310, 416})
+        if nie_overlap:
+            return nie_overlap
+        # 超时/异常路径下 target 与尼尔族交集可能为空，仍尽量写出本场 OCR/探针收集到的 id
+        noise = {1100000}
+        return sorted(x for x in all_ids if x not in noise)
+
+    def _should_log_csv_battle_start(self, profile: WildCaptureProfile) -> bool:
+        """检测到尼尔家族或己方目标精灵与 pet id 相交时录入 start。"""
+        if getattr(self, "_current_battle_nie_family_id", None) is not None:
+            return True
+        all_ids = set(getattr(self, "_immediate_collected_pet_ids", None) or [])
+        target_set = set(profile.target_pet_ids) if profile.target_pet_ids else {profile.target_pet_id}
+        return bool(all_ids & target_set)
+
     def _csv_log_battle(self, result: str, enemy_pet_ids=None):
         """Log one battle row to CSV (called from nieo / wild paths)."""
         try:
@@ -13027,6 +14191,9 @@ class DarRouteRunner:
                 battle_duration_s=ubf._battle_duration if ubf else 0.0,
                 capsule_counts=ubf._battle_capsule_counts if ubf else {},
             )
+            # ✅ 双塔：记录“上次战斗结束”的时间戳，用于判断 30min 无遇敌时重连前清缓存/tmp
+            if getattr(self, "_current_mode", None) == "shuangta":
+                self._shuangta_last_battle_end_ts = time.time()
         except Exception:
             pass
     
@@ -13035,6 +14202,7 @@ class DarRouteRunner:
         stop_event: threading.Event,
         use_foreground: bool,
         is_test_mode: bool = False,  # ✅ 新增参数：是否是测试模式
+        rotation_rare_slot: str = "shuangta",  # ✅ 非尼奥时段：`shuangta` 或 `mantis`
     ) -> None:
         """
         双塔尼奥轮换模式：根据北京时间自动切换模式（无限循环）
@@ -13047,6 +14215,12 @@ class DarRouteRunner:
         5. 设置身边跟随
         6. 执行to脚本和地图检查，开启对应模式
         """
+        slot = rotation_rare_slot if rotation_rare_slot in ("shuangta", "mantis") else "shuangta"
+        self._rotation_rare_slot = slot
+        self._emit(
+            f"🔄 [轮换模式] 非尼奥稀有档位：{'双塔(to双塔/map315)' if slot == 'shuangta' else '螳螂(to螳螂/map11)'}",
+            "INFO",
+        )
         # ✅ 设置轮换模式标志
         self._is_rotation_mode = True
         
@@ -13191,9 +14365,9 @@ class DarRouteRunner:
                 self._emit(f"   稀有捕捉：{nieo_total['稀有捕捉']}", "INFO")
                 self._emit(f"   尼尔家族：{nieo_total['尼尔家族']}（77：{nieo_total['77捕捉']}，310：{nieo_total['310捕捉']}，416：{nieo_total['416捕捉']}）", "INFO")
                 
-                # 双塔模式统计
+                # 非尼奥稀有（双塔/螳螂共用计数桶）
                 shuangta_total = self._rotation_total_stats["shuangta"]
-                self._emit("🌲 双塔模式统计（累计）：", "SYSTEM")
+                self._emit("🌲 非尼奥稀有时段统计（累计）：", "SYSTEM")
                 self._emit(f"   运行次数：{shuangta_total['运行次数']}", "INFO")
                 self._emit(f"   总MP3：{shuangta_total['total']}", "INFO")
                 self._emit(f"   入战成功：{shuangta_total['entry_success']}", "INFO")
@@ -13218,7 +14392,8 @@ class DarRouteRunner:
             self._test_mode_start_time = 0.0  # ✅ 清除测试模式开始时间
             self._rotation_time_check_window_active = False  # ✅ 清除时间检测窗口
             self._last_rotation_time_check = 0.0  # ✅ 清除上次时间检测
-    
+            self._rotation_rare_slot = "shuangta"
+
     def _detect_rotation_mode(self, quiet: bool = False) -> Tuple[str, datetime]:
         """
         第零步：时间检测和模式判断（永远以北京时间做基准）
@@ -13550,30 +14725,120 @@ class DarRouteRunner:
         finally:
             self._rotation_reconnect_executing = False
 
-    def _execute_nieo_pre_rotation_reconnect(
+    def _execute_mantis_pre_rotation_reconnect(
         self,
         use_foreground: bool,
         stop_event: threading.Event,
     ) -> bool:
         """
-        尼奥模式专用：前置重连（尼奥三精灵版本）
-
-        执行步骤1-4（与轮换重连相同，使用尼奥模式的三个精灵：亨姆、波克尔、尼奥超能系），
-        不执行to脚本和地图检查，由后续的run_nieo_mode负责进入地图和开始模式。
-
-        任一步失败时返回False，由调用方重试完整流程直到成功完成前置准备。
-
-        Returns:
-            True: 成功完成前置准备，可启动尼奥模式
-            False: 任一步失败，需重试完整流程
+        螳螂野外前置重连：与普通 ``run()`` 螳螂进图一致——
+        「to螳螂」后执行 ``assets/regions/地图/11.json``（区域 ``地图.11``）进入 map11，
+        再用 ``_wait_for_map_ready`` 等待 11.swf + newNpc（不在此用日志强验云上 map10）。
         """
         if self._rotation_reconnect_executing:
-            self._emit("⚠️ [尼奥模式-前置重连] 已在执行中，忽略本次请求", "WARN")
+            self._emit("⚠️ [螳螂-轮换重连前置] 已在执行中，忽略本次请求", "WARN")
             return False
 
-        reason = "尼奥模式-前置重连"
+        reason = "螳螂-轮换重连前置"
         self._rotation_reconnect_executing = True
-        self._emit(f"🔄 [{reason}] 开始执行前置重连（尼奥精灵：亨姆、波克尔、尼奥超能系）", "WARN")
+        self._emit(
+            f"🔄 [{reason}] 开始执行前置轮换重连（双塔精灵；进 map11 步骤与野外启动一致）",
+            "WARN",
+        )
+
+        self._stop_normal_1and1_monitoring()
+        self._reset_petswf_time_variables(f"{reason}-模式切换前")
+
+        try:
+            if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                return False
+
+            self._rotation_step1_login(use_foreground, stop_event)
+            if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                return False
+
+            if not self._rotation_step2_clear_backpack(use_foreground, stop_event):
+                self._emit(f"⚠️ [{reason}] 清空背包未完成，返回False将由调用方重试完整流程", "WARN")
+                return False
+
+            if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                return False
+
+            self._rotation_step3_place_pets("shuangta", use_foreground, stop_event)
+
+            if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                return False
+
+            if not self._rotation_step4_set_companion(use_foreground, stop_event):
+                self._emit(f"⚠️ [{reason}] 设置身边跟随失败，返回False将由调用方重试完整流程", "WARN")
+                return False
+
+            if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                return False
+
+            self._emit(f"🔄 [{reason}-步骤5a] 执行 to螳螂.json", "SYSTEM")
+            if hasattr(self.bot, "daily_runner"):
+                self.bot.daily_runner.run_single_script("to螳螂", bg_mode=(not use_foreground))
+            self._sleep_abortable(stop_event, 2.0)
+
+            if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                return False
+
+            pf = DEFAULT_PROFILE_MANTIS
+            self._emit(
+                f"🗺️ [{reason}-步骤5b] 执行地图进入脚本 地图/{pf.map_swf_id}.json（to螳螂 后直接进入 map11）",
+                "SYSTEM",
+            )
+            if not self._execute_map_entry_script(pf.map_swf_id, use_foreground, stop_event):
+                self._emit(f"⚠️ [{reason}] 地图进入脚本失败，返回False将由调用方重试完整流程", "WARN")
+                return False
+
+            self._emit(f"⏳ [{reason}-步骤5c] 等待进入 map {pf.map_swf_id}.swf + newNpc…", "SYSTEM")
+            if not self._wait_for_map_ready(pf, stop_event):
+                self._emit(
+                    f"❌ [{reason}] 等待 map {pf.map_swf_id} 就绪超时或已停止",
+                    "ERROR",
+                )
+                return False
+
+            self._emit(f"✅ [{reason}] map {pf.map_swf_id} 就绪，可启动螳螂模式", "SUCCESS")
+            return True
+        except Exception as e:
+            self._emit(f"❌ [{reason}] 执行异常: {e}", "ERROR")
+            import traceback
+            self._emit(f"📋 异常详情: {traceback.format_exc()}", "ERROR")
+            return False
+        finally:
+            self._rotation_reconnect_executing = False
+
+    def _execute_nieo_pre_rotation_reconnect(
+        self,
+        use_foreground: bool,
+        stop_event: threading.Event,
+        pem_route: bool = False,
+    ) -> bool:
+        """
+        尼奥三精灵前置重连：步骤1–4 共用；步骤5：
+        - ``pem_route=False``：``to尼奥`` + 校验 map11 + newNPC（再接 ``run_nieo_mode`` 进 10/11）。
+        - ``pem_route=True`` ：``to纯净能量`` + 校验 map26 + newNPC（再接纯净能量首开进 27）。
+
+        任一步失败时返回 False，由调用方重试完整流程。
+
+        Returns:
+            True: 成功完成前置准备
+            False: 任一步失败，需重试完整流程
+        """
+        reason = "纯净能量模式-前置重连" if pem_route else "尼奥模式-前置重连"
+        if self._rotation_reconnect_executing:
+            self._emit(f"⚠️ [{reason}] 已在执行中，忽略本次请求", "WARN")
+            return False
+
+        self._rotation_reconnect_executing = True
+        if pem_route:
+            self._current_mode = "pure_energy"
+            self._emit(f"🔄 [{reason}] 开始执行前置重连（尼奥三精灵路径；步骤5：`to纯净能量` → map26）", "WARN")
+        else:
+            self._emit(f"🔄 [{reason}] 开始执行前置重连（尼奥精灵：亨姆、波克尔、尼奥超能系；步骤5：`to尼奥` → map11）", "WARN")
 
         self._stop_normal_1and1_monitoring()
         self._reset_petswf_time_variables(f"{reason}-模式切换前")
@@ -13609,7 +14874,42 @@ class DarRouteRunner:
             if stop_event.is_set() or getattr(self.bot, "stop_current", False):
                 return False
 
-            self._emit(f"✅ [{reason}] 前置重连流程执行完成，可启动尼奥模式", "SUCCESS")
+            # 步骤5：`to尼奥`（map11）或 `to纯净能量`（map26）
+            script_tag = "to纯净能量" if pem_route else "to尼奥"
+            self._emit(f"🔄 [{reason}-步骤5] 执行「{script_tag}」脚本", "SYSTEM")
+            if hasattr(self.bot, "daily_runner"):
+                script_name = "to纯净能量" if pem_route else "to尼奥"
+                self.bot.daily_runner.run_single_script(script_name, bg_mode=(not use_foreground))
+            else:
+                self._emit(f"⚠️ [{reason}-步骤5] bot.daily_runner 不存在", "WARN")
+                return False
+
+            self._sleep_abortable(stop_event, 2.0)
+
+            if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+                return False
+
+            expected_map_id = 26 if pem_route else 11
+            last_map_id, has_newNPC = self._check_last_map_and_newnpc(expected_map_id, timeout_s=10.0)
+            if last_map_id == expected_map_id and has_newNPC:
+                done_hint = (
+                    "可启动纯净能量(资源)（首开地图/27）"
+                    if pem_route
+                    else "可启动尼奥模式（进 10/11）"
+                )
+                self._emit(
+                    f"✅ [{reason}] 地图检查通过：map {last_map_id} + newNPC，{done_hint}",
+                    "SUCCESS",
+                )
+            else:
+                self._emit(
+                    f"❌ [{reason}] 地图检查失败：map={last_map_id}（期望{expected_map_id}），"
+                    f"has_newNPC={has_newNPC}，返回False将由调用方重试完整流程",
+                    "ERROR",
+                )
+                return False
+
+            self._emit(f"✅ [{reason}] 前置重连完成（含「{script_tag}」）", "SUCCESS")
             return True
         except Exception as e:
             self._emit(f"❌ [{reason}] 执行异常: {e}", "ERROR")
@@ -14283,15 +15583,9 @@ class DarRouteRunner:
         next_switch_datetime: datetime  # 新增参数
     ) -> bool:
         """
-        第五步：执行to脚本和地图检查，开启对应模式
-        
-        Args:
-            current_mode: "nieo" 或 "shuangta"
-            next_switch_datetime: 下一个切换时间的datetime对象
-        
-        Returns:
-            True: 成功完成
-            False: 失败（地图检查失败，需要重新执行完整流程）
+        第五步：执行 to 脚本、校验/进图，再开启对应模式。
+        螳螂（to螳螂）：与前置重连一致，执行 地图/11 + _wait_for_map_ready。
+        尼奥/双塔：仍用 _check_last_map_and_newnpc 校验期望 map。
         """
         self._emit(f"🔄 [轮换模式-步骤5] 开始执行to脚本和地图检查（模式：{current_mode}）", "SYSTEM")
         
@@ -14301,9 +15595,17 @@ class DarRouteRunner:
             expected_map_id = 11  # ✅ 修改：尼奥模式应该检查11地图（不是10，因为尼奥模式从11进入）
             profile = None  # 尼奥模式不需要profile
         else:
-            script_name = "to双塔"
-            profile = DEFAULT_PROFILE_SHUANGTA
-            expected_map_id = 315  # ✅ 修改：双塔模式应该检查315地图（不是320，与重连脚本一致）
+            rs = getattr(self, "_rotation_rare_slot", "shuangta") or "shuangta"
+            if rs not in ("shuangta", "mantis"):
+                rs = "shuangta"
+            if rs == "mantis":
+                script_name = "to螳螂"
+                profile = DEFAULT_PROFILE_MANTIS
+                expected_map_id = DEFAULT_PROFILE_MANTIS.map_swf_id  # 达尔 map11
+            else:
+                script_name = "to双塔"
+                profile = DEFAULT_PROFILE_SHUANGTA
+                expected_map_id = 315  # 双塔：与重连脚本一致
         
         self._emit(f"📜 [轮换模式-步骤5] 执行{script_name}脚本", "INFO")
         if hasattr(self.bot, "daily_runner"):
@@ -14311,20 +15613,48 @@ class DarRouteRunner:
         
         # 2. 等待地图加载完成
         self._sleep_abortable(stop_event, 2.0)
-        
-        # 3. ✅ 检查地图ID和newNPC（模仿正常重连后检测地图的机制）
-        self._emit(f"🗺️ [轮换模式-步骤5] 检查地图ID和newNPC（期望：map {expected_map_id} + newNPC）", "INFO")
-        
-        # ✅ 使用_check_last_map_and_newnpc函数，模仿重连脚本的检测机制
-        last_map_id, has_newNPC = self._check_last_map_and_newnpc(expected_map_id, timeout_s=10.0)
-        
-        if last_map_id == expected_map_id and has_newNPC:
-            # ✅ 检测到正确的map且后面跟着newNPC，地图检查通过
-            self._emit(f"✅ [轮换模式-步骤5] 地图检查通过：map {last_map_id} + newNPC", "SUCCESS")
+
+        if stop_event.is_set() or getattr(self.bot, "stop_current", False):
+            return False
+
+        # 3. 螳螂：to 后与前置重连一致，执行 地图/11 + _wait_for_map_ready（避免因仍停云上导致 _check_last_map_and_newnpc 误判）
+        if script_name == "to螳螂":
+            pf = DEFAULT_PROFILE_MANTIS
+            self._emit(
+                "🗺️ [轮换模式-步骤5] 螳螂：to螳螂 后直接执行地图进图脚本并等待 map11 + newNpc",
+                "SYSTEM",
+            )
+            if not self._execute_map_entry_script(pf.map_swf_id, use_foreground, stop_event):
+                self._emit(
+                    "❌ [轮换模式-步骤5] 螳螂地图脚本执行失败，返回False将由调用方重新执行完整流程",
+                    "ERROR",
+                )
+                return False
+            if not self._wait_for_map_ready(pf, stop_event):
+                self._emit(
+                    "❌ [轮换模式-步骤5] 螳螂等待 map11 就绪超时或已停止，返回False将由调用方重新执行完整流程",
+                    "ERROR",
+                )
+                return False
+            self._emit(f"✅ [轮换模式-步骤5] 螳螂 map {pf.map_swf_id} 就绪", "SUCCESS")
         else:
-            # ❌ 地图不一致或没有newNPC，返回False，由调用方重新执行完整流程
-            self._emit(f"❌ [轮换模式-步骤5] 地图检查失败：检测到map={last_map_id}（期望：{expected_map_id}），has_newNPC={has_newNPC}，返回False，将由调用方重新执行完整流程", "ERROR")
-            return False  # ✅ 只返回False，不在这里调用_execute_rotation_reconnect
+            self._emit(
+                f"🗺️ [轮换模式-步骤5] 检查地图ID和newNPC（期望：map {expected_map_id} + newNPC）",
+                "INFO",
+            )
+            last_map_id, has_newNPC = self._check_last_map_and_newnpc(expected_map_id, timeout_s=10.0)
+            if last_map_id == expected_map_id and has_newNPC:
+                self._emit(
+                    f"✅ [轮换模式-步骤5] 地图检查通过：map {last_map_id} + newNPC",
+                    "SUCCESS",
+                )
+            else:
+                self._emit(
+                    f"❌ [轮换模式-步骤5] 地图检查失败：检测到map={last_map_id}"
+                    f"（期望：{expected_map_id}），has_newNPC={has_newNPC}，返回False，将由调用方重新执行完整流程",
+                    "ERROR",
+                )
+                return False
         
         # 4. 开启对应模式
         if current_mode == "nieo":
@@ -14336,7 +15666,9 @@ class DarRouteRunner:
                 next_switch_time=next_switch_datetime  # 新增参数
             )
         else:
-            self._emit("🚀 [轮换模式-步骤5] 开启双塔模式", "SYSTEM")
+            rs = getattr(self, "_rotation_rare_slot", "shuangta") or "shuangta"
+            lbl = "螳螂" if rs == "mantis" else "双塔"
+            self._emit(f"🚀 [轮换模式-步骤5] 开启{lbl}野外模式（非尼奥时段稀有）", "SYSTEM")
             if profile:
                 self.run(
                     stop_event=stop_event,

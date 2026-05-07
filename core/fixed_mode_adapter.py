@@ -8,6 +8,7 @@
 - Stage 4: 固定胜利检测流程
 """
 import time
+import os
 from typing import Optional, Callable, Tuple
 
 from core.unified_battle_framework import (
@@ -27,6 +28,8 @@ class FixedModeAdapter:
     - 训练室直升100
     - DailyRunner勇者之塔
     """
+    
+    CLOSE_PROFILE_SCRIPT_FILENAME = "关闭资料.json"
     
     def __init__(self, framework: UnifiedBattleFramework):
         self.framework = framework
@@ -82,6 +85,47 @@ class FixedModeAdapter:
             
         except Exception as e:
             raise KeyError(f"勇者之塔触发失败: {e}")
+    
+    def _run_close_profile_script_training(self) -> bool:
+        """训练室：Stage2 入战失败时执行关闭资料脚本。"""
+        script_path = os.path.join(self.bot.project_root, "fix_script", self.CLOSE_PROFILE_SCRIPT_FILENAME)
+        if not os.path.exists(script_path):
+            self._emit(f"⚠ 未找到关闭资料脚本：{script_path}", "WARN")
+            return False
+        dr = getattr(self.bot, "daily_runner", None)
+        if not dr:
+            self._emit("⚠ bot.daily_runner 不存在，无法执行关闭资料脚本", "WARN")
+            return False
+        self._emit(f"📋 执行关闭资料脚本：{self.CLOSE_PROFILE_SCRIPT_FILENAME}", "SYSTEM")
+        ok = dr.run_script(script_path, bg_override=None)
+        time.sleep(0.35)
+        return ok
+    
+    def _run_battle_training_with_stage2_retry(self, config: BattleConfig) -> bool:
+        """训练室单场：Stage2 失败则关闭资料后重试整场，直到成功或中止或非 stage2 失败。"""
+        attempt = 0
+        while True:
+            if config.abort_check and config.abort_check():
+                self._emit("⛔ 训练室：中止入战重试", "WARN")
+                return False
+            attempt += 1
+            ok = self.framework.run_battle(config, is_training_room=True)
+            if ok:
+                if attempt > 1:
+                    self._emit(f"✅ 训练室入战成功（第 {attempt} 次尝试）", "SUCCESS")
+                return True
+            stage = getattr(self.framework, "_last_run_battle_failure_stage", None)
+            if stage != "stage2":
+                self._emit(
+                    f"⚠ 对战未成功（failure_stage={stage or 'unknown'}），不执行关闭资料重试",
+                    "WARN",
+                )
+                return False
+            self._emit(
+                f"⚠ Stage2 入战失败（第 {attempt} 次）：执行关闭资料脚本后重试",
+                "WARN",
+            )
+            self._run_close_profile_script_training()
     
     def _action_skill_four(self, round_idx: int) -> str:
         """Stage 3: 永远执行技能四"""
@@ -139,7 +183,7 @@ class FixedModeAdapter:
                 battle_count += 1
                 self._emit(f"⚔️ 训练室对战 {battle_count}/{max_battles}", "INFO")
                 
-                success = self.framework.run_battle(config, is_training_room=True)
+                success = self._run_battle_training_with_stage2_retry(config)
                 
                 if success:
                     completed += 1
@@ -211,7 +255,7 @@ class FixedModeAdapter:
                 current_batch += 1
                 self._emit(f"⚔️ 训练室对战 {battle_count} (批次{current_batch}/{battles_per_batch})", "INFO")
                 
-                success = self.framework.run_battle(config, is_training_room=True)
+                success = self._run_battle_training_with_stage2_retry(config)
                 
                 if not success:
                     self._emit(f"⚠️ 第{battle_count}场对战失败或跳过", "WARN")
@@ -244,7 +288,7 @@ class FixedModeAdapter:
     
     def run_hero_tower(
         self,
-        times: int = 10,
+        times: int = 2,
         use_foreground: bool = False,
         skill_key: str = "对战.使用技能四",
         abort_check: Optional[Callable[[], bool]] = None,
@@ -285,7 +329,7 @@ class FixedModeAdapter:
                 
                 time.sleep(0.5)
             
-            # 执行十次后点击离开区域
+            # 全部场次完成后点击离开区域
             if completed > 0:
                 self._emit("🚪 勇者之塔完成，点击离开", "INFO")
                 try:

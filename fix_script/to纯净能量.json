@@ -1,0 +1,55 @@
+{
+    "name": "to纯净能量",
+    "create_time": "2026-04-29 20:40:07",
+    "steps": [
+        {
+            "action": "click",
+            "x": 217,
+            "y": 382,
+            "delay": 4.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 588,
+            "y": 462,
+            "delay": 1.3,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 444,
+            "y": 503,
+            "delay": 0.97,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 526,
+            "y": 413,
+            "delay": 1.3,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 879,
+            "y": 374,
+            "delay": 1.63,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 540,
+            "y": 195,
+            "delay": 1.43,
+            "desc": "Step 6"
+        },
+        {
+            "action": "click",
+            "x": 792,
+            "y": 500,
+            "delay": 1.47,
+            "desc": "Step 7"
+        }
+    ]
+}

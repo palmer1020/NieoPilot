@@ -155,6 +155,8 @@ class UnifiedBattleFramework:
         # Per-battle timing
         self._battle_start_time: float = 0.0
         self._battle_duration: float = 0.0
+        # run_battle 最后一次失败阶段（训练室 Stage2 入战重试用）
+        self._last_run_battle_failure_stage: Optional[str] = None
         
     # ================================
     # 工具方法
@@ -228,6 +230,16 @@ class UnifiedBattleFramework:
         time.sleep(max(0.0, gap))
         self._click_region(key, use_foreground)
     
+    def _double_click_battle_panel_after_round1_skill(self, config: BattleConfig, round_idx: int) -> None:
+        """第一回合任意技能（skill/skill2/skill4）双击后：紧接着双击切换对战面板。胶囊路径不加。"""
+        if round_idx != 1:
+            return
+        key = "对战.切换战斗面板"
+        if not self._rs_get(key):
+            return
+        self._emit("🔄 第一回合：技能后双击切换对战面板", "INFO")
+        self._click_region_twice(key, config.use_foreground, gap=0.06)
+    
     def _rs_get(self, key: str) -> Optional[Region]:
         """获取region（不存在返回None）"""
         return self.regions.get(key)
@@ -244,6 +256,10 @@ class UnifiedBattleFramework:
 
     # 默认胶囊循环：超级单档（未传 override 时；螳螂 122 等在 DarRouteRunner 侧覆盖为 legacy 六档）
     _CAPSULE_CYCLE_TIERS: Tuple[str, ...] = ("super",)
+
+    # 投掷精灵胶囊（非切换面板）：每次单击后固定等待 CAPSULE_THROW_INTERVAL_S，再判灰；未变灰则再单击
+    CAPSULE_THROW_INTERVAL_S: float = 1.0
+    CAPSULE_THROW_MAX_SINGLE_CLICKS: int = 15
 
     def _resolve_capsule_tier_key(self, tier: str) -> Optional[str]:
         """按档位解析胶囊 region 键（不含切换面板）。"""
@@ -942,6 +958,7 @@ class UnifiedBattleFramework:
                             self._execute_action(action_type, config, round_idx=round_idx, invincible_first_round=config.invincible_first_round)
                         elif config.skill_key:
                             self._click_region_twice(config.skill_key, config.use_foreground, gap=0.06)
+                            self._double_click_battle_panel_after_round1_skill(config, round_idx)
                             # ✅ 不在stage2中sleep，立即返回让stage3接管（_execute_action内部已有必要的sleep）
                             self._last_action = LastActionType.SKILL
                         self._emit("✅ 第一回合动作已执行", "SUCCESS")
@@ -1073,6 +1090,7 @@ class UnifiedBattleFramework:
                                     self._execute_action(action_type, config, round_idx=round_idx, invincible_first_round=config.invincible_first_round)
                                 elif config.skill_key:
                                     self._click_region_twice(config.skill_key, config.use_foreground, gap=0.06)
+                                    self._double_click_battle_panel_after_round1_skill(config, round_idx)
                                     self._last_action = LastActionType.SKILL
                                 self._emit("✅ 第一回合动作已执行（超时前最后检查）", "SUCCESS")
                             
@@ -1176,12 +1194,40 @@ class UnifiedBattleFramework:
         except Exception as e:
             self._emit(f"⚠️ 探针检测异常: {e}", "WARN")
             return "UNKNOWN", 0.0, 0.0
-    
+
+    def _throw_capsule_singles_until_round_probe_gray(
+        self,
+        region_key: str,
+        use_foreground: bool,
+        *,
+        probe_model: Optional[Any],
+    ) -> None:
+        """
+        投掷某一胶囊 region：每次单击一次；单击后固定等待 CAPSULE_THROW_INTERVAL_S，
+        再检测回合探针；若为 GRAY 则停止，否则下一次单击。
+        无探针模型时沿用原逻辑：该区域双击。
+        """
+        if probe_model is None:
+            self._click_region_twice(region_key, use_foreground, gap=0.08)
+            return
+        for _attempt in range(self.CAPSULE_THROW_MAX_SINGLE_CLICKS):
+            self._click_region(region_key, use_foreground)
+            time.sleep(self.CAPSULE_THROW_INTERVAL_S)
+            st, _, _ = self._detect_round_probe(probe_model)
+            if st == "GRAY":
+                return
+        self._emit(
+            f"⚠️ 投掷{region_key}：已单击{self.CAPSULE_THROW_MAX_SINGLE_CLICKS}次，"
+            f"每次间隔{self.CAPSULE_THROW_INTERVAL_S:.1f}s，探针仍未判为灰色",
+            "WARN",
+        )
+
     def _execute_action(self, action_type: str, config: BattleConfig, round_idx: int = 0, invincible_first_round: bool = False):
         """
         执行动作（技能/胶囊/逃跑）
         
-        重要：所有技能/切换/捕捉/逃跑区域都要点击两次
+        重要：投掷精灵胶囊改为「每次单击后固定等待 1s（CAPSULE_THROW_INTERVAL_S）再判灰，未灰则再单击」；
+        切换对战/捕捉面板等仍为双击；技能、逃跑等仍为双击（见各处实现）。
         
         Args:
             action_type: "skill"/"capsule"/"escape"
@@ -1193,6 +1239,7 @@ class UnifiedBattleFramework:
             if config.skill_key:
                 # 所有技能区域点击两次
                 self._click_region_twice(config.skill_key, config.use_foreground, gap=0.06)
+                self._double_click_battle_panel_after_round1_skill(config, round_idx)
                 # 减少延迟，技能点击后只需要短暂等待即可（从0.55s减少到0.1s）
                 time.sleep(0.1)
                 self._last_action = LastActionType.SKILL
@@ -1201,27 +1248,32 @@ class UnifiedBattleFramework:
             skill2_key = "对战.使用技能二"
             if self._rs_get(skill2_key):
                 self._click_region_twice(skill2_key, config.use_foreground, gap=0.06)
+                self._double_click_battle_panel_after_round1_skill(config, round_idx)
                 time.sleep(0.1)
                 self._last_action = LastActionType.SKILL
             else:
                 self._emit("⚠️ 未找到技能二 region，回退为技能一", "WARN")
                 if config.skill_key:
                     self._click_region_twice(config.skill_key, config.use_foreground, gap=0.06)
+                    self._double_click_battle_panel_after_round1_skill(config, round_idx)
                     time.sleep(0.1)
                     self._last_action = LastActionType.SKILL
         elif action_type == "skill4":
             skill4_key = "对战.使用技能四"
             if self._rs_get(skill4_key):
                 self._click_region_twice(skill4_key, config.use_foreground, gap=0.06)
+                self._double_click_battle_panel_after_round1_skill(config, round_idx)
                 time.sleep(0.1)
                 self._last_action = LastActionType.SKILL
             else:
                 self._emit("⚠️ 未找到技能四 region，回退为技能一", "WARN")
                 if config.skill_key:
                     self._click_region_twice(config.skill_key, config.use_foreground, gap=0.06)
+                    self._double_click_battle_panel_after_round1_skill(config, round_idx)
                     time.sleep(0.1)
                     self._last_action = LastActionType.SKILL
         elif action_type in ("capsule", "capsule_high"):
+            probe_for_throw = self._load_probe_templates()
             # ✅ 所有捕捉逻辑前：先双击切换战斗面板，再双击切换捕捉面板
             battle_panel_key = "对战.切换战斗面板"
             if self._rs_get(battle_panel_key):
@@ -1241,17 +1293,20 @@ class UnifiedBattleFramework:
                     self._emit("🔄 切换捕捉面板（双击）...", "INFO")
                     self._click_region_twice(inv_panel, config.use_foreground, gap=0.10)
                     time.sleep(0.50)
-                    self._click_region_twice(inv_key, config.use_foreground, gap=0.08)
+                    self._throw_capsule_singles_until_round_probe_gray(
+                        inv_key, config.use_foreground, probe_model=probe_for_throw
+                    )
                     time.sleep(0.55)
-                    self._emit(f"🛡 回合{round_idx}：无敌精灵胶囊(×2)", "INFO")
+                    self._emit(f"🛡 回合{round_idx}：无敌精灵胶囊(单击直至探针灰)", "INFO")
                     self._battle_capsule_counts["invincible"] = self._battle_capsule_counts.get("invincible", 0) + 1
                     self._last_action = LastActionType.CAPSULE
                     return
                 else:
                     self._emit("⚠ 无敌胶囊 region 缺失：回退为技能1", "WARN")
                     if config.skill_key:
-                        self._click_region(config.skill_key, config.use_foreground)
-                        time.sleep(0.55)
+                        self._click_region_twice(config.skill_key, config.use_foreground, gap=0.06)
+                        self._double_click_battle_panel_after_round1_skill(config, round_idx)
+                        time.sleep(0.1)
                         self._last_action = LastActionType.SKILL
                         return
             else:
@@ -1336,17 +1391,21 @@ class UnifiedBattleFramework:
                     self._emit("🔄 切换捕捉面板（双击）...", "INFO")
                     self._click_region_twice(panel, config.use_foreground, gap=0.10)
                     time.sleep(0.50)
-                    self._click_region_twice(cap_key, config.use_foreground, gap=0.08)
+                    self._throw_capsule_singles_until_round_probe_gray(
+                        cap_key, config.use_foreground, probe_model=probe_for_throw
+                    )
                     self._emit(
-                        f"🎯 回合{round_idx} 捕捉：面板 -> {label_zh}胶囊(×2){slot_info}",
+                        f"🎯 回合{round_idx} 捕捉：面板 -> {label_zh}胶囊(单击直至探针灰){slot_info}",
                         "INFO",
                     )
                     self._last_action = LastActionType.CAPSULE
                     return
 
                 if use_mid_only and combo_mid:
-                    self._click_region_twice(combo_mid, config.use_foreground, gap=0.50)
-                    self._emit(f"🎯 回合{round_idx} 捕捉：中级（combo×2）", "INFO")
+                    self._throw_capsule_singles_until_round_probe_gray(
+                        combo_mid, config.use_foreground, probe_model=probe_for_throw
+                    )
+                    self._emit(f"🎯 回合{round_idx} 捕捉：中级（combo 单击直至探针灰）", "INFO")
                     self._last_action = LastActionType.CAPSULE
                     return
 
@@ -1358,9 +1417,11 @@ class UnifiedBattleFramework:
                     and high
                     and cap_key == high
                 ):
-                    self._click_region_twice(combo_high, config.use_foreground, gap=0.50)
+                    self._throw_capsule_singles_until_round_probe_gray(
+                        combo_high, config.use_foreground, probe_model=probe_for_throw
+                    )
                     self._emit(
-                        f"🎯 回合{round_idx} 捕捉：高级（combo×2）{slot_info}",
+                        f"🎯 回合{round_idx} 捕捉：高级（combo 单击直至探针灰）{slot_info}",
                         "INFO",
                     )
                     self._last_action = LastActionType.CAPSULE
@@ -1695,12 +1756,10 @@ class UnifiedBattleFramework:
                     self._emit("⚠️ 确认按钮不存在", "WARN")
                     break
             else:
-                # 如果不再是1 AND 1（探针消失），且已经点击过至少一次，结束等待
+                # 至少点过一次后，单次采样非双探针即判定消失（无多帧防抖）
                 if has_clicked_at_least_once:
                     self._emit("✅ 1 AND 1 已消失，结束循环点击", "SUCCESS")
                     return
-                # ✅ 如果从未点击过，继续循环等待（直到超时或检测到1 AND 1）
-                # 不需要立即break，让while循环的超时条件来处理
             
             time.sleep(0.05)  # 检测间隔（50ms）
         
@@ -1918,20 +1977,23 @@ class UnifiedBattleFramework:
             # ✅ 胶囊动作（捕捉）：1 AND 1（必须出现过一次1 AND 1且直到消失）
             self._emit("🎣 检测到胶囊动作（捕捉），等待1 AND 1出现并直到消失", "INFO")
             self._wait_for_confirm_probes(
-                config, timeout_s=self.POST_BATTLE_CONFIRM_DIALOG_TIMEOUT_SEC
+                config,
+                timeout_s=self.POST_BATTLE_CONFIRM_DIALOG_TIMEOUT_SEC,
             )
             
         elif self._last_action == LastActionType.ESCAPE:
             # ✅ 逃跑动作：1 AND 1（必须出现过一次1 AND 1且直到消失）
             self._emit("🏃 检测到逃跑动作，等待1 AND 1出现并直到消失", "INFO")
             self._wait_for_confirm_probes(
-                config, timeout_s=self.POST_BATTLE_CONFIRM_DIALOG_TIMEOUT_SEC
+                config,
+                timeout_s=self.POST_BATTLE_CONFIRM_DIALOG_TIMEOUT_SEC,
             )
         else:
             # 未知动作类型，默认进入1 AND 1检测
             self._emit("⚠️ 未知动作类型，默认进入1 AND 1检测", "WARN")
             self._wait_for_confirm_probes(
-                config, timeout_s=self.POST_BATTLE_CONFIRM_DIALOG_TIMEOUT_SEC
+                config,
+                timeout_s=self.POST_BATTLE_CONFIRM_DIALOG_TIMEOUT_SEC,
             )
         
         # ✅ 已禁用：战后电池检测触发刷新重连（按需求完全关闭）
@@ -2008,7 +2070,11 @@ class UnifiedBattleFramework:
             is_hero_tower: 是否为勇者之塔模式（影响Stage 4的流程）
         
         返回: True=成功完成，False=失败或中止
+        
+        失败时写入 self._last_run_battle_failure_stage，供训练室 Stage2 入战重试判断：
+        stage2 | stage3 | stage4 | stage1 | exception
         """
+        self._last_run_battle_failure_stage = None
         try:
             self._start_kernel_listen()
             self._last_action = None
@@ -2021,6 +2087,7 @@ class UnifiedBattleFramework:
                 self._emit(f"✅ Stage 1: 触发坐标 ({trigger_xy[0]:.0f}, {trigger_xy[1]:.0f})", "SUCCESS")
             else:
                 self._emit("❌ Stage 1: 未提供trigger_callback", "ERROR")
+                self._last_run_battle_failure_stage = "stage1"
                 return False
             
             # Stage 2: 校准和PetItem检测（传入trigger_callback以便重新触发，传入config以便检测到PetItem时执行第一回合）
@@ -2034,27 +2101,32 @@ class UnifiedBattleFramework:
             
             if not success:
                 self._emit("❌ Stage 2 失败，跳过本次对战", "WARN")
+                self._last_run_battle_failure_stage = "stage2"
                 return False
             
             # Stage 3: 战斗循环
             battle_success = self.stage3_battle_loop(config)
             if not battle_success:
                 self._emit("❌ Stage 3 中止或失败", "WARN")
+                self._last_run_battle_failure_stage = "stage3"
                 return False
             
             # Stage 4: 战斗结束处理（内部已包含训练室模式的3s等待）
             post_success = self.stage4_post_battle(config, is_training_room=is_training_room, is_hero_tower=is_hero_tower)
             if not post_success:
                 self._emit("❌ Stage 4 处理失败", "WARN")
+                self._last_run_battle_failure_stage = "stage4"
                 return False
             
             self._emit(f"✅ 对战完成（总回合数: {self._round_idx}）", "SUCCESS")
+            self._last_run_battle_failure_stage = None
             return True
             
         except Exception as e:
             self._emit(f"💥 对战流程异常: {e}", "ERROR")
             import traceback
             self._emit(traceback.format_exc(), "ERROR")
+            self._last_run_battle_failure_stage = "exception"
             return False
         finally:
             self._stop_kernel_listen()

@@ -35,6 +35,7 @@ class TrainingLevelRunner:
     CLICK_BATTLE_KEYS = ["训练室.点击对战", "训练室.点击对战.按钮", "训练室.对战"]
 
     CONNECT_SCRIPT_FILENAME = "训练室连接.json"  # 放在 fix_script 下
+    CLOSE_PROFILE_SCRIPT_FILENAME = "关闭资料.json"  # Stage2 入战失败时执行后再重试入战
     LEVEL_KEY_CONTAINS = "我方精灵等级"          # assets/regions/对战信息/我方精灵等级.json
 
     def __init__(self, bot, regions, template_root: str, battle_runner: Optional[BattleRunner] = None, use_unified_framework: bool = True):
@@ -211,6 +212,49 @@ class TrainingLevelRunner:
         time.sleep(3.0)
         # bg_override=None => 使用脚本每步自己的 bg（没有 bg 就默认后台，兼容 script_record 输出）
         return ok
+
+    def _run_close_profile_script(self) -> bool:
+        """执行关闭资料脚本（fix_script/关闭资料.json），用于资料面板遮挡导致入战失败时清理 UI。"""
+        script_path = os.path.join(self.bot.project_root, "fix_script", self.CLOSE_PROFILE_SCRIPT_FILENAME)
+        if not os.path.exists(script_path):
+            self.bot.emit_and_log(f"⚠ 未找到关闭资料脚本，跳过：{script_path}", "WARN")
+            return False
+        if not hasattr(self.bot, "daily_runner"):
+            self.bot.emit_and_log("⚠ bot.daily_runner 不存在，无法执行关闭资料脚本", "WARN")
+            return False
+        self.bot.emit_and_log(f"📋 执行关闭资料脚本：{self.CLOSE_PROFILE_SCRIPT_FILENAME}", "SYSTEM")
+        ok = self.bot.daily_runner.run_script(script_path, bg_override=None)
+        time.sleep(0.35)
+        return ok
+
+    def _run_training_battle_with_stage2_entry_retry(self, config: BattleConfig) -> bool:
+        """
+        训练室单场：若 Stage2（PetItem/入战）失败则先跑关闭资料脚本，再整局重试，直到入战成功或中止。
+        非 stage2 失败不重试（避免掩盖 Stage3/4 问题）。
+        """
+        attempt = 0
+        while True:
+            if getattr(self.bot, "stop_current", False):
+                self.bot.emit_and_log("⛔ 训练室：检测到中止，停止入战重试", "WARN")
+                return False
+            attempt += 1
+            success = self.unified_framework.run_battle(config, is_training_room=True)
+            if success:
+                if attempt > 1:
+                    self.bot.emit_and_log(f"✅ 训练室入战成功（第 {attempt} 次尝试）", "SUCCESS")
+                return True
+            stage = getattr(self.unified_framework, "_last_run_battle_failure_stage", None)
+            if stage != "stage2":
+                self.bot.emit_and_log(
+                    f"⚠️ 对战未成功结束（failure_stage={stage or 'unknown'}），不执行关闭资料重试",
+                    "WARN",
+                )
+                return False
+            self.bot.emit_and_log(
+                f"⚠️ Stage2 入战失败（第 {attempt} 次）：执行「{self.CLOSE_PROFILE_SCRIPT_FILENAME}」后重试整场对战",
+                "WARN",
+            )
+            self._run_close_profile_script()
 
     # -------------------------
     # stage0
@@ -414,7 +458,7 @@ class TrainingLevelRunner:
                         abort_check=lambda: getattr(self.bot, "stop_current", False),
                     )
                     
-                    success = self.unified_framework.run_battle(config, is_training_room=True)
+                    success = self._run_training_battle_with_stage2_entry_retry(config)
                     if not success:
                         self.bot.emit_and_log("⚠️ 对战失败或跳过", "WARN")
                     

@@ -113,6 +113,7 @@ HV_SAMPLES_PATH = os.path.join(BASE_PATH, "hv_samples")
 BASELINE_DATA_PATH = os.path.join(BASE_PATH, "baseline_data")
 
 # 10. 日常任务脚本顺序（fix_script 内文件名，无 .json 后缀）
+# 一键日常：勾选「勇者之塔×2」时跑 1–6；不勾选时跑 1–5（自动跳过 6）
 DAILY_SEQUENCE = [
-    "1", "2", "3", "4", "5"
+    "1", "2", "3", "4", "5", "6",
 ]

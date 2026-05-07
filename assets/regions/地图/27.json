@@ -1,0 +1,19 @@
+{
+    "key": "纯净能量二.to一",
+    "category": "纯净能量二",
+    "name": "27",
+    "shape": "polygon",
+    "points": [
+        [727, 68],
+        [729, 68],
+        [729, 70],
+        [727, 70]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-04-29",
+        "desc": "从26进27：与 纯净能量二/to一.json（key 纯净能量二.to一）一致"
+    }
+}

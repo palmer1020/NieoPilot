@@ -18,6 +18,9 @@ from core.kernel_log_match import (
     RE_MAP_PATH_LOOSE,
 )
 
+# 勇者之塔：独立按钮与一键日常后续的默认对战场数（原 10）。
+DEFAULT_HERO_TOWER_BATTLES = 2
+
 # 优先用 config 里的 BASE_PATH / DAILY_SEQUENCE（如果没有也能兜底）
 try:
     from config import BASE_PATH, DAILY_SEQUENCE
@@ -44,7 +47,7 @@ class DailyRunner:
        step: {"pos":[x,y],"delay":..,"bg": true/false}
 
     ✅ 给 BotWorker 使用的 API：
-    - run_all(background_mode=True)
+    - run_all(background_mode=True, include_hero_tower_after_daily=False)
     - run_single_script(name, bg_mode=True)
     - run_script(script_path, bg_override=None)
     """
@@ -60,13 +63,29 @@ class DailyRunner:
     # ----------------------------
     # BotWorker 会调用的两个方法
     # ----------------------------
-    def run_all(self, background_mode: bool = True, sequence: Optional[List[str]] = None) -> bool:
+    def run_all(
+        self,
+        background_mode: bool = True,
+        sequence: Optional[List[str]] = None,
+        include_hero_tower_after_daily: bool = False,
+    ) -> bool:
         """
         执行 config.DAILY_SEQUENCE（或外部传入 sequence）中的脚本（不带 .json 也行）
         background_mode=True => 全部按后台执行（除非脚本里显式写 bg=false 且你不覆盖）
+        include_hero_tower_after_daily：勾选时执行 DAILY_SEQUENCE 含脚本「6」，并在日常后打勇者之塔两场再接 1v1×2；
+            不勾选（默认）只跑 1–5（从队列中去掉「6」），跳过勇者之塔，直接进入 1v1×2。
         """
         if sequence is None:
             sequence = list(DAILY_SEQUENCE or [])
+            if include_hero_tower_after_daily and not any(
+                str(s).strip() == "6" for s in sequence
+            ):
+                sequence = list(sequence) + ["6"]
+        else:
+            sequence = list(sequence)
+
+        if not include_hero_tower_after_daily:
+            sequence = [s for s in sequence if str(s).strip() != "6"]
 
         if not sequence:
             self._emit("⚠ DAILY_SEQUENCE 为空：没有可执行的日常脚本", "WARN")
@@ -82,35 +101,44 @@ class DailyRunner:
             ok = self.run_single_script(name, bg_mode=background_mode)
             ok_all = ok_all and ok
 
-        # ✅ 无论执行哪种 daily sequence，完成后都执行勇者之塔循环和后续任务
+        # ✅ 日常脚本完成后：可选勇者之塔两回合，再接 1v1x2 + 大乱斗x2
         if not self._should_abort() and ok_all:
             try:
-                self._emit("⏱ 日常任务完成：1s 后开始【勇者之塔】循环…", "SYSTEM")
-                time.sleep(1.0)
-                ok_tower = self.run_hero_tower(times=10, background_mode=background_mode, use_unified_framework=False)
-                ok_all = ok_all and ok_tower
-                
-                # ✅ 勇者之塔完成后，先点击"勇者之塔.离开"，等待7秒，再执行1v1x2和大乱斗x2
-                if not self._should_abort() and ok_tower:
-                    use_foreground = (not background_mode)
-                    regions = getattr(self.bot, "regions", None)
-                    
-                    if regions:
-                        # 点击"勇者之塔.离开"
+                use_foreground = (not background_mode)
+                regions = getattr(self.bot, "regions", None)
+                ok_tower = True
+
+                if include_hero_tower_after_daily:
+                    self._emit("⏱ 日常任务完成：1s 后开始【勇者之塔】循环…", "SYSTEM")
+                    time.sleep(1.0)
+                    ok_tower = self.run_hero_tower(
+                        times=DEFAULT_HERO_TOWER_BATTLES,
+                        background_mode=background_mode,
+                        use_unified_framework=False,
+                    )
+                    ok_all = ok_all and ok_tower
+
+                    # ✅ 勇者之塔完成后，先点击"勇者之塔.离开"，等待7秒，再执行后续
+                    if not self._should_abort() and ok_tower and regions:
                         try:
                             self._emit("🖱 点击：勇者之塔.离开", "INFO")
                             if self._click_region_safe(regions, "勇者之塔.离开", use_foreground):
-                                # 等待7秒
                                 self._emit("⏳ 等待7秒...", "INFO")
                                 time.sleep(7.0)
                             else:
                                 self._emit("⚠️ 点击勇者之塔.离开失败，但继续执行", "WARN")
                         except Exception as e:
                             self._emit(f"⚠️ 点击勇者之塔.离开异常: {e}，但继续执行", "WARN")
-                    
-                    # 等待3秒后执行1v1x2
+
+                    tail_ready = bool(ok_tower and ok_all and not self._should_abort())
+                    tail_intro = "⏱ 勇者之塔完成：3s 后开始【1v1x2】…"
+                else:
+                    tail_ready = bool(ok_all and not self._should_abort())
+                    tail_intro = "⏱ 日常完成：跳过勇者之塔，3s 后开始【1v1x2】…"
+
+                if tail_ready:
                     try:
-                        self._emit("⏱ 勇者之塔完成：3s 后开始【1v1x2】…", "SYSTEM")
+                        self._emit(tail_intro, "SYSTEM")
                         time.sleep(3.0)
                         if not self._should_abort():
                             ok_1v1 = self.run_1v1_x2(use_foreground=use_foreground)
@@ -118,8 +146,7 @@ class DailyRunner:
                     except Exception as e:
                         self._emit(f"💥 1v1x2异常: {e}", "ERROR")
                         ok_all = False
-                    
-                    # 等待3秒后执行大乱斗x2
+
                     if not self._should_abort() and ok_all:
                         try:
                             self._emit("⏱ 1v1x2完成：3s 后开始【大乱斗x2】…", "SYSTEM")
@@ -131,7 +158,7 @@ class DailyRunner:
                             self._emit(f"💥 大乱斗x2异常: {e}", "ERROR")
                             ok_all = False
             except Exception as e:
-                self._emit(f"💥 勇者之塔循环异常: {e}", "ERROR")
+                self._emit(f"💥 日常后续流程异常: {e}", "ERROR")
                 ok_all = False
 
         return ok_all
@@ -139,7 +166,7 @@ class DailyRunner:
     # ----------------------------
     # 勇者之塔：循环对战 + 胜利清理
     # ----------------------------
-    def run_hero_tower(self, times: int = 10, background_mode: bool = True, use_unified_framework: bool = False) -> bool:
+    def run_hero_tower(self, times: int = DEFAULT_HERO_TOWER_BATTLES, background_mode: bool = True, use_unified_framework: bool = False) -> bool:
         """日常后续：勇者之塔循环 times 次。"""
         if not window_manager.find_window():
             self._emit("❌ 未检测到游戏窗口：无法执行勇者之塔", "ERROR")
@@ -1230,8 +1257,14 @@ class DailyRunner:
         self,
         loop_count: int = 10,
         use_foreground: bool = True,
+        *,
+        training_battle_mode: str = "leiyi",
     ) -> bool:
-        """雷伊特训：循环次数由输入框决定，黄色=胜利退出，白色=失败后恢复继续，或达到最大循环退出"""
+        """雷伊特训 / 嘟嘟卡拉。
+        training_battle_mode:
+          - \"leiyi\": loop_count 由输入框（1–999）；特训.1/2；战斗 4→2→1→3；白失败点特训.3 再恢复；黄探针胜利结束。
+          - \"dudukala\": 无限循环直至黄探针胜利或 stop；嘟嘟卡拉1/2 入战；战斗每回合仅技能一；
+            退场以「最近一次出手之后」kernel 的 map+newNpc 为准；白失败不点特训.3，直接恢复；loop_count 忽略。"""
         if not window_manager.find_window():
             self._emit("❌ 未检测到游戏窗口：无法执行雷伊特训", "ERROR")
             return False
@@ -1247,81 +1280,132 @@ class DailyRunner:
         if self._unified_framework is None:
             self._unified_framework = UnifiedBattleFramework(self.bot, regions, TEMPLATES_PATH)
 
-        loop_count = max(1, min(999, loop_count))
-        self._emit(f"⚡ 雷伊特训：最多 {loop_count} 次循环（黄=胜利退出，白=失败恢复）", "SYSTEM")
+        mode = (training_battle_mode or "leiyi").strip().lower()
+        if mode not in ("leiyi", "dudukala"):
+            mode = "leiyi"
 
-        for loop_idx in range(loop_count):
-            if self._should_abort():
-                self._emit("⛔ 雷伊特训中止（stop_current）", "SYSTEM")
-                return False
+        if mode == "dudukala":
+            self._emit(
+                "🎪 嘟嘟卡拉：无限循环，仅在黄色胜利探针时结束（或点停止）；"
+                "每场每回合技能一；每次出手后重认 kernel map+newNpc；白探针则恢复再继续；无特训.3",
+                "SYSTEM",
+            )
+            loop_count = 0  # unused
+        else:
+            loop_count = max(1, min(999, loop_count))
+            self._emit(f"⚡ 雷伊特训：最多 {loop_count} 次循环（黄=胜利退出，白=失败恢复）", "SYSTEM")
 
-            self._emit(f"⚡ 雷伊特训：第 {loop_idx + 1}/{loop_count} 轮", "SYSTEM")
+        entry_key = "特训.嘟嘟卡拉1" if mode == "dudukala" else "特训.1"
+        trigger_key = "特训.嘟嘟卡拉2" if mode == "dudukala" else "特训.2"
+        label = "嘟嘟卡拉" if mode == "dudukala" else "雷伊特训"
 
-            # 1. 单击 特训.1
-            self._emit("🖱 点击：特训.1", "INFO")
-            if not self._click_region_safe(regions, "特训.1", use_foreground):
-                self._emit("❌ 点击特训.1失败", "ERROR")
-                return False
+        def _do_single_training_round(loop_display: str) -> str:
+            """返回 \"yellow_win\" | \"white_retry\" | \"fatal\" | \"aborted\""""
+            self._emit(loop_display, "SYSTEM")
+
+            # 1. 单击入口区域
+            self._emit(f"🖱 点击：{entry_key}", "INFO")
+            if not self._click_region_safe(regions, entry_key, use_foreground):
+                self._emit(f"❌ 点击 {entry_key} 失败", "ERROR")
+                return "fatal"
+
             time.sleep(0.5)
 
-            # 2. 使用训练室校准逻辑：skip_stage1=False + trigger_callback，校准成功时自动重点 特训.2
-            def _trigger_leiyi_2():
-                r = regions.get("特训.2")
+            # 2. 训练室校准：校准成功时自动重触发第二个点
+            def _trigger_second():
+                r = regions.get(trigger_key)
                 if not r:
-                    raise KeyError("找不到区域：特训.2")
+                    raise KeyError(f"找不到区域：{trigger_key}")
                 x1, y1, x2, y2 = r.inner_bbox()
                 return ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
 
-            self._emit("⏳ 等待校准直到 PetItem 出现（训练室逻辑：校准成功后自动重点 特训.2）...", "INFO")
+            self._emit(
+                f"⏳ 等待校准直到 PetItem 出现（校准成功后自动重点 {trigger_key}）...",
+                "INFO",
+            )
             success, _ = self._unified_framework.stage2_calibration_and_petitem(
-                trigger_callback=_trigger_leiyi_2,
+                trigger_callback=_trigger_second,
                 use_foreground=use_foreground,
                 timeout_s=60.0,
-                skip_stage1=False,  # 使用训练室校准逻辑，校准成功时重点 特训.2
+                skip_stage1=False,
             )
             if not success:
                 self._emit("❌ 等待 PetItem 或校准失败", "ERROR")
-                return False
+                return "fatal"
 
-            # 4. 战斗循环：技能 4→2→1→3，记录结束回合
-            round_at_end = self._run_leiyi_battle_loop(regions, use_foreground)
+            rs = 1 if mode == "dudukala" else None
+            round_at_end = self._run_leiyi_battle_loop(
+                regions, use_foreground, repeat_skill=rs
+            )
             if round_at_end is None:
-                self._emit("❌ 雷伊特训战斗循环失败或被中止", "ERROR")
-                return False
+                if self._should_abort():
+                    return "aborted"
+                self._emit("❌ 对战特训战斗循环失败", "ERROR")
+                return "fatal"
 
-            # 5. 等待 UI 稳定
             self._emit("⏳ 等待 UI 稳定（2.5秒）...", "INFO")
             time.sleep(2.5)
 
-            # 6. 检测胜利探针（1-3 回合必为白，4 回合需区分黄/白）
             self._emit("🟡 检测胜利探针...", "INFO")
             probe_result = self._detect_victory_probe_result(cleaner, use_foreground, timeout_s=8.0)
             if probe_result is None:
                 self._emit("❌ 未检测到胜利探针（超时）", "ERROR")
-                return False
+                return "fatal"
 
-            # 7. 点击确认
             self._emit("🖱 点击：对话框.对战胜利确认", "INFO")
             if not self._click_region_safe(regions, "对话框.对战胜利确认", use_foreground):
                 self._emit("❌ 点击胜利确认失败", "ERROR")
-                return False
+                return "fatal"
 
-            # 8. 黄色=胜利 → 退出
             if probe_result == "yellow":
-                self._emit("🏆 雷伊特训：胜利（黄色探针），结束任务", "SUCCESS")
-                return True
+                self._emit(f"🏆 {label}：胜利（黄色探针），结束任务", "SUCCESS")
+                return "yellow_win"
 
-            # 9. 白色=失败 → 点击特训.3 清理弹窗 → 恢复精灵一 → 下一轮
-            self._emit("❌ 本局失败（白色探针），清理弹窗并恢复精灵", "INFO")
+            self._emit("❌ 本局失败（白色探针），恢复精灵", "INFO")
             time.sleep(1.0)
-            self._emit("🖱 点击：特训.3（清理失败弹窗）", "INFO")
-            if not self._click_region_safe(regions, "特训.3", use_foreground):
-                self._emit("⚠️ 点击特训.3失败，继续尝试恢复", "WARN")
-            time.sleep(0.5)
+            if mode == "leiyi":
+                self._emit("🖱 点击：特训.3（清理失败弹窗）", "INFO")
+                if not self._click_region_safe(regions, "特训.3", use_foreground):
+                    self._emit("⚠️ 点击特训.3失败，继续尝试恢复", "WARN")
+                time.sleep(0.5)
             self._emit("🩹 恢复精灵一...", "INFO")
             if not self._recover_pet_one(regions, use_foreground):
                 self._emit("⚠️ 恢复精灵一失败，继续下一轮", "WARN")
             time.sleep(0.5)
+            return "white_retry"
+
+        if mode == "dudukala":
+            rnd = 0
+            while not self._should_abort():
+                rnd += 1
+                sub = _do_single_training_round(
+                    f"🎪 {label}：第 {rnd} 轮（无限直至黄探针胜利或停止）"
+                )
+                if sub == "yellow_win":
+                    return True
+                if sub in ("fatal", "aborted"):
+                    if sub == "aborted":
+                        self._emit("⛔ 嘟嘟卡拉中止（stop_current）", "SYSTEM")
+                    return False
+                # white_retry → continue
+
+            self._emit("⛔ 嘟嘟卡拉中止（stop_current）", "SYSTEM")
+            return False
+
+        # 雷伊：固定次数循环
+        for idx in range(loop_count):
+            if self._should_abort():
+                self._emit("⛔ 对战特训中止（stop_current）", "SYSTEM")
+                return False
+            sub = _do_single_training_round(f"⚡ {label}：第 {idx + 1}/{loop_count} 轮")
+            if sub == "yellow_win":
+                return True
+            if sub == "fatal":
+                return False
+            if sub == "aborted":
+                self._emit("⛔ 对战特训中止（stop_current）", "SYSTEM")
+                return False
+            # white_retry → continue
 
         self._emit(f"✅ 雷伊特训：已完成 {loop_count} 次循环", "SUCCESS")
         return True
@@ -1557,9 +1641,17 @@ class DailyRunner:
             time.sleep(0.05)
 
     def _run_leiyi_battle_loop(
-        self, regions, use_foreground: bool
+        self,
+        regions,
+        use_foreground: bool,
+        *,
+        repeat_skill: Optional[int] = None,
+        max_skill_uses: Optional[int] = None,
     ) -> Optional[int]:
-        """雷伊特训战斗循环：技能顺序 4→2→1→3，返回战斗结束时的回合数，None 表示失败/中止"""
+        """雷伊特训战斗循环：默认技能顺序 4→2→1→3。
+        repeat_skill 若指定（如 1）：每检测到可出手则点该技能；出手后以带数字 id 的 map swf（如 path=resource\\map\\429.swf）
+        判定退场即可，无需 newNpc。雷伊特训（无 repeat_skill）：仍为 map + newNpc。
+        返回战斗结束时的回合计（内部计数），None 表示失败/中止。"""
         from core.logger import fetch_kernel_since, kernel_cursor
 
         battle_runner = getattr(self.bot, "battle_runner", None)
@@ -1574,11 +1666,32 @@ class DailyRunner:
         cursor = kernel_cursor()
         map_seen = False
         npc_seen = False
+        # 特训/嘟嘟卡拉：退场常只有 path=resource\map\{id}.swf，没有 newNpc 行。
+        reload_map_swf_seen = False
+        reload_map_mid: Optional[int] = None
 
         last_probe_state = "UNKNOWN"
         round_idx = 0
 
-        self._emit("⚔️ 雷伊特训战斗循环：技能顺序 4→2→1→3", "INFO")
+        skill_uses_done = 0
+        skill_cap = max_skill_uses if max_skill_uses is not None and max_skill_uses > 0 else None
+
+        def _mark_battle_exit_window_after_skill() -> None:
+            """清掉入局前残留的 map/newNpc，并从当前 kernel 末尾只认「出过招之后」的行。"""
+            nonlocal cursor, map_seen, npc_seen, reload_map_swf_seen, reload_map_mid
+            map_seen = False
+            npc_seen = False
+            reload_map_swf_seen = False
+            reload_map_mid = None
+            cursor = kernel_cursor()
+
+        if repeat_skill is not None:
+            if repeat_skill not in (1, 2, 3, 4):
+                repeat_skill = 1
+            cap_txt = "" if skill_cap is None else f"（最多出手{skill_cap}次）"
+            self._emit(f"⚔️ 战斗循环：每回合技能{repeat_skill}{cap_txt}", "INFO")
+        else:
+            self._emit("⚔️ 雷伊特训战斗循环：技能顺序 4→2→1→3", "INFO")
 
         while True:
             if self._should_abort():
@@ -1586,18 +1699,35 @@ class DailyRunner:
 
             self._wait_if_paused()
 
-            # 检测 map+newNPC（战斗结束）
+            # 检测退场：repeat_skill（嘟嘟卡拉等）常以单条 resource\map\{id}.swf 收场；雷伊特训仍要 map+newNpc。
             try:
                 lines = fetch_kernel_since(cursor)
                 if isinstance(lines, list):
+                    ever_acted = skill_uses_done > 0 or round_idx > 0
                     for line in lines:
                         line_str = str(line)
+                        if ever_acted:
+                            pid = first_map_id_in_line(line_str)
+                            if pid is not None:
+                                reload_map_swf_seen = True
+                                reload_map_mid = pid
                         if _kernel_line_has_any_map(line_str):
                             map_seen = True
                         if line_matches(RE_NEWNPC_MULTI, line_str):
                             npc_seen = True
-                        if map_seen and npc_seen:
-                            self._emit(f"🏁 战斗结束（第 {round_idx} 回合后）", "SUCCESS")
+                    if ever_acted:
+                        if repeat_skill is not None and reload_map_swf_seen:
+                            extra = f" id={reload_map_mid}" if reload_map_mid is not None else ""
+                            self._emit(
+                                f"🏁 战斗结束（退场 resource/map/*.swf{extra}，第 {round_idx} 回合后）",
+                                "SUCCESS",
+                            )
+                            return round_idx
+                        if repeat_skill is None and map_seen and npc_seen:
+                            self._emit(
+                                f"🏁 战斗结束（map+newNpc，第 {round_idx} 回合后）",
+                                "SUCCESS",
+                            )
                             return round_idx
                 cursor = kernel_cursor()
             except Exception:
@@ -1605,24 +1735,56 @@ class DailyRunner:
 
             state, _, _ = self._unified_framework._detect_round_probe(probe_model)
 
-            # ✅ 首次进入时探针可能已是 BLUE（第一回合已就绪），需立即执行技能 4
-            if round_idx == 0 and state == "BLUE":
-                skill_num = skill_order[0]
-                skill_key = f"对战.使用技能{skill_names[skill_num - 1]}"
-                self._emit(f"🎯 第 1 回合：使用技能{skill_num}（探针已蓝，立即执行）", "INFO")
-                if not self._click_region_safe(regions, skill_key, use_foreground):
-                    return None
-                time.sleep(0.1)
-                round_idx += 1
-            elif last_probe_state == "GRAY" and state == "BLUE":
-                if round_idx < len(skill_order):
-                    skill_num = skill_order[round_idx]
-                    skill_key = f"对战.使用技能{skill_names[skill_num - 1]}"
-                    self._emit(f"🎯 第 {round_idx + 1} 回合：使用技能{skill_num}", "INFO")
-                    if not self._click_region_safe(regions, skill_key, use_foreground):
+            def _exec_skill(skill_num: int) -> bool:
+                sk = f"对战.使用技能{skill_names[skill_num - 1]}"
+                return self._click_region_safe(regions, sk, use_foreground)
+
+            if repeat_skill is not None:
+                can_cast = skill_cap is None or skill_uses_done < skill_cap
+                if can_cast and round_idx == 0 and state == "BLUE":
+                    self._emit(
+                        f"🎯 第 1 回合：使用技能{repeat_skill}（探针已蓝，立即执行）",
+                        "INFO",
+                    )
+                    if not _exec_skill(repeat_skill):
                         return None
+                    _mark_battle_exit_window_after_skill()
+                    time.sleep(0.1)
+                    skill_uses_done += 1
+                    round_idx += 1
+                elif can_cast and last_probe_state == "GRAY" and state == "BLUE":
+                    self._emit(f"🎯 第 {round_idx + 1} 回合：使用技能{repeat_skill}", "INFO")
+                    if not _exec_skill(repeat_skill):
+                        return None
+                    _mark_battle_exit_window_after_skill()
+                    time.sleep(0.1)
+                    skill_uses_done += 1
+                    round_idx += 1
+            else:
+                # ✅ 首次进入时探针可能已是 BLUE（第一回合已就绪），需立即执行技能 4
+                if round_idx == 0 and state == "BLUE":
+                    skill_num = skill_order[0]
+                    self._emit(
+                        f"🎯 第 1 回合：使用技能{skill_num}（探针已蓝，立即执行）",
+                        "INFO",
+                    )
+                    if not _exec_skill(skill_num):
+                        return None
+                    _mark_battle_exit_window_after_skill()
                     time.sleep(0.1)
                     round_idx += 1
+                elif last_probe_state == "GRAY" and state == "BLUE":
+                    if round_idx < len(skill_order):
+                        skill_num = skill_order[round_idx]
+                        self._emit(
+                            f"🎯 第 {round_idx + 1} 回合：使用技能{skill_num}",
+                            "INFO",
+                        )
+                        if not _exec_skill(skill_num):
+                            return None
+                        _mark_battle_exit_window_after_skill()
+                        time.sleep(0.1)
+                        round_idx += 1
 
             last_probe_state = state
             time.sleep(0.05)

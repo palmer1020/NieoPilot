@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import os
-import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -45,24 +44,9 @@ class Region:
         return self.outer_bbox()
 
     def sample_click_point(self) -> Tuple[float, float]:
+        """始终在 bbox 几何中心点击（不再在框内随机抽样）。"""
         x1, y1, x2, y2 = self.inner_bbox()
-
-        # random 点击：默认 true/false 都兼容
-        random_on = bool(self.click.get("random", True))
-        if not random_on:
-            return (x1 + x2) / 2, (y1 + y2) / 2
-
-        w = max(1.0, x2 - x1)
-        h = max(1.0, y2 - y1)
-
-        # 非常小的区域：直接点中心最稳
-        if w <= 2.0 and h <= 2.0:
-            return (x1 + x2) / 2, (y1 + y2) / 2
-
-        # 否则在 bbox 内均匀随机
-        gx = random.uniform(x1, x2)
-        gy = random.uniform(y1, y2)
-        return gx, gy
+        return (x1 + x2) / 2, (y1 + y2) / 2
 
 
 class RegionStore:
@@ -116,7 +100,8 @@ class RegionStore:
             if not pts:
                 continue
 
-            click = data.get("click") or {"random": True}
+            click_raw = data.get("click")
+            click: Dict[str, Any] = dict(click_raw) if isinstance(click_raw, dict) else {}
             meta_raw = data.get("meta")
             meta: Dict[str, Any] = dict(meta_raw) if isinstance(meta_raw, dict) else {}
 

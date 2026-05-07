@@ -6,7 +6,7 @@ import time
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QComboBox, QLabel,
     QPushButton, QTextEdit, QGroupBox, QCheckBox, QLineEdit, QDateTimeEdit, QInputDialog,
-    QButtonGroup, QRadioButton,
+    QMessageBox,
 )
 from PyQt6.QtGui import QDoubleValidator, QIntValidator
 from PyQt6.QtCore import QDateTime
@@ -15,6 +15,7 @@ from PyQt6.QtCore import pyqtSignal, Qt, QMetaObject, Q_ARG, QDateTime
 from core.utils import window_manager
 from gui.kernel_log_window import KernelLogWindow
 from core.logger import add_kernel_log_callback, remove_kernel_log_callback
+from core.daily_runner import DEFAULT_HERO_TOWER_BATTLES
 
 
 class Dashboard(QWidget):
@@ -64,6 +65,13 @@ class Dashboard(QWidget):
         )
         self.btn_clear_game_temp.clicked.connect(self.on_clear_game_temp_cache)
 
+        self.btn_delete_screenshots = QPushButton("🖼️ 删除截图")
+        self.btn_delete_screenshots.setToolTip(
+            "删除本项目 screenshots 目录下所有常见图片文件（png/jpg/gif/webp/bmp）；"
+            "保留目录结构与子文件夹。"
+        )
+        self.btn_delete_screenshots.clicked.connect(self.on_delete_screenshots)
+
         self.btn_refresh_trinity = QPushButton("🔄 刷新")
         self.btn_refresh_trinity.setToolTip(
             "三键刷新：刷新.设置 → 刷新.刷新 → 刷新.保存（与完整重连无关）。"
@@ -92,6 +100,7 @@ class Dashboard(QWidget):
 
         base_layout.addWidget(self.btn_launch)
         base_layout.addWidget(self.btn_clear_game_temp)
+        base_layout.addWidget(self.btn_delete_screenshots)
         base_layout.addWidget(self.btn_refresh_trinity)
         base_layout.addWidget(self.btn_debug)
         base_layout.addWidget(self.btn_script_recorder)
@@ -184,6 +193,13 @@ class Dashboard(QWidget):
         self.btn_run_daily = QPushButton("▶ 一键执行日常")
         self.btn_run_daily.clicked.connect(self.on_run_daily)
 
+        self.chk_daily_hero_tower = QCheckBox(f"勇者之塔×{DEFAULT_HERO_TOWER_BATTLES}")
+        self.chk_daily_hero_tower.setChecked(False)
+        self.chk_daily_hero_tower.setToolTip(
+            "勾选：跑日常脚本 1→2→3→4→5→6，再勇者之塔两场，再 1v1×2、大乱斗×2。\n"
+            "不勾选（默认）：只跑 1→2→3→4→5（跳过 6），跳过勇者之塔，再 1v1×2。"
+        )
+
         self.script_combo = QComboBox()
         self._load_fix_scripts()
 
@@ -201,6 +217,7 @@ class Dashboard(QWidget):
         self.chk_foreground.setChecked(False)
 
         row1.addWidget(self.btn_run_daily, 2)
+        row1.addWidget(self.chk_daily_hero_tower, 0)
         row1.addWidget(self.script_combo, 3)
         row1.addWidget(self.task_repeat_box, 0)
         row1.addWidget(self.btn_run_task, 1)
@@ -210,8 +227,8 @@ class Dashboard(QWidget):
         # 第二行：勇者之塔等（扭蛋已合并到上行）
         row2 = QHBoxLayout()
         
-        # 勇者之塔（固定10回合）
-        self.btn_hero_tower = QPushButton("🗼 勇者之塔（10回合）")
+        # 勇者之塔（默认场数：DEFAULT_HERO_TOWER_BATTLES）
+        self.btn_hero_tower = QPushButton(f"🗼 勇者之塔（{DEFAULT_HERO_TOWER_BATTLES}场）")
         self.btn_hero_tower.clicked.connect(self.on_run_hero_tower)
 
         # 大乱斗x2
@@ -236,16 +253,32 @@ class Dashboard(QWidget):
         exp_layout = QHBoxLayout()
         self.btn_exp_minor_battle = QPushButton("小号对战")
         self.btn_exp_minor_battle.clicked.connect(self.on_run_exp_minor_battle)
-        self.btn_leiyi_training = QPushButton("⚡雷伊")
-        self.btn_leiyi_training.setToolTip("雷伊特训")
+        self.combo_training_battle_mode = QComboBox()
+        self.combo_training_battle_mode.addItem("雷伊特训", userData="leiyi")
+        self.combo_training_battle_mode.addItem("嘟嘟卡拉", userData="dudukala")
+        self.combo_training_battle_mode.setToolTip(
+            "雷伊特训：特训.1/2，4→2→1→3，次数由右侧输入框；黄探针胜利结束，否则白探针打点3后恢复，直至次数用完。\n"
+            "嘟嘟卡拉：嘟嘟卡拉1/2入战；无限直至黄探针胜利或停止；每回合技能一；每次出手后单独累计退场 map+newNpc；白探针不设上限，不打特训.3。"
+        )
+        self.btn_leiyi_training = QPushButton("⚔对战")
+        self.btn_leiyi_training.setToolTip(
+            "与左侧模式一并启动对战特训。"
+            "雷伊：遵循循环次数。"
+            "嘟嘟卡拉：无限循环，仅黄色胜利探针结束（或停止）。"
+        )
         self.btn_leiyi_training.clicked.connect(self.on_run_leiyi_training)
         self.leiyi_loop_box = QLineEdit()
-        self.leiyi_loop_box.setPlaceholderText("雷伊循环(默认10)")
-        self.leiyi_loop_box.setFixedWidth(100)
+        self.leiyi_loop_box.setPlaceholderText("循环(默认10)")
+        self.leiyi_loop_box.setFixedWidth(90)
+        self.combo_training_battle_mode.currentIndexChanged.connect(
+            lambda _idx: self._update_training_battle_loop_box_for_mode()
+        )
+        self._update_training_battle_loop_box_for_mode()
         self.btn_teixun_loop = QPushButton("🔄特训循环")
         self.btn_teixun_loop.setToolTip("特训循环（黄=1AND1，白=等待后直接恢复）")
         self.btn_teixun_loop.clicked.connect(self.on_run_teixun_loop)
         exp_layout.addWidget(self.btn_exp_minor_battle)
+        exp_layout.addWidget(self.combo_training_battle_mode)
         exp_layout.addWidget(self.btn_leiyi_training)
         exp_layout.addWidget(self.leiyi_loop_box)
         exp_layout.addWidget(self.btn_teixun_loop)
@@ -257,17 +290,12 @@ class Dashboard(QWidget):
         wild_group = QGroupBox("野外捕捉")
         wild_layout = QVBoxLayout()
 
-        row1 = QHBoxLayout()
-        self.btn_mantis = QPushButton("螳螂模式（122）")
-        self.btn_mantis.clicked.connect(self.start_mantis_capture)
-        row1.addWidget(self.btn_mantis)
-        wild_layout.addLayout(row1)
-
-        row2 = QHBoxLayout()
+        row_wild = QHBoxLayout()
         self.btn_rare = QPushButton("捕捉稀有精灵")
         self.btn_rare.clicked.connect(self.start_rare_capture)
 
         self.rare_combo = QComboBox()
+        self.rare_combo.addItem("螳螂（122 / map=11）", userData="mantis")
         self.rare_combo.addItem("嘟咕噜（254 / map=323）", userData="dugulu")
         self.rare_combo.addItem("双塔（102/143 / map=320）", userData="shuangta")
         self.rare_combo.addItem("小豆芽（27 / map=11）", userData="xiaodouya")
@@ -275,21 +303,34 @@ class Dashboard(QWidget):
         self.rare_combo.addItem("眼球（269 / map=60）", userData="eyeball")
         self.rare_combo.setCurrentIndex(self.rare_combo.findData("flash_pipi"))  # 默认选中闪光皮皮
 
-        # 闪光皮皮专用：轮换重连前置勾选框（仅选中闪光皮皮时可操作）
-        self.chk_flash_pipi_pre_rotation = QCheckBox("轮换重连前置（双塔精灵）")
-        self.chk_flash_pipi_pre_rotation.setChecked(False)
-        self.chk_flash_pipi_pre_rotation.setEnabled(False)  # 默认禁用，仅闪光皮皮时解锁
-        self._update_flash_pipi_pre_rotation_checkbox_state()
+        # 螳螂模式专用：测试模式（仅突变触发 + 全程超级胶囊，不使用无敌胶囊/MP3）
+        self.chk_mantis_test_super_only = QCheckBox("螳螂测试：仅突变+全程超级胶囊")
+        self.chk_mantis_test_super_only.setChecked(False)
+        self.chk_mantis_test_super_only.setEnabled(False)
+        self.chk_mantis_test_super_only.setToolTip(
+            "仅当选中「螳螂」时可用。勾选后：忽略 MP3 触发条件，只要扫描到突变即入战；"
+            "战斗中所有回合（含第一回合）只投超级精灵胶囊，不再使用无敌精灵胶囊。"
+        )
+
+        # 闪光皮皮 / 螳螂：同一条「轮换前置重连」（双塔精灵 → 按目标执行 to闪光皮皮 / to螳螂）
+        self.chk_rare_rotation_pre_reconnect = QCheckBox(
+            "轮换前置重连（双塔精灵；闪光皮皮→to闪光皮皮 / 螳螂→to螳螂）"
+        )
+        self.chk_rare_rotation_pre_reconnect.setChecked(False)
+        self.chk_rare_rotation_pre_reconnect.setEnabled(False)
+        self._update_rare_dependent_checkbox_state()
 
         def on_rare_combo_changed():
-            self._update_flash_pipi_pre_rotation_checkbox_state()
+            self._update_rare_dependent_checkbox_state()
+
         self.rare_combo.currentIndexChanged.connect(on_rare_combo_changed)
 
-        row2.addWidget(self.btn_rare)
-        row2.addWidget(QLabel("目标："))
-        row2.addWidget(self.rare_combo)
-        row2.addWidget(self.chk_flash_pipi_pre_rotation)
-        wild_layout.addLayout(row2)
+        row_wild.addWidget(self.btn_rare)
+        row_wild.addWidget(QLabel("目标："))
+        row_wild.addWidget(self.rare_combo, 1)
+        row_wild.addWidget(self.chk_mantis_test_super_only)
+        row_wild.addWidget(self.chk_rare_rotation_pre_reconnect)
+        wild_layout.addLayout(row_wild)
 
         # 智能追踪测试按钮（已隐藏，代码保留）
         # row3 = QHBoxLayout()
@@ -327,6 +368,12 @@ class Dashboard(QWidget):
         self.btn_nieo = QPushButton("🌊 启动尼奥模式")
         self.btn_nieo.clicked.connect(self.start_nieo_mode)
         row1.addWidget(self.btn_nieo)
+        self.combo_nieo_sub = QComboBox()
+        self.combo_nieo_sub.addItem("尼奥", "nieo")
+        self.combo_nieo_sub.addItem("纯净能量(资源)", "pure_energy")
+        self.combo_nieo_sub.setCurrentIndex(0)
+        self.combo_nieo_sub.setToolTip("与左侧按钮一起使用：选择尼奥 10/11 或 纯净能量 26/27 资源图")
+        row1.addWidget(self.combo_nieo_sub)
         nieo_layout.addLayout(row1)
         
         # 不捕捉尼尔勾选框（仅用于尼奥模式）
@@ -337,7 +384,23 @@ class Dashboard(QWidget):
         # 尼奥模式专用：前置重连勾选框（使用尼奥模式的三个精灵）
         self.chk_nieo_pre_rotation = QCheckBox("前置重连（尼奥三精灵）")
         self.chk_nieo_pre_rotation.setChecked(False)
+        self.chk_nieo_pre_rotation.setToolTip(
+            "先跑刷新登录→清背包→摆尼奥三只→跟随；最后一步取决于左侧下拉："
+            "尼奥 = to尼奥.json 直到 map11+newNPC；纯净能量 = to纯净能量.json 直到 map26+newNPC。"
+        )
         nieo_layout.addWidget(self.chk_nieo_pre_rotation)
+
+        # 尼奥模式专用：测试模式（按地图强制走尼尔家族切换流程：10→闪光艾菲亚，11→艾斯菲格）
+        self.chk_nieo_test_force_switch = QCheckBox(
+            "测试模式（10图全切闪光艾菲亚 / 11图全切艾斯菲格）"
+        )
+        self.chk_nieo_test_force_switch.setChecked(False)
+        self.chk_nieo_test_force_switch.setToolTip(
+            "勾选后：尼奥模式所有入战均按尼尔家族流程处理。"
+            "10号地图的所有遭遇切换到闪光艾菲亚（416路径），"
+            "11号地图的所有遭遇切换到艾斯菲格（77路径）。"
+        )
+        nieo_layout.addWidget(self.chk_nieo_test_force_switch)
         
         nieo_group.setLayout(nieo_layout)
         control_panel.addWidget(nieo_group)
@@ -380,75 +443,79 @@ class Dashboard(QWidget):
         control_panel.addWidget(pinnacle_group)
 
         # ---------- 双塔尼奥轮换模式（已替换原定时任务）----------
-        rotation_group = QGroupBox("🔄 双塔尼奥轮换模式（自动切换）")
+        rotation_group = QGroupBox("🔄 尼奥·稀有轮换（自动切换｜时间与原先一致）")
         rotation_layout = QVBoxLayout()
-        
-        row1 = QHBoxLayout()
+
+        rot_top = QHBoxLayout()
         self.btn_start_rotation = QPushButton("▶ 启动轮换模式")
         self.btn_start_rotation.clicked.connect(self.start_rotation_mode)
-        row1.addWidget(self.btn_start_rotation)
-        rotation_layout.addLayout(row1)
-        
-        # 测试模式复选框
-        self.chk_rotation_test_mode = QCheckBox("测试模式（固定时间间隔切换）")
-        self.chk_rotation_test_mode.setChecked(False)
-        rotation_layout.addWidget(self.chk_rotation_test_mode)
+        rot_top.addWidget(self.btn_start_rotation)
 
-        self._capsule_tier_label = QLabel("非螳螂对战胶囊单档（敌方含122时仍为无敌首回合+六档，不受此项影响）：")
-        self._capsule_tier_label.setWordWrap(True)
-        rotation_layout.addWidget(self._capsule_tier_label)
-        self._capsule_tier_group = QButtonGroup(self)
-        self.radio_cap_super = QRadioButton("仅超级精灵胶囊（默认）")
-        self.radio_cap_high = QRadioButton("仅高级精灵胶囊")
-        self.radio_cap_special = QRadioButton("仅特级精灵胶囊")
-        self.radio_cap_super.setChecked(True)
-        self.radio_cap_super.setToolTip("非敌方122时：捕捉阶段只投超级胶囊。")
-        self.radio_cap_high.setToolTip("非敌方122时：捕捉阶段只投高级胶囊。")
-        self.radio_cap_special.setToolTip("非敌方122时：捕捉阶段只投特级胶囊。")
-        self._capsule_tier_group.addButton(self.radio_cap_super, 0)
-        self._capsule_tier_group.addButton(self.radio_cap_high, 1)
-        self._capsule_tier_group.addButton(self.radio_cap_special, 2)
-        self._capsule_tier_radios = (self.radio_cap_super, self.radio_cap_high, self.radio_cap_special)
-        cap_tier_col = QVBoxLayout()
-        cap_tier_col.addWidget(self.radio_cap_super)
-        cap_tier_col.addWidget(self.radio_cap_high)
-        cap_tier_col.addWidget(self.radio_cap_special)
-        rotation_layout.addLayout(cap_tier_col)
-        
-        # 测试模式参数输入
-        row2 = QHBoxLayout()
-        row2.addWidget(QLabel("尼奥→双塔(分钟)："))
+        rot_top.addWidget(QLabel("非尼奥稀有："))
+        self.rotation_rare_combo = QComboBox()
+        self.rotation_rare_combo.addItem("双塔", "shuangta")
+        self.rotation_rare_combo.addItem("螳螂", "mantis")
+        self.rotation_rare_combo.setMinimumWidth(100)
+        self.rotation_rare_combo.setToolTip(
+            "北京时间非尼奥时段内跑所选稀有；尼奥时段仍为尼奥模式。"
+            "时间与原先一致（尼奥约 19:55–午夜前后，其余为所选稀有）。"
+        )
+        rot_top.addWidget(self.rotation_rare_combo)
+
+        self.chk_rotation_test_mode = QCheckBox("测试模式（固定间隔切换）")
+        self.chk_rotation_test_mode.setChecked(False)
+        rot_top.addWidget(self.chk_rotation_test_mode)
+
+        self._capsule_tier_label = QLabel("胶囊档位：")
+        self._capsule_tier_label.setToolTip(
+            "非螳螂 / 敌方非122：野外捕捉仅用所选一档；敌方含122 时仍为无敌首回合+六档循环。"
+        )
+        rot_top.addWidget(self._capsule_tier_label)
+        self.combo_cap_tier = QComboBox()
+        self.combo_cap_tier.addItem("超级（默认）", "super")
+        self.combo_cap_tier.addItem("高级", "high")
+        self.combo_cap_tier.addItem("特级", "special")
+        self.combo_cap_tier.setMinimumWidth(120)
+        self.combo_cap_tier.setToolTip(
+            "非敌方122时：捕捉阶段只使用该档胶囊；敌方含122 时仍按六档循环（与无敌首回合无关）。"
+        )
+        rot_top.addWidget(self.combo_cap_tier)
+        rot_top.addStretch()
+        rotation_layout.addLayout(rot_top)
+
+        interval_row = QHBoxLayout()
+        interval_row.addWidget(QLabel("尼奥→双塔(分钟)："))
         self.rotation_interval_minutes_nieo_input = QLineEdit()
         self.rotation_interval_minutes_nieo_input.setText("60")
         self.rotation_interval_minutes_nieo_input.setFixedWidth(70)
         self.rotation_interval_minutes_nieo_input.setValidator(QIntValidator(1, 1440))
-        row2.addWidget(self.rotation_interval_minutes_nieo_input)
-        
-        row2.addWidget(QLabel("双塔→尼奥(分钟)："))
+        interval_row.addWidget(self.rotation_interval_minutes_nieo_input)
+
+        interval_row.addWidget(QLabel("双塔→尼奥(分钟)："))
         self.rotation_interval_minutes_shuangta_input = QLineEdit()
         self.rotation_interval_minutes_shuangta_input.setText("60")
         self.rotation_interval_minutes_shuangta_input.setFixedWidth(70)
         self.rotation_interval_minutes_shuangta_input.setValidator(QIntValidator(1, 1440))
-        row2.addWidget(self.rotation_interval_minutes_shuangta_input)
-        
-        row2.addWidget(QLabel("硬线(秒)："))
+        interval_row.addWidget(self.rotation_interval_minutes_shuangta_input)
+
+        interval_row.addWidget(QLabel("硬线(秒)："))
         self.petswf_hard_limit_sec_input = QLineEdit()
         self.petswf_hard_limit_sec_input.setText("8")
         self.petswf_hard_limit_sec_input.setFixedWidth(70)
         self.petswf_hard_limit_sec_input.setValidator(QDoubleValidator(0.1, 60.0, 2))
-        row2.addWidget(self.petswf_hard_limit_sec_input)
-        row2.addStretch()
-        rotation_layout.addLayout(row2)
-        
+        interval_row.addWidget(self.petswf_hard_limit_sec_input)
+        interval_row.addStretch()
+        rotation_layout.addLayout(interval_row)
+
         self.chk_rotation_test_mode.stateChanged.connect(self._update_rotation_test_inputs_enabled)
         self._update_rotation_test_inputs_enabled()
-        
-        # 说明文字
-        info_label = QLabel("北京时间切换：尼奥 19:55–00:00 | 双塔 00:00–19:55")
-        info_label.setWordWrap(True)
+
+        info_label = QLabel(
+            "北京时间：尼奥时段约 19:55–00:00；其余时段为非尼奥稀有（见左侧下拉，默认双塔）"
+        )
         info_label.setStyleSheet("color: gray; font-size: 10px;")
         rotation_layout.addWidget(info_label)
-        
+
         rotation_group.setLayout(rotation_layout)
         control_panel.addWidget(rotation_group)
         
@@ -558,6 +625,57 @@ class Dashboard(QWidget):
             self.log_message(f"✅ 已删除 tmp：{tmp_dir}", "SUCCESS")
         except OSError as e:
             self.log_message(f"❌ 删除 tmp 失败（若游戏占用请先关闭）：{tmp_dir} | {e}", "ERROR")
+
+    def _project_root(self) -> str:
+        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def on_delete_screenshots(self):
+        ans = QMessageBox.question(
+            self,
+            "确认删除截图",
+            "将删除项目 screenshots 目录下所有常见图片文件（png / jpg / gif / webp / bmp），"
+            "子目录内也会清理。是否继续？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if ans != QMessageBox.StandardButton.Yes:
+            return
+        self.log_message("🗑 正在删除 screenshots 下的图片…", "SYSTEM")
+        threading.Thread(target=self._delete_screenshots_worker, daemon=True).start()
+
+    def _delete_screenshots_worker(self):
+        root = os.path.join(self._project_root(), "screenshots")
+        exts = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+        if not os.path.isdir(root):
+            self.log_message(f"ℹ 无 screenshots 目录，跳过：{root}", "INFO")
+            return
+        removed = 0
+        errors = 0
+        try:
+            for dirpath, _dirnames, filenames in os.walk(root):
+                for name in filenames:
+                    _base, ext = os.path.splitext(name)
+                    if ext.lower() not in exts:
+                        continue
+                    p = os.path.join(dirpath, name)
+                    try:
+                        os.remove(p)
+                        removed += 1
+                    except OSError:
+                        errors += 1
+        except OSError as e:
+            self.log_message(f"❌ 遍历 screenshots 失败：{root} | {e}", "ERROR")
+            return
+        if errors:
+            self.log_message(
+                f"⚠ 已删除 {removed} 个图片文件，{errors} 个删除失败（可能被占用）：{root}",
+                "WARN",
+            )
+        else:
+            self.log_message(
+                f"✅ 已删除 {removed} 个图片文件：{root}",
+                "SUCCESS",
+            )
 
     def on_refresh_trinity(self):
         self.btn_refresh_trinity.setEnabled(False)
@@ -707,21 +825,26 @@ class Dashboard(QWidget):
         tasks = {
             "daily_chain": True,
             "training_level": False,
-            "use_foreground": self.chk_foreground.isChecked()
+            "use_foreground": self.chk_foreground.isChecked(),
+            "daily_include_hero_tower": self.chk_daily_hero_tower.isChecked(),
         }
-        self.log_message("📅 启动日常任务", "SYSTEM")
+        if tasks["daily_include_hero_tower"]:
+            tail = "脚本1–6，勇者之塔→1v1×2"
+        else:
+            tail = "脚本1–5，跳过6与塔→1v1×2"
+        self.log_message(f"📅 启动日常任务（{tail}）", "SYSTEM")
         # ✅ 设置自动启动轮换模式的标志
         self._auto_start_rotation_after_daily = True
         self._lock_ui()
         self.start_signal.emit(tasks)
 
     def on_run_hero_tower(self):
-        """执行勇者之塔10回合"""
+        """执行勇者之塔（默认场次由引擎常量决定，当前为 2 场）"""
         tasks = {
             "hero_tower": True,
             "use_foreground": self.chk_foreground.isChecked(),
         }
-        self.log_message("🗼 启动勇者之塔：10回合", "SYSTEM")
+        self.log_message(f"🗼 启动勇者之塔：{DEFAULT_HERO_TOWER_BATTLES}场", "SYSTEM")
         self._lock_ui()
         self.start_signal.emit(tasks)
     
@@ -984,17 +1107,42 @@ class Dashboard(QWidget):
         self._lock_ui()
         self.start_signal.emit(tasks)
 
-    def on_run_leiyi_training(self):
-        try:
-            loop_txt = (self.leiyi_loop_box.text() or "").strip()
-            loop_count = 10 if loop_txt == "" else int(loop_txt)
-            if loop_count <= 0:
-                raise ValueError()
-            if loop_count > 999:
-                loop_count = 999
-        except Exception:
-            self.log_message("⚠ 雷伊特训：循环次数需为 1~999 的整数", "ERROR")
+    def _update_training_battle_loop_box_for_mode(self) -> None:
+        """嘟嘟卡拉无视循环次数输入，避免误解。"""
+        if not hasattr(self, "combo_training_battle_mode") or not hasattr(self, "leiyi_loop_box"):
             return
+        mode = self.combo_training_battle_mode.currentData() or "leiyi"
+        if mode == "dudukala":
+            self.leiyi_loop_box.setEnabled(False)
+            self.leiyi_loop_box.setPlaceholderText("嘟嘟卡拉不适用")
+            self.leiyi_loop_box.setToolTip("嘟嘟卡拉为无限循环，直至黄色胜利探针或手动停止。")
+        else:
+            self.leiyi_loop_box.setEnabled(True)
+            self.leiyi_loop_box.setPlaceholderText("循环(默认10)")
+            self.leiyi_loop_box.setToolTip("")
+
+    def on_run_leiyi_training(self):
+        mode = (
+            self.combo_training_battle_mode.currentData()
+            if hasattr(self, "combo_training_battle_mode")
+            else "leiyi"
+        ) or "leiyi"
+        if mode not in ("leiyi", "dudukala"):
+            mode = "leiyi"
+
+        loop_count = 10
+        if mode == "leiyi":
+            try:
+                loop_txt = (self.leiyi_loop_box.text() or "").strip()
+                loop_count = 10 if loop_txt == "" else int(loop_txt)
+                if loop_count <= 0:
+                    raise ValueError()
+                if loop_count > 999:
+                    loop_count = 999
+            except Exception:
+                self.log_message("⚠ 雷伊特训：循环次数需为 1~999 的整数", "ERROR")
+                return
+
         tasks = {
             "daily_chain": False,
             "gacha": False,
@@ -1002,10 +1150,15 @@ class Dashboard(QWidget):
             "training_level": False,
             "training_until_level": False,
             "leiyi_training": True,
+            "training_battle_mode": mode,
             "leiyi_loop_count": loop_count,
             "use_foreground": self.chk_foreground.isChecked()
         }
-        self.log_message(f"⚡ 启动雷伊特训：{loop_count} 次循环", "SYSTEM")
+        mode_label = "嘟嘟卡拉" if mode == "dudukala" else "雷伊特训"
+        if mode == "dudukala":
+            self.log_message(f"⚔ 启动{mode_label}（无限循环，直至黄探针胜利或停止）", "SYSTEM")
+        else:
+            self.log_message(f"⚔ 启动{mode_label}：{loop_count} 次循环", "SYSTEM")
         self._lock_ui()
         self.start_signal.emit(tasks)
 
@@ -1048,19 +1201,21 @@ class Dashboard(QWidget):
             self.btn_leiyi_training.setEnabled(False)
         if hasattr(self, "leiyi_loop_box"):
             self.leiyi_loop_box.setEnabled(False)
+        if hasattr(self, "combo_training_battle_mode"):
+            self.combo_training_battle_mode.setEnabled(False)
         if hasattr(self, "btn_teixun_loop"):
             self.btn_teixun_loop.setEnabled(False)
         self.btn_stop.setEnabled(True)
 
         # ✅ 新增：锁住野外捕捉按钮
-        if hasattr(self, "btn_mantis"):
-            self.btn_mantis.setEnabled(False)
         if hasattr(self, "btn_rare"):
             self.btn_rare.setEnabled(False)
         if hasattr(self, "rare_combo"):
             self.rare_combo.setEnabled(False)
-        if hasattr(self, "chk_flash_pipi_pre_rotation"):
-            self.chk_flash_pipi_pre_rotation.setEnabled(False)
+        if hasattr(self, "chk_rare_rotation_pre_reconnect"):
+            self.chk_rare_rotation_pre_reconnect.setEnabled(False)
+        if hasattr(self, "chk_mantis_test_super_only"):
+            self.chk_mantis_test_super_only.setEnabled(False)
         if hasattr(self, "btn_smart_tracking_test"):
             self.btn_smart_tracking_test.setEnabled(False)
 
@@ -1086,19 +1241,21 @@ class Dashboard(QWidget):
             self.btn_leiyi_training.setEnabled(False)
         if hasattr(self, "leiyi_loop_box"):
             self.leiyi_loop_box.setEnabled(False)
+        if hasattr(self, "combo_training_battle_mode"):
+            self.combo_training_battle_mode.setEnabled(False)
         if hasattr(self, "btn_teixun_loop"):
             self.btn_teixun_loop.setEnabled(False)
         self.btn_stop.setEnabled(True)
 
         # ✅ 新增：锁住野外捕捉按钮
-        if hasattr(self, "btn_mantis"):
-            self.btn_mantis.setEnabled(False)
         if hasattr(self, "btn_rare"):
             self.btn_rare.setEnabled(False)
         if hasattr(self, "rare_combo"):
             self.rare_combo.setEnabled(False)
-        if hasattr(self, "chk_flash_pipi_pre_rotation"):
-            self.chk_flash_pipi_pre_rotation.setEnabled(False)
+        if hasattr(self, "chk_rare_rotation_pre_reconnect"):
+            self.chk_rare_rotation_pre_reconnect.setEnabled(False)
+        if hasattr(self, "chk_mantis_test_super_only"):
+            self.chk_mantis_test_super_only.setEnabled(False)
         if hasattr(self, "btn_smart_tracking_test"):
             self.btn_smart_tracking_test.setEnabled(False)
         # 定时任务相关UI保持可用（允许与其他任务共存）
@@ -1111,10 +1268,12 @@ class Dashboard(QWidget):
         # ✅ 禁用轮换模式和尼奥模式的按钮和勾选框
         if hasattr(self, "btn_start_rotation"):
             self.btn_start_rotation.setEnabled(False)
+        if hasattr(self, "rotation_rare_combo"):
+            self.rotation_rare_combo.setEnabled(False)
         if hasattr(self, "chk_rotation_test_mode"):
             self.chk_rotation_test_mode.setEnabled(False)
-        for _w in getattr(self, "_capsule_tier_radios", ()):
-            _w.setEnabled(False)
+        if hasattr(self, "combo_cap_tier"):
+            self.combo_cap_tier.setEnabled(False)
         if hasattr(self, "_capsule_tier_label"):
             self._capsule_tier_label.setEnabled(False)
         if hasattr(self, "rotation_interval_minutes_nieo_input"):
@@ -1126,6 +1285,8 @@ class Dashboard(QWidget):
         
         if hasattr(self, "btn_nieo"):
             self.btn_nieo.setEnabled(False)
+        if hasattr(self, "combo_nieo_sub"):
+            self.combo_nieo_sub.setEnabled(False)
         if hasattr(self, "chk_skip_nie_77"):
             self.chk_skip_nie_77.setEnabled(False)
         for _b in ("btn_afk_normal", "btn_afk_defeat", "btn_afk_rare", "btn_afk_nieo"):
@@ -1154,19 +1315,22 @@ class Dashboard(QWidget):
             self.btn_leiyi_training.setEnabled(True)
         if hasattr(self, "leiyi_loop_box"):
             self.leiyi_loop_box.setEnabled(True)
+        if hasattr(self, "combo_training_battle_mode"):
+            self.combo_training_battle_mode.setEnabled(True)
         if hasattr(self, "btn_teixun_loop"):
             self.btn_teixun_loop.setEnabled(True)
         self.btn_stop.setEnabled(False)
 
-        if hasattr(self, "btn_mantis"):
-            self.btn_mantis.setEnabled(True)
+        if hasattr(self, "_update_training_battle_loop_box_for_mode"):
+            self._update_training_battle_loop_box_for_mode()
+
         if hasattr(self, "btn_rare"):
             self.btn_rare.setEnabled(True)
         if hasattr(self, "rare_combo"):
             self.rare_combo.setEnabled(True)
         if hasattr(self, "btn_smart_tracking_test"):
             self.btn_smart_tracking_test.setEnabled(True)
-        self._update_flash_pipi_pre_rotation_checkbox_state()  # 解锁时恢复勾选框状态（仅闪光皮皮时可操作）
+        self._update_rare_dependent_checkbox_state()  # 解锁后恢复螳螂/闪光皮皮相关勾选
         # 定时任务相关UI保持可用（允许与其他任务共存）
         # 不在这里解锁定时任务UI（因为从未锁定）
 
@@ -1186,18 +1350,22 @@ class Dashboard(QWidget):
             # ✅ 只有在不需要自动启动时，才重新启用轮换模式和尼奥模式的按钮和勾选框
             if hasattr(self, "btn_start_rotation"):
                 self.btn_start_rotation.setEnabled(True)
+            if hasattr(self, "rotation_rare_combo"):
+                self.rotation_rare_combo.setEnabled(True)
             if hasattr(self, "chk_rotation_test_mode"):
                 self.chk_rotation_test_mode.setEnabled(True)
                 # 根据测试模式复选框状态更新输入框状态
                 if hasattr(self, "_update_rotation_test_inputs_enabled"):
                     self._update_rotation_test_inputs_enabled()
-            for _w in getattr(self, "_capsule_tier_radios", ()):
-                _w.setEnabled(True)
+            if hasattr(self, "combo_cap_tier"):
+                self.combo_cap_tier.setEnabled(True)
             if hasattr(self, "_capsule_tier_label"):
                 self._capsule_tier_label.setEnabled(True)
             
             if hasattr(self, "btn_nieo"):
                 self.btn_nieo.setEnabled(True)
+            if hasattr(self, "combo_nieo_sub"):
+                self.combo_nieo_sub.setEnabled(True)
             if hasattr(self, "chk_skip_nie_77"):
                 self.chk_skip_nie_77.setEnabled(True)
             for _b in ("btn_afk_normal", "btn_afk_defeat", "btn_afk_rare", "btn_afk_nieo"):
@@ -1227,31 +1395,29 @@ class Dashboard(QWidget):
 
     def _capsule_task_kv(self) -> dict:
         """非螳螂对战：单档超级/高级/特级（敌方122 由 runner 单独走六档）。"""
-        if getattr(self, "radio_cap_high", None) and self.radio_cap_high.isChecked():
-            return {"non_mantis_capsule_tier": "high"}
-        if getattr(self, "radio_cap_special", None) and self.radio_cap_special.isChecked():
-            return {"non_mantis_capsule_tier": "special"}
-        return {"non_mantis_capsule_tier": "super"}
+        tier = "super"
+        combo = getattr(self, "combo_cap_tier", None)
+        if combo is not None:
+            d = combo.currentData()
+            if d in ("high", "special", "super"):
+                tier = d
+        return {"non_mantis_capsule_tier": tier}
 
-    def _update_flash_pipi_pre_rotation_checkbox_state(self):
-        """仅当选中闪光皮皮时解锁轮换重连前置勾选框"""
-        if hasattr(self, "chk_flash_pipi_pre_rotation") and hasattr(self, "rare_combo"):
-            is_flash_pipi = (self.rare_combo.currentData() or "") == "flash_pipi"
-            self.chk_flash_pipi_pre_rotation.setEnabled(is_flash_pipi)
-            if not is_flash_pipi:
-                self.chk_flash_pipi_pre_rotation.setChecked(False)
-
-    
-    def start_mantis_capture(self):
-        tasks = {
-            "wild_capture": True,
-            "wild_capture_profile": "mantis",
-            "use_foreground": self.chk_foreground.isChecked(),
-            **self._capsule_task_kv(),
-        }
-        self.log_message("🪲 启动螳螂模式（122）", "SYSTEM")
-        self._lock_ui()
-        self.start_signal.emit(tasks)
+    def _update_rare_dependent_checkbox_state(self):
+        """根据稀有目标下拉：螳螂测试 / 轮换前置重连（螳螂或闪光皮皮）等勾选框启用与重置。"""
+        if not hasattr(self, "rare_combo"):
+            return
+        sel = self.rare_combo.currentData() or ""
+        if hasattr(self, "chk_rare_rotation_pre_reconnect"):
+            ok_pre = sel in ("flash_pipi", "mantis")
+            self.chk_rare_rotation_pre_reconnect.setEnabled(ok_pre)
+            if not ok_pre:
+                self.chk_rare_rotation_pre_reconnect.setChecked(False)
+        if hasattr(self, "chk_mantis_test_super_only"):
+            ok_mantis = sel == "mantis"
+            self.chk_mantis_test_super_only.setEnabled(ok_mantis)
+            if not ok_mantis:
+                self.chk_mantis_test_super_only.setChecked(False)
 
     def start_rare_capture(self):
         profile = self.rare_combo.currentData() or "flash_pipi"
@@ -1259,13 +1425,29 @@ class Dashboard(QWidget):
             "wild_capture": True,
             "wild_capture_profile": profile,
             "use_foreground": self.chk_foreground.isChecked(),
-            # skip_nie_77 已移除，仅在尼奥模式中使用
         }
-        # 闪光皮皮专用：轮换重连前置（仅当勾选且选中闪光皮皮时传递）
-        if profile == "flash_pipi" and self.chk_flash_pipi_pre_rotation.isChecked():
+        if profile in ("flash_pipi", "mantis") and getattr(
+            self, "chk_rare_rotation_pre_reconnect", None
+        ) and self.chk_rare_rotation_pre_reconnect.isChecked():
             tasks["rare_rotation_reconnect_first"] = True
+        if profile == "mantis" and getattr(self, "chk_mantis_test_super_only", None):
+            tasks["mantis_test_super_only"] = bool(self.chk_mantis_test_super_only.isChecked())
         tasks.update(self._capsule_task_kv())
-        self.log_message(f"🧿 启动稀有精灵捕捉：{profile}", "SYSTEM")
+        labels = {
+            "mantis": "螳螂（122）",
+            "dugulu": "嘟咕噜",
+            "shuangta": "双塔",
+            "xiaodouya": "小豆芽",
+            "flash_pipi": "闪光皮皮",
+            "eyeball": "眼球",
+        }
+        label = labels.get(profile, profile)
+        sfx = ""
+        if profile == "mantis" and tasks.get("mantis_test_super_only"):
+            sfx = " [测试·仅突变+全程超级胶囊]"
+        if profile in ("mantis", "flash_pipi") and tasks.get("rare_rotation_reconnect_first"):
+            sfx += " [轮换前置重连]"
+        self.log_message(f"🧿 启动野外捕捉：{label}{sfx}", "SYSTEM")
         self._lock_ui()
         self.start_signal.emit(tasks)
 
@@ -1295,6 +1477,11 @@ class Dashboard(QWidget):
         hard_limit_sec = self._parse_float_with_default(
             self.petswf_hard_limit_sec_input.text(), 8.0
         )
+        rare_slot = "shuangta"
+        if hasattr(self, "rotation_rare_combo"):
+            rare_slot = self.rotation_rare_combo.currentData() or "shuangta"
+            if rare_slot not in ("shuangta", "mantis"):
+                rare_slot = "shuangta"
         return {
             "rotation_mode": True,
             "use_foreground": self.chk_foreground.isChecked(),
@@ -1302,15 +1489,21 @@ class Dashboard(QWidget):
             "rotation_interval_minutes_nieo": interval_minutes_nieo,
             "rotation_interval_minutes_shuangta": interval_minutes_shuangta,
             "petswf_hard_limit_sec": hard_limit_sec,
+            "rotation_rare_slot": rare_slot,
             **self._capsule_task_kv(),
         }
 
     def start_rotation_mode(self):
-        """启动双塔尼奥轮换模式"""
+        """启动尼奥·稀有轮换模式（时间窗不变）"""
         tasks = self._build_rotation_mode_tasks()
         is_test_mode = bool(tasks.get("rotation_test_mode"))
         mode_text = "测试模式（固定时间间隔切换）" if is_test_mode else "正式模式（根据北京时间自动切换）"
-        self.log_message(f"🔄 启动双塔尼奥轮换模式（{mode_text}）", "SYSTEM")
+        slot = tasks.get("rotation_rare_slot") or "shuangta"
+        rare_text = "双塔" if slot == "shuangta" else "螳螂"
+        self.log_message(
+            f"🔄 启动轮换模式（{mode_text}；非尼奥稀有={rare_text}）",
+            "SYSTEM",
+        )
         self._lock_ui()
         self.start_signal.emit(tasks)
     
@@ -1319,7 +1512,12 @@ class Dashboard(QWidget):
         tasks = self._build_rotation_mode_tasks()
         is_test_mode = bool(tasks.get("rotation_test_mode"))
         mode_text = "测试模式（固定时间间隔切换）" if is_test_mode else "正式模式（根据北京时间自动切换）"
-        self.log_message(f"🔄 日常任务完成，自动启动轮换模式（{mode_text}）", "SYSTEM")
+        slot = tasks.get("rotation_rare_slot") or "shuangta"
+        rare_text = "双塔" if slot == "shuangta" else "螳螂"
+        self.log_message(
+            f"🔄 日常任务完成，自动启动轮换模式（{mode_text}；非尼奥稀有={rare_text}）",
+            "SYSTEM",
+        )
         # ✅ 日常任务完成后 _unlock_ui_stopped 已执行，UI已解锁，需重新锁定以匹配轮换模式运行状态
         self._lock_ui()
         self.start_signal.emit(tasks)
@@ -1400,20 +1598,34 @@ class Dashboard(QWidget):
         self.start_signal.emit(tasks)
 
     def start_nieo_mode(self):
-        """启动尼奥模式（10/11地图循环）"""
+        """启动尼奥模式或纯净能量(资源)（下拉选择）"""
+        sub = "nieo"
+        if hasattr(self, "combo_nieo_sub"):
+            sub = self.combo_nieo_sub.currentData() or "nieo"
         tasks = {
             "nieo_mode": True,
+            "nieo_sub_mode": sub,
             "use_foreground": self.chk_foreground.isChecked(),
             "test_nieo": False,
             "test_nie": False,
             "skip_nie_77": self.chk_skip_nie_77.isChecked() if hasattr(self, "chk_skip_nie_77") else False,
             "nieo_pre_rotation_first": self.chk_nieo_pre_rotation.isChecked() if hasattr(self, "chk_nieo_pre_rotation") else False,
+            "nieo_test_force_switch": (
+                self.chk_nieo_test_force_switch.isChecked()
+                if hasattr(self, "chk_nieo_test_force_switch")
+                else False
+            ),
             **self._capsule_task_kv(),
         }
         test_msg = ""
         if tasks.get("skip_nie_77"):
             test_msg += " [不捕捉尼尔]"
-        self.log_message(f"🌊 启动尼奥模式（10/11地图循环）{test_msg}", "SYSTEM")
+        if tasks.get("nieo_test_force_switch"):
+            test_msg += " [测试·10图闪光艾菲亚/11图艾斯菲格]"
+        if sub == "pure_energy":
+            self.log_message(f"⚡ 启动纯净能量(资源)模式（26/27，技能四战胜）{test_msg}", "SYSTEM")
+        else:
+            self.log_message(f"🌊 启动尼奥模式（10/11地图循环）{test_msg}", "SYSTEM")
         self._lock_ui()
         self.start_signal.emit(tasks)
     
