@@ -20,9 +20,6 @@ def _set_dpi_awareness():
 _set_dpi_awareness()
 
 import os
-from config_bootstrap import ensure_config_py
-
-ensure_config_py()
 
 import pytesseract
 from config import TESSERACT_CMD, TESSDATA_PREFIX

@@ -2,6 +2,10 @@
 """GUI 与 CLI 共用的微端 SWF 同步；返回 (是否成功, 说明文本)。
 
 覆盖前：若目标文件已存在且尚无 OG 备份，则自动生成 OG（与 fight 目录的 swf_og、PetStorage 同目录下的 .og 文件规则一致）。
+
+Pet 254：同步前会按 ``swf_og`` 内已有文件名（数字序号排序）向 ``pet/swf`` 补齐缺失同名文件，再逐文件备份 OG 并覆盖。
+
+删除 ``pet/swf`` 下文件前：应调用 ``ensure_pet_swf_og_before_delete``，在缺少同名 OG 时先将待删文件写入 ``swf_og``。
 """
 from __future__ import annotations
 
@@ -17,9 +21,6 @@ _ROOT = Path(__file__).resolve().parent.parent
 def _ensure_project_path() -> None:
     if str(_ROOT) not in sys.path:
         sys.path.insert(0, str(_ROOT))
-    from config_bootstrap import ensure_config_py
-
-    ensure_config_py(str(_ROOT))
 
 
 def _nono_super_action_paths() -> Tuple[Path, Path]:
@@ -72,17 +73,26 @@ def rename_nono_super_super_og_to_action() -> Tuple[bool, str]:
 
 
 def _restore_dir_from_og(live_dir: Path, og_dir: Path) -> Tuple[int, int]:
-    """将 og_dir 中同名 .swf 还原到 live_dir。返回 (已还原数量, 无 OG 跳过的数量)。"""
-    restored = 0
-    skipped = 0
-    if not live_dir.is_dir():
+    """
+    以 og_dir 为准：将其下每个 *.swf 复制到 live_dir（同名覆盖；live 中已删的序号会重新出现）。
+    第二项：live 里仍存在、但 og 中没有同名备份的 *.swf 数量（这些文件不会被删除或覆盖）。
+    """
+    from swf.replace_fight_swfs import _swf_name_sort_key
+
+    if not og_dir.is_dir():
         return 0, 0
-    for t in sorted(live_dir.glob("*.swf")):
-        og = og_dir / t.name
-        if og.is_file():
-            shutil.copy2(og, t)
-            restored += 1
-        else:
+    og_files = sorted(og_dir.glob("*.swf"), key=_swf_name_sort_key)
+    live_dir.mkdir(parents=True, exist_ok=True)
+
+    restored = 0
+    for og in og_files:
+        dest = live_dir / og.name
+        shutil.copy2(og, dest)
+        restored += 1
+
+    skipped = 0
+    for t in sorted(live_dir.glob("*.swf"), key=_swf_name_sort_key):
+        if not (og_dir / t.name).is_file():
             skipped += 1
     return restored, skipped
 
@@ -122,7 +132,7 @@ def sync_petstorage() -> Tuple[bool, str]:
 
 def sync_pet_254() -> Tuple[bool, str]:
     _ensure_project_path()
-    from swf.replace_fight_swfs import _ensure_og_backup
+    from swf.replace_fight_swfs import _ensure_og_backup, fill_live_swf_from_og_dir
 
     from config import GAME_SWF_FOLDER, GAME_SWF_OG_FOLDER, PROJECT_TEMPLATE_254_SWF
 
@@ -135,6 +145,7 @@ def sync_pet_254() -> Tuple[bool, str]:
     try:
         os.makedirs(dest_dir, exist_ok=True)
         os.makedirs(og_dir, exist_ok=True)
+        filled, og_total = fill_live_swf_from_og_dir(dest_dir, og_dir)
         targets = sorted(dest_dir.glob("*.swf"))
         if not targets:
             return False, "pet/swf 目录下没有 .swf，无法批量替换"
@@ -148,11 +159,29 @@ def sync_pet_254() -> Tuple[bool, str]:
                 n_ok += 1
             except OSError as e:
                 errs.append(f"{t.name}: {e}")
+        extra = ""
+        if filled:
+            extra = f"；先已从 swf_og 按序号补齐 live 缺失 {filled} 个（og 共 {og_total} 个）"
         if errs:
-            return False, f"已写入 {n_ok} 个，失败 {len(errs)}（首条：{errs[0]}）"
-        return True, f"已用 254.swf 模板覆盖 pet/swf 下共 {n_ok} 个文件（已按需生成 swf_og 备份）"
+            return False, f"已写入 {n_ok} 个，失败 {len(errs)}（首条：{errs[0]}）{extra}"
+        return True, f"已用 254.swf 模板覆盖 pet/swf 下共 {n_ok} 个文件（已按需生成 swf_og 备份）{extra}"
     except OSError as e:
         return False, str(e)
+
+
+def ensure_pet_swf_og_before_delete(live_swf_path: os.PathLike[str] | str) -> None:
+    """
+    删除 ``pet/swf`` 下某个 ``*.swf`` 之前调用：若 ``swf_og`` 尚无同名备份，
+    则先将当前 live 文件复制入 ``swf_og``（已有 OG 则不覆盖）。
+    """
+    _ensure_project_path()
+    from swf.replace_fight_swfs import _ensure_og_backup
+
+    from config import GAME_SWF_OG_FOLDER
+
+    live = Path(live_swf_path)
+    og = Path(GAME_SWF_OG_FOLDER) / live.name
+    _ensure_og_backup(live, og)
 
 
 def sync_fight_pet() -> Tuple[bool, str]:
@@ -218,12 +247,16 @@ def restore_pet_254_from_og() -> Tuple[bool, str]:
     from config import GAME_SWF_FOLDER, GAME_SWF_OG_FOLDER
 
     live = Path(GAME_SWF_FOLDER)
-    if not live.is_dir():
-        return False, "pet/swf 目录不存在"
-    r, s = _restore_dir_from_og(live, Path(GAME_SWF_OG_FOLDER))
-    if r == 0 and s == 0:
-        return False, "pet/swf 下没有 .swf 文件"
-    return True, f"已从 swf_og 还原 {r} 个 .swf（无备份未覆盖: {s}）"
+    og_dir = Path(GAME_SWF_OG_FOLDER)
+    if not og_dir.is_dir():
+        return False, "pet/swf_og 目录不存在"
+    if not any(og_dir.glob("*.swf")):
+        return False, "swf_og 下无 .swf 备份，无法还原"
+    live.mkdir(parents=True, exist_ok=True)
+    r, s = _restore_dir_from_og(live, og_dir)
+    if r == 0:
+        return False, "未能从 swf_og 写入任何文件"
+    return True, f"已从 swf_og 还原 {r} 个 .swf（含已删序号；live 中无 OG 对应未覆盖: {s}）"
 
 
 def restore_fight_pet_from_og() -> Tuple[bool, str]:
@@ -238,12 +271,16 @@ def restore_fight_pet_from_og() -> Tuple[bool, str]:
         os.path.join(base, "fightResource", "pet", "swf_og"),
     )
     lp = Path(live)
-    if not lp.is_dir():
-        return False, "fight pet 目录不存在"
-    r, s = _restore_dir_from_og(lp, Path(og))
-    if r == 0 and s == 0:
-        return False, "fight pet 目录下无 .swf"
-    return True, f"已从 swf_og 还原 {r} 个（无备份未覆盖: {s}）"
+    ogp = Path(og)
+    if not ogp.is_dir():
+        return False, "fight pet swf_og 目录不存在"
+    if not any(ogp.glob("*.swf")):
+        return False, "fight pet swf_og 下无 .swf 备份，无法还原"
+    lp.mkdir(parents=True, exist_ok=True)
+    r, s = _restore_dir_from_og(lp, ogp)
+    if r == 0:
+        return False, "未能从 swf_og 写入任何文件"
+    return True, f"已从 swf_og 还原 {r} 个（含已删序号；live 中无 OG 对应未覆盖: {s}）"
 
 
 def restore_fight_skill_from_og() -> Tuple[bool, str]:
@@ -258,12 +295,16 @@ def restore_fight_skill_from_og() -> Tuple[bool, str]:
         os.path.join(base, "fightResource", "skill", "swf_og"),
     )
     lp = Path(live)
-    if not lp.is_dir():
-        return False, "fight skill 目录不存在"
-    r, s = _restore_dir_from_og(lp, Path(og))
-    if r == 0 and s == 0:
-        return False, "fight skill 目录下无 .swf"
-    return True, f"已从 swf_og 还原 {r} 个（无备份未覆盖: {s}）"
+    ogp = Path(og)
+    if not ogp.is_dir():
+        return False, "fight skill swf_og 目录不存在"
+    if not any(ogp.glob("*.swf")):
+        return False, "fight skill swf_og 下无 .swf 备份，无法还原"
+    lp.mkdir(parents=True, exist_ok=True)
+    r, s = _restore_dir_from_og(lp, ogp)
+    if r == 0:
+        return False, "未能从 swf_og 写入任何文件"
+    return True, f"已从 swf_og 还原 {r} 个（含已删序号；live 中无 OG 对应未覆盖: {s}）"
 
 
 def sync_all_four() -> Tuple[bool, str]:

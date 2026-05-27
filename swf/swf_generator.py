@@ -23,10 +23,6 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from config_bootstrap import ensure_config_py
-
-ensure_config_py(str(_PROJECT_ROOT))
-
 try:
     from config import GAME_SWF_FOLDER, GAME_ASSET_BASE_PATH
 except ImportError:

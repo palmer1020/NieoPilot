@@ -27,10 +27,6 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from config_bootstrap import ensure_config_py
-
-ensure_config_py(str(_PROJECT_ROOT))
-
 try:
     from config import (
         GAME_ASSET_BASE_PATH,
@@ -65,8 +61,39 @@ def _script_dir() -> Path:
     return Path(__file__).resolve().parent
 
 
+def _swf_name_sort_key(p: Path) -> Tuple:
+    """按数字文件名排序（如 1.swf … 10.swf）；非数字名放后并按小写序。"""
+    stem = p.stem
+    try:
+        return (0, int(stem))
+    except ValueError:
+        return (1, stem.lower())
+
+
+def fill_live_swf_from_og_dir(live_dir: Path, og_dir: Path) -> Tuple[int, int]:
+    """
+    按 og 目录内已有 *.swf，将 live 侧缺失的同名文件从 og 复制补齐（按数字序号排序遍历）。
+    用于 Pet 254 覆盖前：先用 og 集合对齐 live，再对已存在文件做 _ensure_og_backup。
+    返回 (补齐文件数, og 内 .swf 数量)。
+    """
+    if not og_dir.is_dir():
+        return 0, 0
+    og_files = sorted(og_dir.glob("*.swf"), key=_swf_name_sort_key)
+    if not og_files:
+        return 0, 0
+    live_dir.mkdir(parents=True, exist_ok=True)
+    filled = 0
+    for og in og_files:
+        dest = live_dir / og.name
+        if dest.is_file():
+            continue
+        shutil.copy2(og, dest)
+        filled += 1
+    return filled, len(og_files)
+
+
 def _ensure_og_backup(live: Path, og_path: Path) -> None:
-    """覆盖前：若当前文件存在且尚无对应 og 副本，则写入 og。"""
+    """覆盖或删除前：若当前 live 存在且尚无对应 og 副本，则写入 og。"""
     if not live.is_file():
         return
     if og_path.is_file():
