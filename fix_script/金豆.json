@@ -1,0 +1,48 @@
+{
+    "name": "金豆",
+    "create_time": "2026-05-20 12:33:39",
+    "steps": [
+        {
+            "action": "click",
+            "x": 641,
+            "y": 328,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 451,
+            "y": 563,
+            "delay": 0.5,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 458,
+            "y": 537,
+            "delay": 0.5,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 513,
+            "y": 569,
+            "delay": 0.5,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 508,
+            "y": 428,
+            "delay": 0.5,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 516,
+            "y": 435,
+            "delay": 1.0,
+            "desc": "Step 6"
+        }
+    ]
+}

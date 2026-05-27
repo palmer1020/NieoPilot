@@ -1,0 +1,76 @@
+{
+    "name": "每日签到",
+    "create_time": "2026-05-20 12:49:17",
+    "steps": [
+        {
+            "action": "click",
+            "x": 1144,
+            "y": 554,
+            "delay": 0.1,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 1144,
+            "y": 554,
+            "delay": 0.1,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 1144,
+            "y": 554,
+            "delay": 0.1,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 1144,
+            "y": 554,
+            "delay": 0.1,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 1144,
+            "y": 554,
+            "delay": 0.1,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 1144,
+            "y": 554,
+            "delay": 0.1,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 1029,
+            "y": 385,
+            "delay": 0.5,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 1029,
+            "y": 385,
+            "delay": 0.1,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 358,
+            "y": 432,
+            "delay": 0.5,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 358,
+            "y": 432,
+            "delay": 0.1,
+            "desc": "Step 5"
+        }
+    ]
+}

@@ -1,6 +1,7 @@
 # core/bot_thread.py
 import math
 import os
+import shutil
 import time
 import threading
 from typing import Dict, Optional
@@ -30,6 +31,9 @@ class BotWorker(QThread):
         self.project_root = project_root
 
         self._engine_alive = True
+
+        # 一键日常链大乱斗单场超 30 分钟时，由 DailyRunner 置位；Dashboard 解锁后接轮换模式
+        self.rotation_handoff_after_chaos_timeout = False
 
         # 运行状态
         self.is_running = False
@@ -219,6 +223,15 @@ class BotWorker(QThread):
         while self.is_paused and self.is_running and (not self.stop_current):
             time.sleep(0.05)
 
+    def _prepare_swf_fill_union(self) -> None:
+        """补齐尼奥/野外 rare 并集占位 swf；在 Dashboard 点击启动、模式已确定后调用，不在 runner 主循环中途执行。"""
+        self.dar_route_runner._check_and_fill_missing_swf_files()
+
+    def _prepare_swf_wild(self, profile) -> None:
+        """野外：补齐并集占位后按 profile 删 swf（与启动后进入 run() 的顺序一致）。"""
+        self.dar_route_runner._check_and_fill_missing_swf_files()
+        self.dar_route_runner._check_and_delete_swf_files(profile)
+
     @staticmethod
     def _parse_int(v, default=None):
         if v is None:
@@ -227,6 +240,52 @@ class BotWorker(QThread):
             return int(v)
         except Exception:
             return default
+
+    @staticmethod
+    def _tasks_need_rare_nieo_asset_prep(tasks: dict) -> bool:
+        """尼奥·稀有轮换、尼奥/纯净能量、野外稀有捕捉、挂机稀有/尼奥：启动前维护缓存与 SWF。"""
+        if tasks.get("rotation_mode") or tasks.get("nieo_mode"):
+            return True
+        if tasks.get("wild_capture") or tasks.get("smart_tracking_test"):
+            return True
+        if tasks.get("afk_battle_mode"):
+            sub = str(tasks.get("afk_sub_mode") or "").strip().lower()
+            if sub in ("rare", "nieo"):
+                return True
+        return False
+
+    def _run_rare_nieo_startup_maintenance(self) -> None:
+        """与 Dashboard「清除缓存」「Pet 254」「PetStorage」一致：tmp → 254.swf → 精灵仓库 SWF。"""
+        try:
+            from config import GAME_PATH
+
+            game_root = os.path.dirname(os.path.abspath(GAME_PATH))
+            tmp_dir = os.path.join(game_root, "tmp")
+            if os.path.isdir(tmp_dir):
+                shutil.rmtree(tmp_dir)
+                self.emit_and_log(f"✅ [稀有尼奥准备] 已删除 tmp：{tmp_dir}", "SUCCESS")
+            else:
+                self.emit_and_log(f"ℹ [稀有尼奥准备] 无 tmp，跳过：{tmp_dir}", "INFO")
+        except OSError as e:
+            self.emit_and_log(f"❌ [稀有尼奥准备] 删除 tmp 失败：{e}", "ERROR")
+        except Exception as e:
+            self.emit_and_log(f"❌ [稀有尼奥准备] 清除缓存异常：{e}", "ERROR")
+
+        try:
+            from core import swf_resource_ops
+
+            ok, msg = swf_resource_ops.sync_pet_254()
+            self.emit_and_log(
+                f"{'✅' if ok else '❌'} [稀有尼奥准备·254.swf] {msg}",
+                "SUCCESS" if ok else "ERROR",
+            )
+            ok2, msg2 = swf_resource_ops.sync_petstorage()
+            self.emit_and_log(
+                f"{'✅' if ok2 else '❌'} [稀有尼奥准备·精灵仓库 PetStorage] {msg2}",
+                "SUCCESS" if ok2 else "ERROR",
+            )
+        except Exception as e:
+            self.emit_and_log(f"❌ [稀有尼奥准备] SWF 同步异常：{e}", "ERROR")
 
     # --------------------
     # main loop
@@ -241,6 +300,7 @@ class BotWorker(QThread):
 
             has_job = bool(
                 tasks.get("daily_chain")
+                or tasks.get("pre_daily_mode")  # 📋 预选日常
                 or tasks.get("run_script")  # ✅ 执行脚本
                 or tasks.get("gacha")  # ✅ 扭蛋
                 or tasks.get("hero_tower")  # ✅ 勇者之塔
@@ -281,6 +341,13 @@ class BotWorker(QThread):
                     use_foreground = bool(tasks.get("use_foreground", False))
                     use_background = (not use_foreground)
 
+                    if self._tasks_need_rare_nieo_asset_prep(tasks):
+                        self.emit_and_log(
+                            "🔧 [稀有尼奥准备] 清除缓存 → 254.swf → 精灵仓库 PetStorage …",
+                            "SYSTEM",
+                        )
+                        self._run_rare_nieo_startup_maintenance()
+
                     try:
                         cap_tier = tasks.get("non_mantis_capsule_tier")
                         if cap_tier in ("super", "high", "special"):
@@ -294,8 +361,42 @@ class BotWorker(QThread):
                     except Exception:
                         pass
 
+                    try:
+                        self.dar_route_runner.set_pick_pet_mode(
+                            bool(tasks.get("pick_pet_mode", True))
+                        )
+                        self.dar_route_runner.set_resist_drain_logic(
+                            bool(tasks.get("resist_drain_logic", False))
+                        )
+                        self.dar_route_runner.set_enable_molecule_converter(
+                            bool(tasks.get("enable_molecule_converter", True))
+                        )
+                    except Exception:
+                        pass
+
+                    try:
+                        self.dar_route_runner._unified_reconnect_pipeline_always = True
+                    except Exception:
+                        pass
+
+                    # ---- 预选日常（门控后不跑分子仪；不写节流戳）----
+                    if tasks.get("pre_daily_mode") and (not self.stop_current):
+                        self.rotation_handoff_after_chaos_timeout = False
+                        self.emit_and_log(
+                            f"▶ 开始预选日常（前台={use_foreground}；跳过分子转化仪）",
+                            "SYSTEM",
+                        )
+                        try:
+                            self.dar_route_runner.run_pre_daily_mode(
+                                use_foreground,
+                                self._stop_event,
+                            )
+                        except Exception as e:
+                            self.emit_and_log(f"❌ 预选日常异常: {e}", "ERROR")
+
                     # ---- 日常 ----
                     if tasks.get("daily_chain") and (not self.stop_current):
+                        self.rotation_handoff_after_chaos_timeout = False
                         self.emit_and_log(f"▶ 开始一键日常（前台={use_foreground}）", "SYSTEM")
                         self.daily_runner.run_all(
                             background_mode=use_background,
@@ -317,31 +418,58 @@ class BotWorker(QThread):
                         if script_name == "放生":
                             fangsheng_left_flips = math.ceil(repeat / 9) + 5
                             self.emit_and_log(
-                                f"🐾 放生：每轮前先左翻页 {fangsheng_left_flips} 次"
+                                f"🐾 放生：每轮先双击精灵仓库位置1，再左翻页 {fangsheng_left_flips} 次"
                                 f"（⌈{repeat}/9⌉+5）",
                                 "INFO",
                             )
                         for _ in range(repeat):
                             if self.stop_current:
                                 break
-                            if script_name == "放生" and fangsheng_left_flips > 0:
-                                flip_ok = True
-                                for _flip in range(fangsheng_left_flips):
-                                    if self.stop_current:
-                                        flip_ok = False
-                                        break
+                            if script_name == "放生":
+                                flip_ok = not self.stop_current
+                                if flip_ok:
                                     if not self.daily_runner._click_region_safe(
                                         self.regions,
-                                        "精灵仓库.左",
+                                        "精灵仓库.1",
                                         use_foreground,
                                     ):
                                         self.emit_and_log(
-                                            "❌ 放生前左翻页中止（缺少区域 精灵仓库.左 或点击失败）",
+                                            "❌ 放生：双击位置1失败（第1击，缺少区域 精灵仓库.1 或点击失败）",
                                             "ERROR",
                                         )
                                         flip_ok = False
-                                        break
-                                    time.sleep(0.05)
+                                    else:
+                                        time.sleep(0.08)
+                                if flip_ok:
+                                    if not self.daily_runner._click_region_safe(
+                                        self.regions,
+                                        "精灵仓库.1",
+                                        use_foreground,
+                                    ):
+                                        self.emit_and_log(
+                                            "❌ 放生：双击位置1失败（第2击，缺少区域 精灵仓库.1 或点击失败）",
+                                            "ERROR",
+                                        )
+                                        flip_ok = False
+                                    else:
+                                        time.sleep(0.2)
+                                if flip_ok and fangsheng_left_flips > 0:
+                                    for _flip in range(fangsheng_left_flips):
+                                        if self.stop_current:
+                                            flip_ok = False
+                                            break
+                                        if not self.daily_runner._click_region_safe(
+                                            self.regions,
+                                            "精灵仓库.左",
+                                            use_foreground,
+                                        ):
+                                            self.emit_and_log(
+                                                "❌ 放生前左翻页中止（缺少区域 精灵仓库.左 或点击失败）",
+                                                "ERROR",
+                                            )
+                                            flip_ok = False
+                                            break
+                                        time.sleep(0.05)
                                 if not flip_ok:
                                     break
                             self.daily_runner.run_single_script(
@@ -405,7 +533,7 @@ class BotWorker(QThread):
                                 f"⚡ 开始{lbl}（循环={loop_count_dummy} 前台={use_foreground}）",
                                 "SYSTEM",
                             )
-                        self.dar_route_runner._check_and_fill_missing_swf_files()  # 像尼奥模式一样补齐swf
+                        self._prepare_swf_fill_union()
                         self.daily_runner.run_leiyi_training(
                             loop_count=loop_count_dummy,
                             use_foreground=use_foreground,
@@ -436,7 +564,7 @@ class BotWorker(QThread):
                             f"⬆ 升级直到 {target_level}（batch={battles_per_batch} recover_every={recover_every} debug_stop={debug_stop_level} 前台={use_foreground}）",
                             "SYSTEM",
                         )
-                        self.dar_route_runner._check_and_fill_missing_swf_files()  # 像尼奥模式一样补齐swf
+                        self._prepare_swf_fill_union()
                         self.training_level_runner.run_training_until_level(
                             target_level=target_level,
                             battles_per_batch=battles_per_batch,
@@ -461,7 +589,7 @@ class BotWorker(QThread):
                             f"🏫 训练室练级：{max_battles} 场（recover_every={recover_every} debug_stop={debug_stop_level} 前台={use_foreground}）",
                             "SYSTEM",
                         )
-                        self.dar_route_runner._check_and_fill_missing_swf_files()  # 像尼奥模式一样补齐swf
+                        self._prepare_swf_fill_union()
                         self.training_level_runner.run_training_level(
                             max_battles=max_battles,
                             recover_every=recover_every,
@@ -506,12 +634,24 @@ class BotWorker(QThread):
                         else:
                             profile = DEFAULT_PROFILE_DUGULU
 
-                        mantis_test_super_only = bool(tasks.get("mantis_test_super_only", False))
-                        suffix_msg = " [测试·仅突变+全程超级胶囊]" if mantis_test_super_only else ""
-                        self.emit_and_log(f"🌲 野外捕捉启动：profile={profile_name} 前台={use_foreground}{suffix_msg}", "SYSTEM")
+                        self._prepare_swf_wild(profile)
+                        self.emit_and_log(
+                            f"🌲 野外捕捉启动：profile={profile_name} 前台={use_foreground}", "SYSTEM"
+                        )
 
-                        # 轮换前置重连：闪光皮皮 → to闪光皮皮；螳螂 → to螳螂（同一 task 键）
-                        if tasks.get("rare_rotation_reconnect_first"):
+                        # 野外前置：支持列表内默认先做前置；仅在 wild_skip_rotation_pre 时跳过
+                        _pre_profiles = (
+                            "flash_pipi",
+                            "mantis",
+                            "dugulu",
+                            "shuangta",
+                            "xiaodouya",
+                            "eyeball",
+                        )
+                        do_rare_pre = profile_name in _pre_profiles and (
+                            not bool(tasks.get("wild_skip_rotation_pre", False))
+                        )
+                        if do_rare_pre:
                             if profile_name == "flash_pipi":
                                 while not self.stop_current and not self._stop_event.is_set():
                                     ok = self.dar_route_runner._execute_flash_pipi_pre_rotation_reconnect(
@@ -521,7 +661,7 @@ class BotWorker(QThread):
                                     if ok:
                                         break
                                     self.emit_and_log(
-                                        "⚠️ 轮换前置重连失败，重试完整流程（1-5）直到启动模式",
+                                        "⚠️ 野外前置重连失败，重试完整流程（1-5）直到启动模式",
                                         "WARN",
                                     )
                             elif profile_name == "mantis":
@@ -533,7 +673,20 @@ class BotWorker(QThread):
                                     if ok:
                                         break
                                     self.emit_and_log(
-                                        "⚠️ [螳螂] 轮换前置重连失败，重试完整流程（1-5）直到启动模式",
+                                        "⚠️ [螳螂] 野外前置重连失败，重试完整流程（1-5）直到启动模式",
+                                        "WARN",
+                                    )
+                            elif profile_name in ("dugulu", "shuangta", "xiaodouya", "eyeball"):
+                                while not self.stop_current and not self._stop_event.is_set():
+                                    ok = self.dar_route_runner._execute_unified_wild_rare_pre_reconnect(
+                                        profile,
+                                        use_foreground=use_foreground,
+                                        stop_event=self._stop_event,
+                                    )
+                                    if ok:
+                                        break
+                                    self.emit_and_log(
+                                        "⚠️ [野外统一前置] 失败（可检查后重试或走刷新重连）",
                                         "WARN",
                                     )
 
@@ -542,7 +695,6 @@ class BotWorker(QThread):
                                 stop_event=self._stop_event,
                                 use_foreground=use_foreground,
                                 profile=profile,
-                                mantis_test_super_only=mantis_test_super_only,
                             )
 
                     # ---- 智能追踪测试 ----
@@ -563,6 +715,7 @@ class BotWorker(QThread):
                         else:
                             profile = DEFAULT_PROFILE_DUGULU
 
+                        self._prepare_swf_wild(profile)
                         self.emit_and_log(f"🧪 智能追踪测试启动：profile={profile_name} 前台={use_foreground}", "SYSTEM")
                         self.dar_route_runner.run(
                             stop_event=self._stop_event,
@@ -580,6 +733,7 @@ class BotWorker(QThread):
                             rare_slot = "shuangta"
                         rare_lbl = "双塔" if rare_slot == "shuangta" else "螳螂"
                         self.emit_and_log(f"🔄 启动轮换模式（{mode_text}；非尼奥稀有={rare_lbl}）", "SYSTEM")
+                        self._prepare_swf_fill_union()
                         use_foreground = bool(tasks.get("use_foreground", False))
                         
                         # 测试模式参数
@@ -609,26 +763,29 @@ class BotWorker(QThread):
 
                     # ---- 🌊 尼奥模式（10/11地图循环）----
                     if tasks.get("nieo_mode") and (not self.stop_current):
+                        self._prepare_swf_fill_union()
                         test_nieo = tasks.get("test_nieo", False)
                         test_nie = tasks.get("test_nie", False)
-                        skip_nie_77 = tasks.get("skip_nie_77", False)
-                        nieo_pre_rotation_first = tasks.get("nieo_pre_rotation_first", False)
+                        skip_nie_77 = False
+                        nieo_pre_rotation_first = not bool(
+                            tasks.get("nieo_skip_pre_rotation", False)
+                        )
                         nieo_test_force_switch = bool(tasks.get("nieo_test_force_switch", False))
                         test_msg = ""
                         if test_nieo:
                             test_msg += " [测试尼奥模式]"
                         if test_nie:
                             test_msg += " [测试尼尔模式]"
-                        if skip_nie_77:
-                            test_msg += " [不捕捉尼尔]"
                         if nieo_pre_rotation_first:
                             test_msg += " [前置重连]"
+                        else:
+                            test_msg += " [跳过前置]"
                         if nieo_test_force_switch:
                             test_msg += " [测试·10图闪光艾菲亚/11图艾斯菲格]"
                         sub_mode = str(tasks.get("nieo_sub_mode") or "nieo").strip().lower()
                         is_pure_energy = sub_mode == "pure_energy"
 
-                        # 前置重连：尼奥走 to尼奥/map11；纯净能量走 to纯净能量/map26（仍摆尼奥三只）
+                        # 前置重连：尼奥走 to尼奥/map11；纯净能量走 to纯净能量/map26（Step3 与野外稀有同源 Pick 三宠）
                         if nieo_pre_rotation_first:
                             while not self.stop_current and not self._stop_event.is_set():
                                 ok = self.dar_route_runner._execute_nieo_pre_rotation_reconnect(

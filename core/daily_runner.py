@@ -21,6 +21,9 @@ from core.kernel_log_match import (
 # 勇者之塔：独立按钮与一键日常后续的默认对战场数（原 10）。
 DEFAULT_HERO_TOWER_BATTLES = 2
 
+# 一键日常链：每次点击「开始大乱斗」后起算，单场超过此时长则结束大乱斗并交接轮换模式
+DAILY_CHAOS_SINGLE_BATTLE_TIMEOUT_S = 30 * 60
+
 # 优先用 config 里的 BASE_PATH / DAILY_SEQUENCE（如果没有也能兜底）
 try:
     from config import BASE_PATH, DAILY_SEQUENCE
@@ -152,7 +155,10 @@ class DailyRunner:
                             self._emit("⏱ 1v1x2完成：3s 后开始【大乱斗x2】…", "SYSTEM")
                             time.sleep(3.0)
                             if not self._should_abort():
-                                ok_chaos = self.run_chaos_battle_x2(use_foreground=use_foreground)
+                                ok_chaos = self.run_chaos_battle_x2(
+                                    use_foreground=use_foreground,
+                                    from_daily_chain=True,
+                                )
                                 ok_all = ok_all and ok_chaos
                         except Exception as e:
                             self._emit(f"💥 大乱斗x2异常: {e}", "ERROR")
@@ -238,12 +244,48 @@ class DailyRunner:
 
         self._emit(f"✅ 勇者之塔：{times} 次对战完成", "SUCCESS")
         return True
+
+    def _sleep_respecting_deadline(self, seconds: float, deadline: Optional[float]) -> bool:
+        """睡眠至多 ``seconds`` 秒；若中止或已超过 ``deadline``，返回 False。"""
+        end_wake = time.time() + seconds
+        while time.time() < end_wake:
+            if self._should_abort():
+                return False
+            if deadline is not None and time.time() >= deadline:
+                return False
+            time.sleep(min(0.25, end_wake - time.time()))
+        return True
+
+    def _handoff_daily_chaos_timeout(self, from_daily_chain: bool, chaos_deadline: Optional[float]) -> None:
+        """一键日常链：单场大乱斗超时后设置 bot 标志，由 Dashboard 解锁后启动轮换。"""
+        if not from_daily_chain or chaos_deadline is None:
+            return
+        if self._should_abort():
+            return
+        if time.time() < chaos_deadline:
+            return
+        setattr(self.bot, "rotation_handoff_after_chaos_timeout", True)
+        self._emit(
+            "⏱️ 日常大乱斗：本场自「开始大乱斗」起已超过 30 分钟，已结束大乱斗阶段；解锁后将启动轮换模式",
+            "ERROR",
+        )
+
+    def _chaos_battle_fail(self, from_daily_chain: bool, chaos_deadline: Optional[float]) -> bool:
+        self._handoff_daily_chaos_timeout(from_daily_chain, chaos_deadline)
+        return False
     
     # ----------------------------
     # 大乱斗x2：特殊战斗模式
     # ----------------------------
-    def run_chaos_battle_x2(self, use_foreground: bool = True) -> bool:
-        """执行大乱斗x2：两次特殊战斗循环"""
+    def run_chaos_battle_x2(
+        self,
+        use_foreground: bool = True,
+        from_daily_chain: bool = False,
+    ) -> bool:
+        """执行大乱斗x2：两次特殊战斗循环。
+
+        from_daily_chain：一键日常链调用时为 True；每场在点击「开始大乱斗」后 30 分钟内未结束则结束大乱斗并交接轮换模式。
+        """
         if not window_manager.find_window():
             self._emit("❌ 未检测到游戏窗口：无法执行大乱斗x2", "ERROR")
             return False
@@ -267,6 +309,7 @@ class DailyRunner:
                 return False
             
             self._emit(f"⚔ 大乱斗x2：第 {battle_num + 1}/2 场", "SYSTEM")
+            chaos_deadline: Optional[float] = None
             
             # 第一场：需要先移动大乱斗；第二场：直接点击大乱斗
             if battle_num == 0:
@@ -290,50 +333,81 @@ class DailyRunner:
             self._emit("🖱 点击：勇者之塔.开始大乱斗", "INFO")
             if not self._click_region_safe(regions, "勇者之塔.开始大乱斗", use_foreground):
                 return False
+
+            if from_daily_chain:
+                chaos_deadline = time.time() + DAILY_CHAOS_SINGLE_BATTLE_TIMEOUT_S
+                self._emit(
+                    f"⏱ 本场限时：自「开始大乱斗」起 {DAILY_CHAOS_SINGLE_BATTLE_TIMEOUT_S // 60} 分钟内须结束，否则将结束大乱斗并启动轮换…",
+                    "INFO",
+                )
             
-            # 6. 等待PetItem并执行第一回合技能（大乱斗模式：无超时限制）
-            self._emit("⏳ 等待PetItem进入对战（无超时限制）...", "INFO")
-            if not self._wait_for_petitem_and_first_skill(regions, use_foreground, timeout_s=None):
-                self._emit("❌ 等待PetItem或第一回合失败（可能被中止）", "ERROR")
-                return False
+            # 6. 等待PetItem并执行第一回合技能
+            if from_daily_chain:
+                self._emit("⏳ 等待PetItem进入对战（日常链每场限时见上）...", "INFO")
+            else:
+                self._emit("⏳ 等待PetItem进入对战（无单场总时限）...", "INFO")
+            if not self._wait_for_petitem_and_first_skill(
+                regions, use_foreground, timeout_s=None, deadline=chaos_deadline
+            ):
+                self._emit("❌ 等待PetItem或第一回合失败（可能被中止或已超时）", "ERROR")
+                return self._chaos_battle_fail(from_daily_chain, chaos_deadline)
             
             # 7. 执行战斗循环（大乱斗模式）
-            if not self._run_chaos_battle_loop(regions, use_foreground, cleaner, is_chaos=True):
+            if not self._run_chaos_battle_loop(
+                regions, use_foreground, cleaner, is_chaos=True, deadline=chaos_deadline
+            ):
                 self._emit("❌ 战斗循环失败", "ERROR")
-                return False
+                return self._chaos_battle_fail(from_daily_chain, chaos_deadline)
             
             # 8. 检测胜利探针（黄色或白色）并点击确认，然后1AND1清理（参考训练室/勇者之塔）
             # 先等待UI稳定（与训练室保持一致，延迟2.5秒）
             self._emit("⏳ 等待UI稳定（2.5秒）...", "INFO")
-            time.sleep(2.5)
+            if not self._sleep_respecting_deadline(2.5, chaos_deadline):
+                return self._chaos_battle_fail(from_daily_chain, chaos_deadline)
             self._emit("🟡 检测胜利探针（黄色或白色）...", "INFO")
-            victory_detected = self._detect_victory_probe_yellow_or_white(cleaner, use_foreground, timeout_s=8.0)
+            victory_detected = self._detect_victory_probe_yellow_or_white(
+                cleaner, use_foreground, timeout_s=8.0, deadline=chaos_deadline
+            )
             if not victory_detected:
                 self._emit("❌ 未检测到胜利探针（超时）", "ERROR")
-                return False
+                return self._chaos_battle_fail(from_daily_chain, chaos_deadline)
             
             # 9. 点击"对话框.对战胜利确认"（参考stage4_post_battle的逻辑）
             self._emit("🖱 点击：对话框.对战胜利确认", "INFO")
             if not self._click_region_safe(regions, "对话框.对战胜利确认", use_foreground):
-                return False
+                return self._chaos_battle_fail(from_daily_chain, chaos_deadline)
             
             # 10. 1AND1清理对话框（使用统一框架的方法，参考训练室/勇者之塔）
             self._emit("⏳ 清理对话框（1 AND 1，10秒超时）...", "INFO")
             from core.unified_battle_framework import BattleConfig, BattleMode
             if self._unified_framework is None:
                 self._emit("❌ 缺少unified_framework，无法执行1AND1清理", "ERROR")
+                return self._chaos_battle_fail(from_daily_chain, chaos_deadline)
+
+            def abort_check_chaos():
+                if self._should_abort():
+                    return True
+                if chaos_deadline is not None and time.time() >= chaos_deadline:
+                    return True
                 return False
-            
+
             config = BattleConfig(
                 mode=BattleMode.FIXED,  # 大乱斗和1v1使用固定模式
                 use_foreground=use_foreground,
-                abort_check=lambda: self._should_abort()
+                abort_check=abort_check_chaos,
             )
             try:
                 # 使用10秒超时（大乱斗模式）
                 self._unified_framework._wait_for_confirm_probes(config, timeout_s=10.0)
             except Exception as e:
                 self._emit(f"⚠️ 1AND1清理异常: {e}", "WARN")
+
+            if (
+                chaos_deadline is not None
+                and time.time() >= chaos_deadline
+                and not self._should_abort()
+            ):
+                return self._chaos_battle_fail(from_daily_chain, chaos_deadline)
         
         self._emit("✅ 大乱斗x2：2场对战全部完成", "SUCCESS")
         return True
@@ -676,13 +750,20 @@ class DailyRunner:
             
             time.sleep(0.02)
     
-    def _wait_for_petitem_and_first_skill(self, regions, use_foreground: bool, timeout_s: Optional[float] = None) -> bool:
+    def _wait_for_petitem_and_first_skill(
+        self,
+        regions,
+        use_foreground: bool,
+        timeout_s: Optional[float] = None,
+        deadline: Optional[float] = None,
+    ) -> bool:
         """等待PetItem或第一次灰变蓝，然后使用第一回合技能
         
         Args:
             regions: 区域存储
             use_foreground: 是否前台运行
-            timeout_s: 超时时间（秒），如果为None表示无超时限制
+            timeout_s: 超时时间（秒），如果为None表示不按本参数限时（仍受 deadline 约束）
+            deadline: 若设置，超过该时间戳则返回 False（用于日常链大乱斗单场总时限）
         """
         from core.logger import fetch_kernel_since, kernel_cursor
         
@@ -698,10 +779,14 @@ class DailyRunner:
         
         start_time = time.time()
         
-        # 如果timeout_s为None，表示无超时限制（使用一个很长的超时时间）
-        effective_timeout = timeout_s if timeout_s is not None else 3600.0  # 默认1小时
+        if timeout_s is not None:
+            loop_end = start_time + timeout_s
+        else:
+            loop_end = float("inf")
+        if deadline is not None:
+            loop_end = min(loop_end, deadline)
         
-        while (time.time() - start_time) < effective_timeout:
+        while time.time() < loop_end:
             if self._should_abort():
                 return False
             
@@ -739,14 +824,24 @@ class DailyRunner:
             last_probe_state = state
             time.sleep(0.05)
         
-        # 超时处理
+        # 超过 loop_end 仍未成功
+        if deadline is not None and time.time() >= deadline:
+            self._emit("⏱️ 等待PetItem或首回合：已超过大乱斗单场时限", "ERROR")
+            return False
         if timeout_s is not None:
             self._emit(f"⏱️ 等待PetItem或灰变蓝超时（{timeout_s}秒），放弃检测继续下一步", "WARN")
-        else:
-            self._emit("⏱️ 等待PetItem或灰变蓝超时（未知原因），放弃检测继续下一步", "WARN")
+            return True
+        self._emit("⏱️ 等待PetItem或灰变蓝超时（未知原因），放弃检测继续下一步", "WARN")
         return True
     
-    def _run_chaos_battle_loop(self, regions, use_foreground: bool, cleaner, is_chaos: bool = True) -> bool:
+    def _run_chaos_battle_loop(
+        self,
+        regions,
+        use_foreground: bool,
+        cleaner,
+        is_chaos: bool = True,
+        deadline: Optional[float] = None,
+    ) -> bool:
         """执行战斗循环
         
         Args:
@@ -754,6 +849,7 @@ class DailyRunner:
             use_foreground: 是否前台运行
             cleaner: PostBattleCleaner实例
             is_chaos: 是否为大乱斗模式（True=大乱斗，False=1v1）
+            deadline: 日常链大乱斗单场总时限（时间戳），超时则返回 False
         """
         from core.logger import fetch_kernel_since, kernel_cursor
         
@@ -790,6 +886,9 @@ class DailyRunner:
         
         while True:
             if self._should_abort():
+                return False
+            if deadline is not None and time.time() >= deadline:
+                self._emit("⏱️ 战斗循环：已超过大乱斗单场时限", "ERROR")
                 return False
             
             self._wait_if_paused()
@@ -884,7 +983,13 @@ class DailyRunner:
             last_probe_state = state
             time.sleep(0.05)
     
-    def _detect_victory_probe_yellow_or_white(self, cleaner, use_foreground: bool, timeout_s: float = 8.0) -> bool:
+    def _detect_victory_probe_yellow_or_white(
+        self,
+        cleaner,
+        use_foreground: bool,
+        timeout_s: float = 8.0,
+        deadline: Optional[float] = None,
+    ) -> bool:
         """检测胜利探针（黄色或白色FFFFFF）
         
         注意：此方法仅用于大乱斗x2和1v1x2模式
@@ -894,11 +999,17 @@ class DailyRunner:
         - 黄色（通过cleaner.detect_victory_probe_yellow检测）
         - 白色（FFFFFF，RGB值都>=245）
         """
-        result = self._detect_victory_probe_result(cleaner, use_foreground, timeout_s)
+        result = self._detect_victory_probe_result(
+            cleaner, use_foreground, timeout_s, deadline=deadline
+        )
         return result in ("yellow", "white")
 
     def _detect_victory_probe_result(
-        self, cleaner, use_foreground: bool, timeout_s: float = 8.0
+        self,
+        cleaner,
+        use_foreground: bool,
+        timeout_s: float = 8.0,
+        deadline: Optional[float] = None,
     ) -> Optional[str]:
         """检测胜利探针颜色，返回 "yellow" | "white" | None
         
@@ -912,6 +1023,8 @@ class DailyRunner:
             start_time = time.time()
             while (time.time() - start_time) < timeout_s:
                 if self._should_abort():
+                    return None
+                if deadline is not None and time.time() >= deadline:
                     return None
 
                 try:

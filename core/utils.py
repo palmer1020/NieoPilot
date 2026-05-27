@@ -397,6 +397,45 @@ class WindowManager:
         except Exception:
             pass
 
+    def click_client(self, cx: int, cy: int, foreground: bool = False) -> bool:
+        """
+        主窗口 **client 像素** 坐标点击（不经过 1200×700 / 黑边视口缩放）。
+        「刷新.设置」等贴在客户区左上角、与游戏画布逻辑坐标不一致时使用。
+        """
+        if not self.hwnd and not self.find_window():
+            return False
+        if not self.hwnd:
+            return False
+        try:
+            ix = int(round(cx))
+            iy = int(round(cy))
+        except (TypeError, ValueError):
+            return False
+        try:
+            if foreground:
+                sx, sy = win32gui.ClientToScreen(self.hwnd, (ix, iy))
+                win32api.SetCursorPos((int(sx), int(sy)))
+                time.sleep(0.03)
+                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, sx, sy, 0, 0)
+                time.sleep(0.05)
+                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, sx, sy, 0, 0)
+            else:
+                rel_x = ix & 0xFFFF
+                rel_y = iy & 0xFFFF
+                l_param = (rel_y << 16) | rel_x
+                win32gui.PostMessage(
+                    self.hwnd,
+                    win32con.WM_LBUTTONDOWN,
+                    win32con.MK_LBUTTON,
+                    l_param,
+                )
+                time.sleep(0.03)
+                win32gui.PostMessage(self.hwnd, win32con.WM_LBUTTONUP, 0, l_param)
+            return True
+        except Exception as e:
+            logger.warning(f"click_client({ix},{iy}) 失败: {e}")
+            return False
+
     def click_background_client_left_x(self, gx, gy, offset_x: int = 4) -> bool:
         """
         特殊后台点击：

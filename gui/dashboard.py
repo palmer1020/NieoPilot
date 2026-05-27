@@ -72,9 +72,9 @@ class Dashboard(QWidget):
         )
         self.btn_delete_screenshots.clicked.connect(self.on_delete_screenshots)
 
-        self.btn_refresh_trinity = QPushButton("🔄 刷新")
+        self.btn_refresh_trinity = QPushButton("🔄 刷新登录")
         self.btn_refresh_trinity.setToolTip(
-            "三键刷新：刷新.设置 → 刷新.刷新 → 刷新.保存（与完整重连无关）。"
+            "执行「刷新登录直到检测到 map」：预刷新→等待Login.swf→开始/登录→普通确认↔刷新登录→探针变白→OCR选服3→map。"
         )
         self.btn_refresh_trinity.clicked.connect(self.on_refresh_trinity)
 
@@ -126,7 +126,8 @@ class Dashboard(QWidget):
         )
         self.btn_swf_pet254 = QPushButton("🐾 Pet SWF (254)")
         self.btn_swf_pet254.setToolTip(
-            "swf/254.swf 覆盖 resource\\pet\\swf 下全部 .swf（同名备份到 pet\\swf_og）"
+            "先按 swf_og 内已有序号将 pet\\swf 缺失文件从 OG 补齐；再对每个文件：若无同名 OG 则备份，再用 "
+            "swf/254.swf 覆盖 resource\\pet\\swf 下全部 .swf。"
         )
         self.btn_swf_pet254.clicked.connect(
             lambda: self._on_swf_sync("Pet 254", "sync_pet_254")
@@ -160,17 +161,24 @@ class Dashboard(QWidget):
             lambda: self._on_swf_restore("PetStorage OG", "restore_petstorage_from_og")
         )
         self.btn_restore_pet254 = QPushButton("↩ Pet SWF OG")
-        self.btn_restore_pet254.setToolTip("从 resource\\pet\\swf_og 还原同名文件到 pet\\swf")
+        self.btn_restore_pet254.setToolTip(
+            "以 swf_og 为准：其中每个 .swf 都会写回 pet\\swf（可恢复已从 pet\\swf 删除的序号）；"
+            "live 里若有没有备份过的多余 .swf 不会被动删除。"
+        )
         self.btn_restore_pet254.clicked.connect(
             lambda: self._on_swf_restore("Pet SWF OG", "restore_pet_254_from_og")
         )
         self.btn_restore_fight_pet = QPushButton("↩ Fight pet OG")
-        self.btn_restore_fight_pet.setToolTip("从 fightResource\\pet\\swf_og 还原到 pet\\swf（对战）")
+        self.btn_restore_fight_pet.setToolTip(
+            "以 swf_og 为准写回 fight pet\\swf（含已删序号）；不删 live 中无 OG 的多余文件。"
+        )
         self.btn_restore_fight_pet.clicked.connect(
             lambda: self._on_swf_restore("Fight pet OG", "restore_fight_pet_from_og")
         )
         self.btn_restore_fight_skill = QPushButton("↩ Fight skill OG")
-        self.btn_restore_fight_skill.setToolTip("从 fightResource\\skill\\swf_og 还原到 skill\\swf（对战）")
+        self.btn_restore_fight_skill.setToolTip(
+            "以 swf_og 为准写回 fight skill\\swf（含已删序号）；不删 live 中无 OG 的多余文件。"
+        )
         self.btn_restore_fight_skill.clicked.connect(
             lambda: self._on_swf_restore("Fight skill OG", "restore_fight_skill_from_og")
         )
@@ -190,14 +198,22 @@ class Dashboard(QWidget):
 
         # 第一行：一键日常 + 脚本/扭蛋（下拉默认扭蛋）+ 次数 + 执行
         row1 = QHBoxLayout()
+        self.btn_pre_daily = QPushButton("📋 预选日常")
+        self.btn_pre_daily.setToolTip(
+            "登录/基地门控后跳过分子转化仪（不改 30 min 节流），清背包→仓库 Pick→"
+            "开背包身边跟随→仅跑「每日签到」脚本。\n"
+            "与「一键执行日常」互不替代；本流程结束后不会自动衔接完整日常。"
+        )
+        self.btn_pre_daily.clicked.connect(self.on_run_pre_daily)
+
         self.btn_run_daily = QPushButton("▶ 一键执行日常")
         self.btn_run_daily.clicked.connect(self.on_run_daily)
 
         self.chk_daily_hero_tower = QCheckBox(f"勇者之塔×{DEFAULT_HERO_TOWER_BATTLES}")
-        self.chk_daily_hero_tower.setChecked(False)
+        self.chk_daily_hero_tower.setChecked(True)
         self.chk_daily_hero_tower.setToolTip(
-            "勾选：跑日常脚本 1→2→3→4→5→6，再勇者之塔两场，再 1v1×2、大乱斗×2。\n"
-            "不勾选（默认）：只跑 1→2→3→4→5（跳过 6），跳过勇者之塔，再 1v1×2。"
+            "勾选（默认）：跑日常脚本 1→2→3→4→5→6，再勇者之塔两场，再 1v1×2、大乱斗×2。\n"
+            "不勾选：只跑 1→2→3→4→5（跳过 6），跳过勇者之塔，再 1v1×2。"
         )
 
         self.script_combo = QComboBox()
@@ -216,6 +232,7 @@ class Dashboard(QWidget):
         self.chk_foreground = QCheckBox("前台运行（更稳定）")
         self.chk_foreground.setChecked(False)
 
+        row1.addWidget(self.btn_pre_daily, 1)
         row1.addWidget(self.btn_run_daily, 2)
         row1.addWidget(self.chk_daily_hero_tower, 0)
         row1.addWidget(self.script_combo, 3)
@@ -223,6 +240,13 @@ class Dashboard(QWidget):
         row1.addWidget(self.btn_run_task, 1)
         row1.addWidget(self.chk_foreground, 1)
         daily_layout.addLayout(row1)
+
+        self.chk_enable_molecule_converter = QCheckBox("执行分子转化仪")
+        self.chk_enable_molecule_converter.setChecked(True)
+        self.chk_enable_molecule_converter.setToolTip(
+            "勾选（默认）：刷新登录、轮换、野外重连等走到基地门控后，按原逻辑执行分子转化仪（含节流与强制路径）。\n"
+            "不勾选：任何模式均不执行分子转化仪，且不写入 30 min 节流时间戳。"
+        )
 
         # 第二行：勇者之塔等（扭蛋已合并到上行）
         row2 = QHBoxLayout()
@@ -239,9 +263,27 @@ class Dashboard(QWidget):
         self.btn_1v1_x2 = QPushButton("⚔ 1v1x2")
         self.btn_1v1_x2.clicked.connect(self.on_run_1v1_x2)
 
+        self._capsule_tier_label = QLabel("捕捉胶囊档位：")
+        self._capsule_tier_label.setToolTip(
+            "除螳螂对战敌方野生 122（首回合仍投无敌胶囊）外，所有捕捉投掷均使用该档。"
+            "螳螂遇非 122 与其他稀有目标一样只跟本下拉框。"
+        )
+        self.combo_cap_tier = QComboBox()
+        self.combo_cap_tier.addItem("超级（默认）", "super")
+        self.combo_cap_tier.addItem("高级", "high")
+        self.combo_cap_tier.addItem("特级", "special")
+        self.combo_cap_tier.setMinimumWidth(120)
+        self.combo_cap_tier.setToolTip(
+            "超级 / 高级 / 特级三选一。"
+            "敌方为野生螳螂（122）时首回合仍为无敌胶囊，之后才跟本档位。"
+        )
+
         row2.addWidget(self.btn_hero_tower)
         row2.addWidget(self.btn_chaos_battle_x2)
         row2.addWidget(self.btn_1v1_x2)
+        row2.addWidget(self.chk_enable_molecule_converter)
+        row2.addWidget(self._capsule_tier_label)
+        row2.addWidget(self.combo_cap_tier)
         row2.addStretch()
         daily_layout.addLayout(row2)
 
@@ -303,21 +345,16 @@ class Dashboard(QWidget):
         self.rare_combo.addItem("眼球（269 / map=60）", userData="eyeball")
         self.rare_combo.setCurrentIndex(self.rare_combo.findData("flash_pipi"))  # 默认选中闪光皮皮
 
-        # 螳螂模式专用：测试模式（仅突变触发 + 全程超级胶囊，不使用无敌胶囊/MP3）
-        self.chk_mantis_test_super_only = QCheckBox("螳螂测试：仅突变+全程超级胶囊")
-        self.chk_mantis_test_super_only.setChecked(False)
-        self.chk_mantis_test_super_only.setEnabled(False)
-        self.chk_mantis_test_super_only.setToolTip(
-            "仅当选中「螳螂」时可用。勾选后：忽略 MP3 触发条件，只要扫描到突变即入战；"
-            "战斗中所有回合（含第一回合）只投超级精灵胶囊，不再使用无敌精灵胶囊。"
+        # 默认会跑整套野外前置；仅当勾选时才跳过（不跑 to 前整套）
+        self.chk_wild_skip_rotation_pre = QCheckBox(
+            "跳过前置重连（勾选则不跑闪光/螳螂专用或嘟咕噜等统一前置）"
         )
-
-        # 闪光皮皮 / 螳螂：同一条「轮换前置重连」（双塔精灵 → 按目标执行 to闪光皮皮 / to螳螂）
-        self.chk_rare_rotation_pre_reconnect = QCheckBox(
-            "轮换前置重连（双塔精灵；闪光皮皮→to闪光皮皮 / 螳螂→to螳螂）"
+        self.chk_wild_skip_rotation_pre.setChecked(False)
+        self.chk_wild_skip_rotation_pre.setEnabled(False)
+        self.chk_wild_skip_rotation_pre.setToolTip(
+            "未勾选：启动时先跑整管前置（与模式匹配：闪光/螳螂专用，或嘟咕噜/双塔/小豆芽/眼球统一前置）。"
+            "勾选：直接进入捕捉主循环。"
         )
-        self.chk_rare_rotation_pre_reconnect.setChecked(False)
-        self.chk_rare_rotation_pre_reconnect.setEnabled(False)
         self._update_rare_dependent_checkbox_state()
 
         def on_rare_combo_changed():
@@ -328,8 +365,7 @@ class Dashboard(QWidget):
         row_wild.addWidget(self.btn_rare)
         row_wild.addWidget(QLabel("目标："))
         row_wild.addWidget(self.rare_combo, 1)
-        row_wild.addWidget(self.chk_mantis_test_super_only)
-        row_wild.addWidget(self.chk_rare_rotation_pre_reconnect)
+        row_wild.addWidget(self.chk_wild_skip_rotation_pre)
         wild_layout.addLayout(row_wild)
 
         # 智能追踪测试按钮（已隐藏，代码保留）
@@ -375,22 +411,18 @@ class Dashboard(QWidget):
         self.combo_nieo_sub.setToolTip("与左侧按钮一起使用：选择尼奥 10/11 或 纯净能量 26/27 资源图")
         row1.addWidget(self.combo_nieo_sub)
         nieo_layout.addLayout(row1)
-        
-        # 不捕捉尼尔勾选框（仅用于尼奥模式）
-        self.chk_skip_nie_77 = QCheckBox("不捕捉尼尔（77 逃跑；310/416 正常）")
-        self.chk_skip_nie_77.setChecked(False)
-        nieo_layout.addWidget(self.chk_skip_nie_77)
 
-        # 尼奥模式专用：前置重连勾选框（使用尼奥模式的三个精灵）
-        self.chk_nieo_pre_rotation = QCheckBox("前置重连（尼奥三精灵）")
-        self.chk_nieo_pre_rotation.setChecked(False)
-        self.chk_nieo_pre_rotation.setToolTip(
-            "先跑刷新登录→清背包→摆尼奥三只→跟随；最后一步取决于左侧下拉："
-            "尼奥 = to尼奥.json 直到 map11+newNPC；纯净能量 = to纯净能量.json 直到 map26+newNPC。"
+        row_nieo_opts = QHBoxLayout()
+        self.chk_nieo_skip_pre_rotation = QCheckBox(
+            "跳过前置重连（勾选则直接进入尼奥/纯净，不跑三宠前置）"
         )
-        nieo_layout.addWidget(self.chk_nieo_pre_rotation)
+        self.chk_nieo_skip_pre_rotation.setChecked(False)
+        self.chk_nieo_skip_pre_rotation.setToolTip(
+            "未勾选：启动时先跑与野外稀有同源的三宠 Pick + to尼奥/to纯净。"
+            "勾选：跳过前置，直接开始尼奥或纯净能量循环。"
+        )
+        row_nieo_opts.addWidget(self.chk_nieo_skip_pre_rotation)
 
-        # 尼奥模式专用：测试模式（按地图强制走尼尔家族切换流程：10→闪光艾菲亚，11→艾斯菲格）
         self.chk_nieo_test_force_switch = QCheckBox(
             "测试模式（10图全切闪光艾菲亚 / 11图全切艾斯菲格）"
         )
@@ -400,7 +432,9 @@ class Dashboard(QWidget):
             "10号地图的所有遭遇切换到闪光艾菲亚（416路径），"
             "11号地图的所有遭遇切换到艾斯菲格（77路径）。"
         )
-        nieo_layout.addWidget(self.chk_nieo_test_force_switch)
+        row_nieo_opts.addWidget(self.chk_nieo_test_force_switch)
+        row_nieo_opts.addStretch()
+        nieo_layout.addLayout(row_nieo_opts)
         
         nieo_group.setLayout(nieo_layout)
         control_panel.addWidget(nieo_group)
@@ -466,20 +500,6 @@ class Dashboard(QWidget):
         self.chk_rotation_test_mode.setChecked(False)
         rot_top.addWidget(self.chk_rotation_test_mode)
 
-        self._capsule_tier_label = QLabel("胶囊档位：")
-        self._capsule_tier_label.setToolTip(
-            "非螳螂 / 敌方非122：野外捕捉仅用所选一档；敌方含122 时仍为无敌首回合+六档循环。"
-        )
-        rot_top.addWidget(self._capsule_tier_label)
-        self.combo_cap_tier = QComboBox()
-        self.combo_cap_tier.addItem("超级（默认）", "super")
-        self.combo_cap_tier.addItem("高级", "high")
-        self.combo_cap_tier.addItem("特级", "special")
-        self.combo_cap_tier.setMinimumWidth(120)
-        self.combo_cap_tier.setToolTip(
-            "非敌方122时：捕捉阶段只使用该档胶囊；敌方含122 时仍按六档循环（与无敌首回合无关）。"
-        )
-        rot_top.addWidget(self.combo_cap_tier)
         rot_top.addStretch()
         rotation_layout.addLayout(rot_top)
 
@@ -506,6 +526,19 @@ class Dashboard(QWidget):
         interval_row.addWidget(self.petswf_hard_limit_sec_input)
         interval_row.addStretch()
         rotation_layout.addLayout(interval_row)
+
+        pick_flags_row = QHBoxLayout()
+        lbl_pick_default = QLabel("默认 Pick（波克尔/艾菲德斯/机塔）；轮换三步仓库与战后跟宠均已内置")
+        lbl_pick_default.setStyleSheet("color: gray; font-size: 11px;")
+        self.chk_resist_drain_logic = QCheckBox("抗减命逻辑")
+        self.chk_resist_drain_logic.setChecked(False)
+        self.chk_resist_drain_logic.setToolTip(
+            "出战机塔后的技能节奏：勾选为「两回合二技能→一技能」；不勾选为一技能二技能交替。"
+        )
+        pick_flags_row.addWidget(lbl_pick_default)
+        pick_flags_row.addWidget(self.chk_resist_drain_logic)
+        pick_flags_row.addStretch()
+        rotation_layout.addLayout(pick_flags_row)
 
         self.chk_rotation_test_mode.stateChanged.connect(self._update_rotation_test_inputs_enabled)
         self._update_rotation_test_inputs_enabled()
@@ -679,27 +712,27 @@ class Dashboard(QWidget):
 
     def on_refresh_trinity(self):
         self.btn_refresh_trinity.setEnabled(False)
-        self.log_message("🔄 执行三键刷新（设置 → 刷新 → 保存）…", "SYSTEM")
+        self.log_message("🔄 开始刷新登录：直到检测到 map…", "SYSTEM")
         threading.Thread(target=self._refresh_trinity_worker, daemon=True).start()
 
     def _refresh_trinity_worker(self):
         try:
             if not hasattr(self, "bot") or not self.bot:
-                self.log_message("❌ bot 未就绪，无法执行三键刷新", "ERROR")
+                self.log_message("❌ bot 未就绪，无法执行刷新登录", "ERROR")
                 return
             drr = getattr(self.bot, "dar_route_runner", None)
             if not drr:
-                self.log_message("❌ dar_route_runner 不存在，无法执行三键刷新", "ERROR")
+                self.log_message("❌ dar_route_runner 不存在，无法执行刷新登录", "ERROR")
                 return
             use_fg = self.chk_foreground.isChecked()
-            ok = drr._refresh_trinity_clicks(use_fg, log_prefix="仪表盘")
+            stop_event = threading.Event()
+            ok = drr.run_refresh_login_until_map(use_fg, stop_event)
             if ok:
-                time.sleep(0.45)
-                self.log_message("✅ 三键刷新已完成", "SUCCESS")
+                self.log_message("✅ 刷新登录完成（已检测到 map）", "SUCCESS")
             else:
-                self.log_message("❌ 三键刷新未完全成功（见上方日志）", "WARN")
+                self.log_message("⚠️ 刷新登录失败（见上方日志）", "WARN")
         except Exception as e:
-            self.log_message(f"❌ 三键刷新异常: {e}", "ERROR")
+            self.log_message(f"❌ 刷新登录异常: {e}", "ERROR")
             import traceback
             self.log_message(f"📋 异常详情: {traceback.format_exc()}", "ERROR")
         finally:
@@ -764,20 +797,28 @@ class Dashboard(QWidget):
 
     # ------------------ 任务触发 ------------------
     def _load_fix_scripts(self):
-        """加载 fix_script 脚本；首项为扭蛋（默认）"""
+        """加载 fix_script 脚本：扭蛋 → 放生 → 金豆（若存在）→ 其余按名字排序。"""
         import os
         script_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fix_script")
         self.script_combo.clear()
         self.script_combo.addItem("🎲 扭蛋", "__gacha__")
         self.script_combo.addItem("🐾 放生", "放生")
 
+        # 扭蛋、放生之后的固定顺序（其余脚本仍按文件名排序）
+        _after_release = ("金豆",)
+
         if os.path.exists(script_dir):
             try:
-                files = [f for f in os.listdir(script_dir) if f.endswith('.json')]
+                for name in _after_release:
+                    if os.path.isfile(os.path.join(script_dir, name + ".json")):
+                        self.script_combo.addItem(f"💰 {name}", name)
+
+                files = [f for f in os.listdir(script_dir) if f.endswith(".json")]
                 files.sort()
+                skip = frozenset(("放生",) + _after_release)
                 for filename in files:
-                    script_name = filename[:-5]  # 去掉.json后缀
-                    if script_name == "放生":
+                    script_name = filename[:-5]
+                    if script_name in skip:
                         continue
                     self.script_combo.addItem(script_name, script_name)
             except Exception as e:
@@ -819,7 +860,7 @@ class Dashboard(QWidget):
             }
             self.log_message(f"📜 启动脚本 {data}.json × {times}", "SYSTEM")
         self._lock_ui()
-        self.start_signal.emit(tasks)
+        self._emit_start(tasks)
 
     def on_run_daily(self):
         tasks = {
@@ -836,7 +877,19 @@ class Dashboard(QWidget):
         # ✅ 设置自动启动轮换模式的标志
         self._auto_start_rotation_after_daily = True
         self._lock_ui()
-        self.start_signal.emit(tasks)
+        self._emit_start(tasks)
+
+    def on_run_pre_daily(self):
+        tasks = {
+            "pre_daily_mode": True,
+            "use_foreground": self.chk_foreground.isChecked(),
+        }
+        self.log_message(
+            "📋 启动预选日常（跳过分子转化仪；仅签到前准备 + 每日签到）",
+            "SYSTEM",
+        )
+        self._lock_ui()
+        self._emit_start(tasks)
 
     def on_run_hero_tower(self):
         """执行勇者之塔（默认场次由引擎常量决定，当前为 2 场）"""
@@ -846,7 +899,7 @@ class Dashboard(QWidget):
         }
         self.log_message(f"🗼 启动勇者之塔：{DEFAULT_HERO_TOWER_BATTLES}场", "SYSTEM")
         self._lock_ui()
-        self.start_signal.emit(tasks)
+        self._emit_start(tasks)
     
     def on_run_chaos_battle_x2(self):
         """执行大乱斗x2"""
@@ -856,7 +909,7 @@ class Dashboard(QWidget):
         }
         self.log_message("⚔ 启动大乱斗x2", "SYSTEM")
         self._lock_ui()
-        self.start_signal.emit(tasks)
+        self._emit_start(tasks)
     
     def on_run_1v1_x2(self):
         """执行1v1x2"""
@@ -866,7 +919,7 @@ class Dashboard(QWidget):
         }
         self.log_message("⚔ 启动1v1x2", "SYSTEM")
         self._lock_ui()
-        self.start_signal.emit(tasks)
+        self._emit_start(tasks)
 
     def on_run_exp_minor_battle(self):
         """执行小号对战（刷经验）"""
@@ -876,7 +929,7 @@ class Dashboard(QWidget):
         }
         self.log_message("📚 启动小号对战（刷经验）", "SYSTEM")
         self._lock_ui()
-        self.start_signal.emit(tasks)
+        self._emit_start(tasks)
 
     def on_open_script_recorder(self):
         """打开脚本录制器"""
@@ -972,11 +1025,10 @@ class Dashboard(QWidget):
 
             "dar_route_test": True,
             "use_foreground": self.chk_foreground.isChecked(),
-            **self._capsule_task_kv(),
         }
         self.log_message("启动螳螂捕捉(TEST)：请先切到克洛斯星二层", "SYSTEM")
         self._lock_ui()
-        self.start_signal.emit(tasks)
+        self._emit_start(tasks)
 
 
     def _parse_training_params(self):
@@ -1061,7 +1113,7 @@ class Dashboard(QWidget):
         }
         self.log_message(f"🏫 启动训练室练级：{max_battles} 场", "SYSTEM")
         self._lock_ui()
-        self.start_signal.emit(tasks)
+        self._emit_start(tasks)
 
     def _parse_int_box(self, box: QLineEdit, default: int, allow_empty=True) -> int:
         txt = (box.text() or "").strip()
@@ -1105,7 +1157,7 @@ class Dashboard(QWidget):
         }
         self.log_message("⬆ 启动：升级直到100（或调试停级）", "SYSTEM")
         self._lock_ui()
-        self.start_signal.emit(tasks)
+        self._emit_start(tasks)
 
     def _update_training_battle_loop_box_for_mode(self) -> None:
         """嘟嘟卡拉无视循环次数输入，避免误解。"""
@@ -1160,7 +1212,7 @@ class Dashboard(QWidget):
         else:
             self.log_message(f"⚔ 启动{mode_label}：{loop_count} 次循环", "SYSTEM")
         self._lock_ui()
-        self.start_signal.emit(tasks)
+        self._emit_start(tasks)
 
     def on_run_teixun_loop(self):
         tasks = {
@@ -1175,7 +1227,7 @@ class Dashboard(QWidget):
         }
         self.log_message("🔄 启动特训循环（黄=1AND1，白=等待后直接恢复）", "SYSTEM")
         self._lock_ui()
-        self.start_signal.emit(tasks)
+        self._emit_start(tasks)
 
     def on_stop(self):
         self.stop_signal.emit()
@@ -1188,6 +1240,8 @@ class Dashboard(QWidget):
     # ------------------ UI状态 ------------------
     def _lock_ui_except_scheduled(self):
         """锁定UI但保持定时任务UI可用（允许定时任务与其他任务共存）"""
+        if hasattr(self, "btn_pre_daily"):
+            self.btn_pre_daily.setEnabled(False)
         self.btn_run_daily.setEnabled(False)
         self.btn_run_task.setEnabled(False)
         self.script_combo.setEnabled(False)
@@ -1212,10 +1266,8 @@ class Dashboard(QWidget):
             self.btn_rare.setEnabled(False)
         if hasattr(self, "rare_combo"):
             self.rare_combo.setEnabled(False)
-        if hasattr(self, "chk_rare_rotation_pre_reconnect"):
-            self.chk_rare_rotation_pre_reconnect.setEnabled(False)
-        if hasattr(self, "chk_mantis_test_super_only"):
-            self.chk_mantis_test_super_only.setEnabled(False)
+        if hasattr(self, "chk_wild_skip_rotation_pre"):
+            self.chk_wild_skip_rotation_pre.setEnabled(False)
         if hasattr(self, "btn_smart_tracking_test"):
             self.btn_smart_tracking_test.setEnabled(False)
 
@@ -1228,6 +1280,8 @@ class Dashboard(QWidget):
         # 不锁定定时任务相关UI
     
     def _lock_ui(self):
+        if hasattr(self, "btn_pre_daily"):
+            self.btn_pre_daily.setEnabled(False)
         self.btn_run_daily.setEnabled(False)
         self.btn_run_task.setEnabled(False)
         self.script_combo.setEnabled(False)
@@ -1252,10 +1306,8 @@ class Dashboard(QWidget):
             self.btn_rare.setEnabled(False)
         if hasattr(self, "rare_combo"):
             self.rare_combo.setEnabled(False)
-        if hasattr(self, "chk_rare_rotation_pre_reconnect"):
-            self.chk_rare_rotation_pre_reconnect.setEnabled(False)
-        if hasattr(self, "chk_mantis_test_super_only"):
-            self.chk_mantis_test_super_only.setEnabled(False)
+        if hasattr(self, "chk_wild_skip_rotation_pre"):
+            self.chk_wild_skip_rotation_pre.setEnabled(False)
         if hasattr(self, "btn_smart_tracking_test"):
             self.btn_smart_tracking_test.setEnabled(False)
         # 定时任务相关UI保持可用（允许与其他任务共存）
@@ -1287,8 +1339,10 @@ class Dashboard(QWidget):
             self.btn_nieo.setEnabled(False)
         if hasattr(self, "combo_nieo_sub"):
             self.combo_nieo_sub.setEnabled(False)
-        if hasattr(self, "chk_skip_nie_77"):
-            self.chk_skip_nie_77.setEnabled(False)
+        if hasattr(self, "chk_nieo_skip_pre_rotation"):
+            self.chk_nieo_skip_pre_rotation.setEnabled(False)
+        if hasattr(self, "chk_nieo_test_force_switch"):
+            self.chk_nieo_test_force_switch.setEnabled(False)
         for _b in ("btn_afk_normal", "btn_afk_defeat", "btn_afk_rare", "btn_afk_nieo"):
             if hasattr(self, _b):
                 getattr(self, _b).setEnabled(False)
@@ -1302,6 +1356,8 @@ class Dashboard(QWidget):
 
 
     def _unlock_ui_stopped(self):
+        if hasattr(self, "btn_pre_daily"):
+            self.btn_pre_daily.setEnabled(True)
         self.btn_run_daily.setEnabled(True)
         self.btn_run_task.setEnabled(True)
         self.script_combo.setEnabled(True)
@@ -1337,11 +1393,20 @@ class Dashboard(QWidget):
         if hasattr(self, "btn_dar_route_test"):
             self.btn_dar_route_test.setEnabled(True)
 
-        # ✅ 检查是否需要自动启动轮换模式（日常任务完成后）
-        # 注意：如果需要自动启动，不要解锁轮换模式和尼奥模式的UI
+        # ✅ 检查是否需要自动启动轮换模式（日常任务完成后，或日常链大乱斗单场超时交接）
+        handoff_rotation = False
         if self._auto_start_rotation_after_daily:
-            self._auto_start_rotation_after_daily = False  # 清除标志
-            
+            self._auto_start_rotation_after_daily = False
+            handoff_rotation = True
+        bot = getattr(self, "bot", None)
+        if bot is not None and getattr(bot, "rotation_handoff_after_chaos_timeout", False):
+            try:
+                bot.rotation_handoff_after_chaos_timeout = False
+            except Exception:
+                pass
+            handoff_rotation = True
+
+        if handoff_rotation:
             # 等待1秒后自动启动轮换模式
             from PyQt6.QtCore import QTimer
             QTimer.singleShot(1000, self._auto_start_rotation_mode)
@@ -1366,8 +1431,10 @@ class Dashboard(QWidget):
                 self.btn_nieo.setEnabled(True)
             if hasattr(self, "combo_nieo_sub"):
                 self.combo_nieo_sub.setEnabled(True)
-            if hasattr(self, "chk_skip_nie_77"):
-                self.chk_skip_nie_77.setEnabled(True)
+            if hasattr(self, "chk_nieo_skip_pre_rotation"):
+                self.chk_nieo_skip_pre_rotation.setEnabled(True)
+            if hasattr(self, "chk_nieo_test_force_switch"):
+                self.chk_nieo_test_force_switch.setEnabled(True)
             for _b in ("btn_afk_normal", "btn_afk_defeat", "btn_afk_rare", "btn_afk_nieo"):
                 if hasattr(self, _b):
                     getattr(self, _b).setEnabled(True)
@@ -1394,7 +1461,7 @@ class Dashboard(QWidget):
         self.log_message("日志已清空", "SYSTEM")
 
     def _capsule_task_kv(self) -> dict:
-        """非螳螂对战：单档超级/高级/特级（敌方122 由 runner 单独走六档）。"""
+        """螳螂遇野生 122 首回合无敌；其余捕捉投掷档位由本下拉框（超级/高级/特级）决定。"""
         tier = "super"
         combo = getattr(self, "combo_cap_tier", None)
         if combo is not None:
@@ -1404,20 +1471,22 @@ class Dashboard(QWidget):
         return {"non_mantis_capsule_tier": tier}
 
     def _update_rare_dependent_checkbox_state(self):
-        """根据稀有目标下拉：螳螂测试 / 轮换前置重连（螳螂或闪光皮皮）等勾选框启用与重置。"""
+        """根据稀有目标下拉：仅在支持前置的流程上启用「跳过前置重连」。"""
         if not hasattr(self, "rare_combo"):
             return
         sel = self.rare_combo.currentData() or ""
-        if hasattr(self, "chk_rare_rotation_pre_reconnect"):
-            ok_pre = sel in ("flash_pipi", "mantis")
-            self.chk_rare_rotation_pre_reconnect.setEnabled(ok_pre)
+        if hasattr(self, "chk_wild_skip_rotation_pre"):
+            ok_pre = sel in (
+                "flash_pipi",
+                "mantis",
+                "dugulu",
+                "shuangta",
+                "xiaodouya",
+                "eyeball",
+            )
+            self.chk_wild_skip_rotation_pre.setEnabled(ok_pre)
             if not ok_pre:
-                self.chk_rare_rotation_pre_reconnect.setChecked(False)
-        if hasattr(self, "chk_mantis_test_super_only"):
-            ok_mantis = sel == "mantis"
-            self.chk_mantis_test_super_only.setEnabled(ok_mantis)
-            if not ok_mantis:
-                self.chk_mantis_test_super_only.setChecked(False)
+                self.chk_wild_skip_rotation_pre.setChecked(False)
 
     def start_rare_capture(self):
         profile = self.rare_combo.currentData() or "flash_pipi"
@@ -1426,13 +1495,19 @@ class Dashboard(QWidget):
             "wild_capture_profile": profile,
             "use_foreground": self.chk_foreground.isChecked(),
         }
-        if profile in ("flash_pipi", "mantis") and getattr(
-            self, "chk_rare_rotation_pre_reconnect", None
-        ) and self.chk_rare_rotation_pre_reconnect.isChecked():
-            tasks["rare_rotation_reconnect_first"] = True
-        if profile == "mantis" and getattr(self, "chk_mantis_test_super_only", None):
-            tasks["mantis_test_super_only"] = bool(self.chk_mantis_test_super_only.isChecked())
-        tasks.update(self._capsule_task_kv())
+        profiles_pre = (
+            "flash_pipi",
+            "mantis",
+            "dugulu",
+            "shuangta",
+            "xiaodouya",
+            "eyeball",
+        )
+        wild_skip = False
+        if profile in profiles_pre and getattr(self, "chk_wild_skip_rotation_pre", None):
+            wild_skip = bool(self.chk_wild_skip_rotation_pre.isChecked())
+        if profile in profiles_pre:
+            tasks["wild_skip_rotation_pre"] = wild_skip
         labels = {
             "mantis": "螳螂（122）",
             "dugulu": "嘟咕噜",
@@ -1443,13 +1518,11 @@ class Dashboard(QWidget):
         }
         label = labels.get(profile, profile)
         sfx = ""
-        if profile == "mantis" and tasks.get("mantis_test_super_only"):
-            sfx = " [测试·仅突变+全程超级胶囊]"
-        if profile in ("mantis", "flash_pipi") and tasks.get("rare_rotation_reconnect_first"):
-            sfx += " [轮换前置重连]"
+        if profile in profiles_pre:
+            sfx = " [跳过前置]" if wild_skip else " [启动前置重连]"
         self.log_message(f"🧿 启动野外捕捉：{label}{sfx}", "SYSTEM")
         self._lock_ui()
-        self.start_signal.emit(tasks)
+        self._emit_start(tasks)
 
     def start_smart_tracking_test(self):
         profile = self.rare_combo.currentData() or "flash_pipi"
@@ -1459,11 +1532,10 @@ class Dashboard(QWidget):
             "wild_capture_profile": profile,
             "use_foreground": self.chk_foreground.isChecked(),
             "wild_battle_test_mode": False,  # 测试模式不使用声音触发
-            **self._capsule_task_kv(),
         }
         self.log_message(f"🧪 启动智能追踪测试：{profile}（请确保已进入目标地图）", "SYSTEM")
         self._lock_ui()
-        self.start_signal.emit(tasks)
+        self._emit_start(tasks)
     
     def _build_rotation_mode_tasks(self) -> dict:
         """与「启动轮换模式」按钮相同的一份任务字典；一键日常结束后自动轮换也走这里，保证勾选一致。"""
@@ -1490,7 +1562,6 @@ class Dashboard(QWidget):
             "rotation_interval_minutes_shuangta": interval_minutes_shuangta,
             "petswf_hard_limit_sec": hard_limit_sec,
             "rotation_rare_slot": rare_slot,
-            **self._capsule_task_kv(),
         }
 
     def start_rotation_mode(self):
@@ -1505,7 +1576,7 @@ class Dashboard(QWidget):
             "SYSTEM",
         )
         self._lock_ui()
-        self.start_signal.emit(tasks)
+        self._emit_start(tasks)
     
     def _auto_start_rotation_mode(self):
         """日常任务完成后自动启动轮换：与点击「启动轮换模式」使用同一套勾选与参数。"""
@@ -1520,7 +1591,7 @@ class Dashboard(QWidget):
         )
         # ✅ 日常任务完成后 _unlock_ui_stopped 已执行，UI已解锁，需重新锁定以匹配轮换模式运行状态
         self._lock_ui()
-        self.start_signal.emit(tasks)
+        self._emit_start(tasks)
 
     def _update_rotation_test_inputs_enabled(self):
         enabled = self.chk_rotation_test_mode.isChecked()
@@ -1533,6 +1604,27 @@ class Dashboard(QWidget):
             return float(text)
         except (TypeError, ValueError):
             return default_value
+
+    def _pick_task_kv(self) -> dict:
+        return {
+            "pick_pet_mode": True,
+            "resist_drain_logic": bool(self.chk_resist_drain_logic.isChecked()),
+        }
+
+    def _molecule_converter_task_kv(self) -> dict:
+        chk = getattr(self, "chk_enable_molecule_converter", None)
+        enabled = chk.isChecked() if chk is not None else True
+        return {"enable_molecule_converter": enabled}
+
+    def _emit_start(self, tasks: dict) -> None:
+        self.start_signal.emit(
+            {
+                **tasks,
+                **self._pick_task_kv(),
+                **self._capsule_task_kv(),
+                **self._molecule_converter_task_kv(),
+            }
+        )
     
     def start_scheduled_task(self):
         """定时任务入口已移除（引擎不再执行 scheduled_*）；请使用双塔尼奥轮换模式。"""
@@ -1545,12 +1637,11 @@ class Dashboard(QWidget):
             "nie_family_test": True,
             "nie_family_test_type": "nie",  # 尼尔模式（77/310）
             "use_foreground": self.chk_foreground.isChecked(),
-            **self._capsule_task_kv(),
         }
         self.log_message("🧪 启动尼尔测试（77/310，第二回合切精灵三）", "SYSTEM")
         self.log_message("📝 请手动发起一次对战，程序将自动检测并执行对战流程", "INFO")
         self._lock_ui()
-        self.start_signal.emit(tasks)
+        self._emit_start(tasks)
     
     def start_test_ni(self):
         """启动尼奥测试（416，第二回合切精灵二）"""
@@ -1558,12 +1649,11 @@ class Dashboard(QWidget):
             "nie_family_test": True,
             "nie_family_test_type": "ni",  # 尼奥模式（416）
             "use_foreground": self.chk_foreground.isChecked(),
-            **self._capsule_task_kv(),
         }
         self.log_message("🧪 启动尼奥测试（416，第二回合切精灵二）", "SYSTEM")
         self.log_message("📝 请手动发起一次对战，程序将自动检测并执行对战流程", "INFO")
         self._lock_ui()
-        self.start_signal.emit(tasks)
+        self._emit_start(tasks)
     
     def start_afk_battle_mode(self, sub_mode: str = "normal"):
         """启动挂机对战模式"""
@@ -1572,11 +1662,10 @@ class Dashboard(QWidget):
             "afk_battle_mode": True,
             "afk_sub_mode": sub_mode,
             "use_foreground": self.chk_foreground.isChecked(),
-            **self._capsule_task_kv(),
         }
         self.log_message(f"🎮 启动挂机{labels.get(sub_mode, sub_mode)}模式", "SYSTEM")
         self._lock_ui()
-        self.start_signal.emit(tasks)
+        self._emit_start(tasks)
 
     def start_pinnacle_mode(self, mode: str = "rank"):
         """启动巅峰对战模式（排位/娱乐）"""
@@ -1591,11 +1680,10 @@ class Dashboard(QWidget):
                 and self.chk_pinnacle_small_account_mode.isChecked()
             ),
             "use_foreground": self.chk_foreground.isChecked(),
-            **self._capsule_task_kv(),
         }
         self.log_message(f"🏆 启动巅峰对战模式（{label}）", "SYSTEM")
         self._lock_ui()
-        self.start_signal.emit(tasks)
+        self._emit_start(tasks)
 
     def start_nieo_mode(self):
         """启动尼奥模式或纯净能量(资源)（下拉选择）"""
@@ -1608,18 +1696,23 @@ class Dashboard(QWidget):
             "use_foreground": self.chk_foreground.isChecked(),
             "test_nieo": False,
             "test_nie": False,
-            "skip_nie_77": self.chk_skip_nie_77.isChecked() if hasattr(self, "chk_skip_nie_77") else False,
-            "nieo_pre_rotation_first": self.chk_nieo_pre_rotation.isChecked() if hasattr(self, "chk_nieo_pre_rotation") else False,
+            "skip_nie_77": False,
+            "nieo_skip_pre_rotation": (
+                self.chk_nieo_skip_pre_rotation.isChecked()
+                if hasattr(self, "chk_nieo_skip_pre_rotation")
+                else False
+            ),
             "nieo_test_force_switch": (
                 self.chk_nieo_test_force_switch.isChecked()
                 if hasattr(self, "chk_nieo_test_force_switch")
                 else False
             ),
-            **self._capsule_task_kv(),
         }
         test_msg = ""
-        if tasks.get("skip_nie_77"):
-            test_msg += " [不捕捉尼尔]"
+        if tasks.get("nieo_skip_pre_rotation"):
+            test_msg += " [跳过前置]"
+        else:
+            test_msg += " [启动前置重连]"
         if tasks.get("nieo_test_force_switch"):
             test_msg += " [测试·10图闪光艾菲亚/11图艾斯菲格]"
         if sub == "pure_energy":
@@ -1627,7 +1720,7 @@ class Dashboard(QWidget):
         else:
             self.log_message(f"🌊 启动尼奥模式（10/11地图循环）{test_msg}", "SYSTEM")
         self._lock_ui()
-        self.start_signal.emit(tasks)
+        self._emit_start(tasks)
     
     def on_shuangta_refresh(self):
         """执行双塔刷新流程"""
