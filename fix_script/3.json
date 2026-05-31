@@ -55,7 +55,7 @@
             "action": "click",
             "x": 468,
             "y": 529,
-            "delay": 1.8,
+            "delay": 6,
             "desc": "Step 4 - 放回仓库"
         },
         {

@@ -36,7 +36,11 @@ from core.kernel_log_match import (
     RE_PET_SOUND_ID,
 )
 from core.region_store import Region, RegionStore
-from core.utils import window_manager, screenshots_subdir
+from core.utils import (
+    window_manager,
+    screenshots_subdir,
+    BAG_OPEN_READY_TIMEOUT_SEC,
+)
 
 # OCR support (optional)
 try:
@@ -488,7 +492,7 @@ class DarRouteRunner:
         # 统一重连管线（刷新 Step2 / 轮换子步骤1 等）：bot_thread 启动任务后设为 True
         self._unified_reconnect_pipeline_always: bool = False
         # Dashboard「执行分子转化仪」：未勾选时门控后不跑分子仪、不写节流戳（与 skip 语义一致）
-        self._enable_molecule_converter: bool = True
+        self._enable_molecule_converter: bool = False
         # 野遇稀有：第二回合切机塔后为 True，用于抗减命二技能轴
         self._pickmode_battle_on_jita: bool = False
         # 战后背包技能四判定的机塔槽位（「二」/「三」），供切换时优先扫描
@@ -504,7 +508,7 @@ class DarRouteRunner:
         self.ROTATION_RECONNECT_INTERVAL_MINUTES_SHUANGTA: float = 60.0  # 测试模式：双塔运行多久切换尼奥（分钟）
         self.PETSWF_TO_PETITEM_HARD_LIMIT_SEC: float = 8.0  # petswf到PetItem时间差硬线（秒）
         self.PETSWF_TO_PETITEM_MIN_MULTIPLIER: float = 3.0  # 当前间隔超过历史最小值的该倍数时触发刷新重连（与硬线并列）
-        self.BAG_OPEN_STABILITY_SEC: float = 2.5  # 打开背包后等待界面稳定的时间（秒）
+        self.BAG_OPEN_READY_TIMEOUT_SEC: float = BAG_OPEN_READY_TIMEOUT_SEC  # 打开背包后扫描清空精灵一(#FF9901)超时（秒）
         self.MUTATION_WITHOUT_MP3_RECONNECT_SEC: float = 45.0  # 野外稀有模式：45s内无稳态则重连
         
         # 尼尔家族切换精灵计数器（用于测试模式的轮流切换）
@@ -717,7 +721,7 @@ class DarRouteRunner:
                 self._click_region(bag_open_btn_key, use_foreground)
             except KeyError:
                 self._click_region(bag_open_key, use_foreground)
-            self._sleep_abortable(stop_event, self.BAG_OPEN_STABILITY_SEC)
+            self._wait_pet_bag_ui_ready_after_open(stop_event)
             self._scan_pickmode_bag_slots_respecting_yameisi_branch(use_foreground, stop_event)
             try:
                 self._click_region(bag_open_btn_key, use_foreground)
@@ -4729,10 +4733,10 @@ class DarRouteRunner:
         正常情况（没有尼尔家族）：
         1. 打开精灵背包
         2. 如果skip_return_storage为False（捕捉成功后）：
-           - 等待BAG_OPEN_STABILITY_SEC后前置：快速双击精灵四，每双击检测选中四，5秒内蓝白混合则继续，否则重连四
+           - 打开背包后扫描清空精灵一探针(#FF9901)就绪后前置：快速双击精灵四，每双击检测选中四，5秒内蓝白混合则继续，否则重连四
            - 颜色检测识别目标（精灵四、三、二）→ 放回仓库 → 双击精灵一 → 恢复 → 1AND1确认 → 点击打开精灵背包（关闭）
         3. 如果skip_return_storage为True（第0次战斗后）：
-           - 等待BAG_OPEN_STABILITY_SEC后直接双击精灵一 → 恢复 → 1AND1确认 → 点击打开精灵背包（关闭）
+           - 打开背包后扫描清空精灵一探针(#FF9901)就绪后直接双击精灵一 → 恢复 → 1AND1确认 → 点击打开精灵背包（关闭）
         
         尼尔家族416：
         - 尼奥：放回后恢复闪光艾菲亚槽（与出战一致）；战后扫描闪光艾菲亚+艾斯菲格。
@@ -4761,8 +4765,8 @@ class DarRouteRunner:
             except KeyError:
                 self._click_region(bag_open_key, use_foreground)
             
-            # 打开精灵背包后等待界面稳定（BAG_OPEN_STABILITY_SEC），然后前置：双击精灵四+选中四检测（5秒内未选中则重连四）
-            self._sleep_abortable(stop_event, self.BAG_OPEN_STABILITY_SEC)
+            # 打开精灵背包后扫描清空精灵一探针(#FF9901)就绪，然后前置：双击精灵四+选中四检测（5秒内未选中则重连四）
+            self._wait_pet_bag_ui_ready_after_open(stop_event)
             
             # 注意：探针扫描已移到恢复和1AND1之后，避免被其他UI元素污染
             
@@ -5209,8 +5213,8 @@ class DarRouteRunner:
                             self._click_region(bag_open_btn_key, use_foreground)
                         except KeyError:
                             self._click_region(bag_open_key, use_foreground)
-                        # 打开精灵背包后等待界面稳定（BAG_OPEN_STABILITY_SEC）
-                        self._sleep_abortable(stop_event, self.BAG_OPEN_STABILITY_SEC)
+                        # 打开精灵背包后扫描清空精灵一探针(#FF9901)就绪
+                        self._wait_pet_bag_ui_ready_after_open(stop_event)
                         
                         # 1. 双击精灵一
                         self._emit("🐾 双击精灵一（准备恢复）", "INFO")
@@ -8269,21 +8273,32 @@ class DarRouteRunner:
 
     def _mean_rgb_for_region_key(self, region_key: str) -> Optional[Tuple[int, int, int]]:
         """截取区域并返回 RGB 均值（失败返回 None）。"""
-        try:
-            reg = self.regions.get(region_key)
-            if reg is None:
-                return None
-            x1, y1, x2, y2 = reg.outer_bbox()
-            img = window_manager.grab_game_bbox(x1, y1, x2, y2)
-            if img is None:
-                return None
-            arr = np.asarray(img.convert("RGB"), dtype=np.uint8)
-            if arr.size == 0:
-                return None
-            m = np.round(arr.mean(axis=(0, 1))).astype(int)
-            return int(m[0]), int(m[1]), int(m[2])
-        except Exception:
-            return None
+        from core.utils import mean_rgb_for_region_key
+
+        return mean_rgb_for_region_key(self.regions, region_key)
+
+    def _wait_pet_bag_ui_ready_after_open(
+        self,
+        stop_event: threading.Event,
+        log_tag: str = "背包",
+        timeout_s: Optional[float] = None,
+    ) -> bool:
+        """打开背包后轮询「精灵背包.清空精灵一」直至橙色 #FF9901，默认 5s 超时。"""
+        from core.utils import wait_pet_bag_ui_ready_after_open
+
+        return wait_pet_bag_ui_ready_after_open(
+            self.regions,
+            emit_fn=lambda msg, level: self._emit(msg, level),
+            stop_check=lambda: (
+                stop_event.is_set() or getattr(self.bot, "stop_current", False)
+            ),
+            log_tag=log_tag,
+            timeout_s=(
+                timeout_s
+                if timeout_s is not None
+                else self.BAG_OPEN_READY_TIMEOUT_SEC
+            ),
+        )
 
     def _classify_bag_skill4_mean_rgb(
         self, rgb: Tuple[int, int, int], mode: str
@@ -8930,7 +8945,7 @@ class DarRouteRunner:
         
         流程：
         1. 点击精灵背包
-        2. 打开背包后等待界面稳定（BAG_OPEN_STABILITY_SEC，默认2.5s）
+        2. 打开背包后扫描清空精灵一探针(#FF9901)直至就绪（5s超时）
         2.5. 仅当scan_hp_bars=True（重连四）时：先双击精灵五直到检测到选中，再扫描血条（五、四、三、二）
              - 如果有需要放回的，双击对应精灵 → 点击放回仓库 → 等待2s
         3. 扫描 登录.亨姆二、登录.亨姆三、登录.亨姆四 三个区域
@@ -8942,7 +8957,7 @@ class DarRouteRunner:
         6. 双击对应精灵区域
         7. 先点击 精灵背包.身边跟随（背包会被自动关闭）
         8. 再次点击精灵背包
-        9. 再次打开背包后等待界面稳定（BAG_OPEN_STABILITY_SEC）
+        9. 再次打开背包后扫描清空精灵一探针(#FF9901)直至就绪（5s超时）
         10. 双击对应区域
         11. 点击放回仓库
         12. 点击打开精灵背包
@@ -8967,8 +8982,8 @@ class DarRouteRunner:
             except KeyError:
                 self._click_region(bag_open_key, use_foreground)
             
-            # 2. 打开背包后等待界面稳定（BAG_OPEN_STABILITY_SEC）
-            self._sleep_abortable(stop_event, self.BAG_OPEN_STABILITY_SEC)
+            # 2. 打开背包后扫描清空精灵一探针(#FF9901)直至就绪
+            self._wait_pet_bag_ui_ready_after_open(stop_event)
             
             # 2.5. ✅ 只有scan_hp_bars=True时才扫描血条，检查是否有需要放回仓库的精灵（精灵二、三、四、五）
             if scan_hp_bars:
@@ -9145,8 +9160,8 @@ class DarRouteRunner:
             except KeyError:
                 self._click_region(bag_open_key, use_foreground)
             
-            # 8. 再次打开背包后等待界面稳定（BAG_OPEN_STABILITY_SEC）
-            self._sleep_abortable(stop_event, self.BAG_OPEN_STABILITY_SEC)
+            # 8. 再次打开背包后扫描清空精灵一探针(#FF9901)直至就绪
+            self._wait_pet_bag_ui_ready_after_open(stop_event)
             
             # 9. ✅ 使用新的点击逻辑：每点击两下检测一次选中状态
             self._emit(f"🖱️ [亨姆检测] 点击精灵{hengmu_pos}区域并检测选中状态", "INFO")
@@ -10850,7 +10865,7 @@ class DarRouteRunner:
 
     def _rotation_step1_force_molecule_converter(self) -> bool:
         """全局启用统一重连管线且 Dashboard 勾选分子仪时：强制跑分子转化仪（忽略 30min 节流）。"""
-        if not getattr(self, "_enable_molecule_converter", True):
+        if not getattr(self, "_enable_molecule_converter", False):
             return False
         return bool(getattr(self, "_unified_reconnect_pipeline_always", False))
 
@@ -12483,7 +12498,7 @@ class DarRouteRunner:
                         f"ℹ️ [{log_tag}] 跳过分子转化仪（本趟不改变分子仪节流计时）",
                         "INFO",
                     )
-                elif not getattr(self, "_enable_molecule_converter", True):
+                elif not getattr(self, "_enable_molecule_converter", False):
                     self._emit(
                         f"ℹ️ [{log_tag}] 已关闭「执行分子转化仪」选项，跳过（本趟不改变分子仪节流计时）",
                         "INFO",
@@ -14080,7 +14095,7 @@ class DarRouteRunner:
                 self._click_region(bag_open_btn_key, use_foreground)
             except KeyError:
                 self._click_region(bag_open_key, use_foreground)
-            self._sleep_abortable(stop_event, self.BAG_OPEN_STABILITY_SEC)
+            self._wait_pet_bag_ui_ready_after_open(stop_event)
             pet_one_key = "精灵背包.精灵一"
             pet_one_btn_key = "精灵背包.精灵一按钮"
             self._emit("🐾 双击精灵一（准备恢复）", "INFO")
@@ -16180,7 +16195,7 @@ class DarRouteRunner:
             self._click_region(bag_open_btn_key, use_foreground)
         except KeyError:
             self._click_region(bag_open_key, use_foreground)
-        self._sleep_abortable(stop_event, self.BAG_OPEN_STABILITY_SEC)
+        self._wait_pet_bag_ui_ready_after_open(stop_event)
         if stop_event.is_set() or getattr(self.bot, "stop_current", False):
             return False
         try:
@@ -16226,8 +16241,8 @@ class DarRouteRunner:
         except KeyError:
             self._click_region(bag_open_key, use_foreground)
         
-        # 等待背包界面稳定（BAG_OPEN_STABILITY_SEC）
-        self._sleep_abortable(stop_event, self.BAG_OPEN_STABILITY_SEC)
+        # 等待背包 UI 就绪（清空精灵一探针 #FF9901，5s 超时）
+        self._wait_pet_bag_ui_ready_after_open(stop_event)
         
         # ✅ 在点击放回仓库前，对整个client截图
         # ❌ 已禁用：rotation_screenshots 截图（按需求不再输出该目录）
@@ -16505,7 +16520,7 @@ class DarRouteRunner:
             self._click_region(bag_open_btn_key, use_foreground)
         except KeyError:
             self._click_region(bag_open_key, use_foreground)
-        self._sleep_abortable(stop_event, self.BAG_OPEN_STABILITY_SEC)
+        self._wait_pet_bag_ui_ready_after_open(stop_event)
 
         if self._check_capture_verify_four_color(use_foreground) == 0:
             self._emit("⚠️ [Pick-步骤4·亚梅丝] 四号位纯蓝无精灵，返回 False", "WARN")
@@ -16544,7 +16559,7 @@ class DarRouteRunner:
             self._click_region(bag_open_btn_key, use_foreground)
         except KeyError:
             self._click_region(bag_open_key, use_foreground)
-        self._sleep_abortable(stop_event, self.BAG_OPEN_STABILITY_SEC)
+        self._wait_pet_bag_ui_ready_after_open(stop_event)
 
         if self._check_capture_verify_four_color(use_foreground) == 0:
             self._emit("⚠️ [Pick-步骤4] 四号位纯蓝无精灵，返回 False", "WARN")

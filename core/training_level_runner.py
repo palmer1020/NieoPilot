@@ -4,7 +4,7 @@ import re
 import time
 from typing import List, Optional, Tuple, Dict
 
-from core.utils import window_manager, screenshots_subdir
+from core.utils import window_manager, screenshots_subdir, wait_pet_bag_ui_ready_after_open
 from core.battle_runner import BattleRunner
 from core.post_battle_cleaner import PostBattleCleaner
 from core.unified_battle_framework import UnifiedBattleFramework, BattleConfig, BattleMode
@@ -272,7 +272,12 @@ class TrainingLevelRunner:
 
         self.bot.emit_and_log("🧰 Stage0：打开背包并恢复精灵", "SYSTEM")
         self._click(open_key, use_foreground)
-        time.sleep(2.5)
+        wait_pet_bag_ui_ready_after_open(
+            self.regions,
+            emit_fn=lambda msg, level: self.bot.emit_and_log(msg, level),
+            stop_check=lambda: getattr(self.bot, "stop_current", False),
+            log_tag="训练室",
+        )
 
         self._click(self.KEY_RECOVER, use_foreground)
         time.sleep(0.5)

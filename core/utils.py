@@ -4,6 +4,7 @@ import time
 import subprocess
 import threading
 import math
+from typing import Callable, Optional, Tuple
 
 import win32gui
 import win32api
@@ -752,6 +753,78 @@ def screenshots_subdir(project_root: str, category: str) -> str:
     d = os.path.join(project_root, "screenshots", category)
     os.makedirs(d, exist_ok=True)
     return d
+
+
+BAG_UI_READY_PROBE_KEY = "精灵背包.清空精灵一"
+BAG_UI_READY_ORANGE_RGB = (255, 153, 1)  # #FF9901
+BAG_UI_READY_ORANGE_TOLERANCE = 45.0
+BAG_OPEN_READY_TIMEOUT_SEC = 5.0
+BAG_OPEN_READY_POLL_SEC = 0.12
+
+
+def is_bag_ui_ready_orange_rgb(
+    rgb: Tuple[int, int, int],
+    tolerance: float = BAG_UI_READY_ORANGE_TOLERANCE,
+) -> bool:
+    """清空精灵一探针均值接近橙色 #FF9901 时视为背包 UI 已就绪。"""
+    r, g, b = rgb
+    ref_r, ref_g, ref_b = BAG_UI_READY_ORANGE_RGB
+    dist = math.sqrt((r - ref_r) ** 2 + (g - ref_g) ** 2 + (b - ref_b) ** 2)
+    return dist <= tolerance
+
+
+def mean_rgb_for_region_key(regions, region_key: str) -> Optional[Tuple[int, int, int]]:
+    """截取区域并返回 RGB 均值（失败返回 None）。"""
+    try:
+        reg = regions.get(region_key)
+        if reg is None:
+            return None
+        x1, y1, x2, y2 = reg.outer_bbox()
+        img = window_manager.grab_game_bbox(x1, y1, x2, y2, min_size_px=2)
+        if img is None:
+            return None
+        rgb = img.convert("RGB").resize((1, 1)).getpixel((0, 0))
+        return int(rgb[0]), int(rgb[1]), int(rgb[2])
+    except Exception:
+        return None
+
+
+def wait_pet_bag_ui_ready_after_open(
+    regions,
+    *,
+    emit_fn: Optional[Callable[[str, str], None]] = None,
+    stop_check: Optional[Callable[[], bool]] = None,
+    log_tag: str = "背包",
+    timeout_s: float = BAG_OPEN_READY_TIMEOUT_SEC,
+    poll_s: float = BAG_OPEN_READY_POLL_SEC,
+    probe_key: str = BAG_UI_READY_PROBE_KEY,
+) -> bool:
+    """
+    打开精灵背包后轮询「清空精灵一」探针，检测到橙色 #FF9901 即视为 UI 就绪。
+    超时仍返回 False 但不阻塞后续流程（由调用方决定是否继续）。
+    """
+    if emit_fn:
+        emit_fn(
+            f"⏳ [{log_tag}] 扫描清空精灵一探针，等待橙色就绪(#FF9901)，{timeout_s}s超时",
+            "INFO",
+        )
+    t0 = time.time()
+    while time.time() - t0 < timeout_s:
+        if stop_check and stop_check():
+            return False
+        rgb = mean_rgb_for_region_key(regions, probe_key)
+        if rgb and is_bag_ui_ready_orange_rgb(rgb):
+            if emit_fn:
+                r, g, b = rgb
+                emit_fn(
+                    f"✅ [{log_tag}] 背包UI就绪（清空精灵一 RGB=({r},{g},{b})）",
+                    "SUCCESS",
+                )
+            return True
+        time.sleep(poll_s)
+    if emit_fn:
+        emit_fn(f"⚠️ [{log_tag}] 等待背包UI就绪超时({timeout_s}s)，继续执行", "WARN")
+    return False
 
 
 window_manager = WindowManager()

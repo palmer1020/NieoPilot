@@ -242,10 +242,10 @@ class Dashboard(QWidget):
         daily_layout.addLayout(row1)
 
         self.chk_enable_molecule_converter = QCheckBox("执行分子转化仪")
-        self.chk_enable_molecule_converter.setChecked(True)
+        self.chk_enable_molecule_converter.setChecked(False)
         self.chk_enable_molecule_converter.setToolTip(
-            "勾选（默认）：刷新登录、轮换、野外重连等走到基地门控后，按原逻辑执行分子转化仪（含节流与强制路径）。\n"
-            "不勾选：任何模式均不执行分子转化仪，且不写入 30 min 节流时间戳。"
+            "勾选：刷新登录、轮换、野外重连等走到基地门控后，按原逻辑执行分子转化仪（含节流与强制路径）。\n"
+            "不勾选（默认）：任何模式均不执行分子转化仪，且不写入 30 min 节流时间戳。"
         )
 
         # 第二行：勇者之塔等（扭蛋已合并到上行）
@@ -797,21 +797,22 @@ class Dashboard(QWidget):
 
     # ------------------ 任务触发 ------------------
     def _load_fix_scripts(self):
-        """加载 fix_script 脚本：扭蛋 → 放生 → 金豆（若存在）→ 其余按名字排序。"""
+        """加载 fix_script 脚本：扭蛋 → 放生 → 金豆 → 孵化（固定显示）→ 其余按名字排序。"""
         import os
         script_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fix_script")
         self.script_combo.clear()
         self.script_combo.addItem("🎲 扭蛋", "__gacha__")
         self.script_combo.addItem("🐾 放生", "放生")
 
-        # 扭蛋、放生之后的固定顺序（其余脚本仍按文件名排序）
-        _after_release = ("金豆",)
+        # 扭蛋、放生之后的固定顺序（始终显示；其余脚本仍按文件名排序）
+        _after_release = ("金豆", "孵化")
+        _after_release_icons = {"金豆": "💰", "孵化": "🥚"}
 
         if os.path.exists(script_dir):
             try:
                 for name in _after_release:
-                    if os.path.isfile(os.path.join(script_dir, name + ".json")):
-                        self.script_combo.addItem(f"💰 {name}", name)
+                    icon = _after_release_icons.get(name, "📜")
+                    self.script_combo.addItem(f"{icon} {name}", name)
 
                 files = [f for f in os.listdir(script_dir) if f.endswith(".json")]
                 files.sort()
@@ -939,7 +940,13 @@ class Dashboard(QWidget):
         
         script_recorder_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools", "script_recorder.py")
         try:
-            subprocess.Popen([sys.executable, script_recorder_path], creationflags=subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0)
+            env = os.environ.copy()
+            env.setdefault("PYTHONIOENCODING", "utf-8")
+            subprocess.Popen(
+                [sys.executable, script_recorder_path],
+                creationflags=subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0,
+                env=env,
+            )
             self.log_message("📝 脚本录制器已启动", "SYSTEM")
         except Exception as e:
             self.log_message(f"❌ 启动脚本录制器失败: {e}", "ERROR")

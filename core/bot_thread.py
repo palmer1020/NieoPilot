@@ -369,7 +369,7 @@ class BotWorker(QThread):
                             bool(tasks.get("resist_drain_logic", False))
                         )
                         self.dar_route_runner.set_enable_molecule_converter(
-                            bool(tasks.get("enable_molecule_converter", True))
+                            bool(tasks.get("enable_molecule_converter", False))
                         )
                     except Exception:
                         pass

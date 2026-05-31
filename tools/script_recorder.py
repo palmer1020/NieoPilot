@@ -1,5 +1,6 @@
 # tools/script_recorder.py
 import os
+import re
 import sys
 import time
 import json
@@ -22,6 +23,7 @@ def _set_dpi_awareness():
         except Exception:
             pass
 
+
 _set_dpi_awareness()
 
 # =========================================================
@@ -40,23 +42,78 @@ SCRIPT_FOLDER_NAME = "fix_script"
 SCRIPT_DIR = os.path.join(project_root, SCRIPT_FOLDER_NAME)
 os.makedirs(SCRIPT_DIR, exist_ok=True)
 
+# 保存并退出的热键（ESC 常被游戏吞掉，优先用 F10 / F12）
+SAVE_EXIT_KEYS = frozenset(
+    {
+        keyboard.Key.esc,
+        keyboard.Key.f10,
+        keyboard.Key.f12,
+    }
+)
+
+
+def _configure_console_utf8() -> None:
+    """Windows 控制台 UTF-8，避免中文脚本名乱码导致保存到错误文件名。"""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+        ctypes.windll.kernel32.SetConsoleCP(65001)
+    except Exception:
+        pass
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+
+
+def _sanitize_script_filename(name: str) -> str:
+    """去掉 .json 后缀与 Windows 非法字符。"""
+    name = (name or "").strip()
+    if name.lower().endswith(".json"):
+        name = name[:-5]
+    name = re.sub(r'[<>:"/\\|?*]', "_", name)
+    return name.strip()
+
 
 class ScriptRecorder:
     def __init__(self, filename: str):
-        self.filename = filename
+        self.filename = _sanitize_script_filename(filename)
         self.steps = []
         self.last_action_time = None
         self.is_recording = True
+        self._saved = False
 
-        print("🔍 正在锁定游戏窗口...")
-        # 录制器里保持原逻辑：没有窗口就尝试启动/连接
-        if not window_manager.launch_game():
-            print("❌ 无法找到或启动游戏窗口！")
+        if not self.filename:
+            print("❌ 脚本名字无效（为空或仅含非法字符）")
             self.is_recording = False
             return
 
+        print("🔍 正在锁定游戏窗口...")
+        if not window_manager.launch_game():
+            print("❌ 无法找到或启动游戏窗口！请先在 Dashboard 启动游戏。")
+            self.is_recording = False
+            return
+
+        try:
+            window_manager.scan_boundaries()
+            print("✅ 已自动扫边（校准视口）。")
+        except Exception as e:
+            print(f"⚠ 自动扫边失败（{e}），将使用整段客户区推算坐标。")
+
+        vp = window_manager.get_current_viewport()
+        if vp:
+            vx, vy, vw, vh = vp
+            print(f"📐 当前视口: x={vx:.0f}, y={vy:.0f}, w={vw:.0f}, h={vh:.0f}")
+        else:
+            print("⚠ 未能获取视口；若左键一直无效，请先在 Dashboard 点【校准屏幕】。")
+
         print("✅ 窗口已锁定，准备就绪。")
         print(f"🛡️ 有效区域限制: {GAME_LOGIC_W} x {GAME_LOGIC_H}")
+        print(f"📁 保存目录: {SCRIPT_DIR}")
 
     def on_click(self, x, y, button, pressed):
         if (not self.is_recording) or (not pressed):
@@ -66,13 +123,14 @@ class ScriptRecorder:
         if button == mouse.Button.left:
             res = window_manager.screen_to_game(x, y)
             if not res:
-                print("❌ 点击无效：无法定位窗口坐标（viewport=None）")
+                print(
+                    "❌ 点击无效：无法定位游戏坐标。"
+                    "请确认点击在游戏画面内，且已在 Dashboard【校准屏幕】。"
+                )
                 return
 
             gx, gy = res
 
-            # ✅ 给一点容错：避免边缘浮点误差导致无故丢点
-            # （DPI 修复后一般不会需要，但保留更稳）
             if gx < -5 or gx > GAME_LOGIC_W + 5 or gy < -5 or gy > GAME_LOGIC_H + 5:
                 print(f"🚫 [无效点击] 落在屏幕之外: ({int(gx)}, {int(gy)}) -> 忽略")
                 return
@@ -80,7 +138,6 @@ class ScriptRecorder:
             gx = int(round(gx))
             gy = int(round(gy))
 
-            # 最终硬边界
             if gx < 0 or gx > GAME_LOGIC_W or gy < 0 or gy > GAME_LOGIC_H:
                 print(f"🚫 [无效点击] 超出 {GAME_LOGIC_W}x{GAME_LOGIC_H}: ({gx}, {gy}) -> 忽略")
                 return
@@ -98,7 +155,7 @@ class ScriptRecorder:
                 "x": gx,
                 "y": gy,
                 "delay": round(delay, 2),
-                "desc": f"Step {len(self.steps) + 1}"
+                "desc": f"Step {len(self.steps) + 1}",
             }
             self.steps.append(step)
             print(f"✅ [步骤 {len(self.steps)}] 捕获: ({gx}, {gy}) | 延迟 {delay:.2f}s")
@@ -113,36 +170,56 @@ class ScriptRecorder:
                 print("⚠ 列表为空，无法撤销")
 
     def on_press(self, key):
-        if key == keyboard.Key.esc:
-            print("\n⏹ 停止录制...")
+        if key not in SAVE_EXIT_KEYS:
+            return
+        key_name = getattr(key, "name", str(key))
+        print(f"\n⏹ 收到 {key_name.upper()}，准备保存并退出...")
+        self._finish(save=True)
+        return False
+
+    def _finish(self, save: bool) -> None:
+        self.is_recording = False
+        if save:
             self.save()
-            self.is_recording = False
+
+    def save(self) -> bool:
+        if self._saved:
+            return True
+
+        if not self.steps:
+            print("❌ 未录制任何有效步骤，无法保存。")
+            print("   常见原因：")
+            print("   1) 左键点在了游戏画面外（控制台/桌面）")
+            print("   2) 未先在 Dashboard【校准屏幕】或游戏未启动")
+            print("   3) 按了保存键但控制台里没有出现「✅ [步骤 N] 捕获」")
+            print(f"   请重新录制；保存路径应为: {os.path.join(SCRIPT_DIR, self.filename + '.json')}")
             return False
 
-    def save(self):
-        if not self.steps:
-            print("❌ 未录制任何有效动作，放弃保存。")
-            return
-
-        safe_filename = self.filename
-        if not safe_filename.endswith(".json"):
-            safe_filename += ".json"
-
+        safe_filename = self.filename + ".json"
         full_path = os.path.join(SCRIPT_DIR, safe_filename)
 
         data = {
             "name": self.filename,
             "create_time": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "steps": self.steps
+            "steps": self.steps,
         }
 
-        with open(full_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
+        try:
+            if os.path.exists(full_path):
+                print(f"ℹ️ 将覆盖已有文件: {full_path}")
+            with open(full_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+        except OSError as e:
+            print(f"❌ 写入失败: {e}")
+            print(f"   目标路径: {full_path}")
+            return False
 
+        self._saved = True
         print("\n" + "=" * 40)
         print(f"💾 脚本已保存至: {full_path}")
         print(f"📊 有效步骤数: {len(self.steps)}")
         print("=" * 40)
+        return True
 
     def start(self):
         if not self.is_recording:
@@ -151,27 +228,38 @@ class ScriptRecorder:
         print("\n" + "=" * 40)
         print(f"🎬 正在录制: 【{self.filename}】")
         print("-" * 40)
-        print("🖱  左键 = 录制点击")
+        print("🖱  左键 = 录制点击（须点在【游戏画面】内）")
         print("↩  右键 = 撤销上一步")
-        print("⏹  ESC  = 保存并退出")
+        print("⏹  F10 / F12 / ESC = 保存并退出")
+        print("💡 若 ESC 无反应（被游戏拦截），请改按 F10 或 F12")
         print("=" * 40 + "\n")
 
-        with mouse.Listener(on_click=self.on_click) as m_listener:
-            with keyboard.Listener(on_press=self.on_press) as k_listener:
-                k_listener.join()
+        try:
+            with mouse.Listener(on_click=self.on_click) as m_listener:
+                with keyboard.Listener(on_press=self.on_press) as k_listener:
+                    k_listener.join()
+        except KeyboardInterrupt:
+            print("\n⏹ Ctrl+C 中断，尝试保存...")
+            self._finish(save=True)
 
 
 def main():
+    _configure_console_utf8()
     os.system("cls" if os.name == "nt" else "clear")
     print("🎥 NieoPilot 脚本录制器 (带边界保护)")
     print("-" * 30)
+    print(f"📁 脚本保存目录: {SCRIPT_DIR}")
     print("💡 提示：输入空名字并回车可直接取消。")
+    print("💡 也可命令行传入名字: python tools/script_recorder.py 孵化")
 
-    try:
-        name = input("请输入脚本名字 (例如 daily_task): ").strip()
-    except KeyboardInterrupt:
-        print("\n🚫 检测到中断信号，已取消。")
-        return
+    if len(sys.argv) > 1:
+        name = " ".join(sys.argv[1:]).strip()
+    else:
+        try:
+            name = input("请输入脚本名字 (例如 孵化): ").strip()
+        except KeyboardInterrupt:
+            print("\n🚫 检测到中断信号，已取消。")
+            return
 
     if not name:
         print("🚫 已取消录制。")
@@ -183,4 +271,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

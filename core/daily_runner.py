@@ -6,7 +6,7 @@ import time
 from typing import Optional, List, Dict, Any, Tuple
 
 from core.logger import logger
-from core.utils import window_manager
+from core.utils import window_manager, wait_pet_bag_ui_ready_after_open
 from core.post_battle_cleaner import PostBattleCleaner
 from core.unified_battle_framework import UnifiedBattleFramework, BattleConfig, BattleMode
 from core.fixed_mode_adapter import FixedModeAdapter
@@ -512,7 +512,12 @@ class DailyRunner:
             self._emit("💼 打开精灵背包", "INFO")
             if not self._click_region_safe(regions, bag_open_key, use_foreground):
                 return False
-            time.sleep(2.5)
+            wait_pet_bag_ui_ready_after_open(
+                regions,
+                emit_fn=self._emit,
+                stop_check=self._should_abort,
+                log_tag="恢复精灵一二",
+            )
 
             for pet_name, pet_key in [("精灵一", pet_one_key), ("精灵二", pet_two_key)]:
                 self._emit(f"🐾 双击{pet_name}（准备恢复）", "INFO")
@@ -1246,8 +1251,12 @@ class DailyRunner:
             self._emit("💼 打开精灵背包", "INFO")
             if not self._click_region_safe(regions, bag_open_key, use_foreground):
                 return False
-            # ✅ 打开精灵背包后等待2.5s，确保背包完全打开（参考野外模式）
-            time.sleep(2.5)
+            wait_pet_bag_ui_ready_after_open(
+                regions,
+                emit_fn=self._emit,
+                stop_check=self._should_abort,
+                log_tag="恢复精灵一",
+            )
             
             # 2. 双击精灵一（参考野外稀有精灵模式）
             self._emit("🐾 双击精灵一（准备恢复）", "INFO")
@@ -1308,7 +1317,12 @@ class DailyRunner:
             self._emit("💼 打开精灵背包", "INFO")
             if not self._click_region_safe(regions, bag_open_key, use_foreground):
                 return False
-            time.sleep(2.5)
+            wait_pet_bag_ui_ready_after_open(
+                regions,
+                emit_fn=self._emit,
+                stop_check=self._should_abort,
+                log_tag="特训恢复",
+            )
 
             def _recover_one_pet(pos: str) -> bool:
                 pet_key = pet_keys.get(pos)
