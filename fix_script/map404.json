@@ -1,0 +1,189 @@
+{
+    "name": "map404",
+    "schema": "nieopilot_map_points_v1",
+    "map_id": 404,
+    "map_id_kind": "kernel_map",
+    "map_id_note": "内核日志 /map/404.swf 的 map ID；日后可映射到 regions 前缀（如嘟咕噜）",
+    "region_prefix_hint": "",
+    "logic_size": [
+        1200,
+        700
+    ],
+    "create_time": "2026-06-01 11:42:34",
+    "captures": [
+        {
+            "index": 0,
+            "file": "screenshots/map_recorder/map404/capture_000.png",
+            "time": "2026-06-01 11:38:55"
+        },
+        {
+            "index": 1,
+            "file": "screenshots/map_recorder/map404/capture_001.png",
+            "time": "2026-06-01 11:39:22"
+        },
+        {
+            "index": 2,
+            "file": "screenshots/map_recorder/map404/capture_002.png",
+            "time": "2026-06-01 11:40:04"
+        },
+        {
+            "index": 3,
+            "file": "screenshots/map_recorder/map404/capture_003.png",
+            "time": "2026-06-01 11:40:37"
+        },
+        {
+            "index": 4,
+            "file": "screenshots/map_recorder/map404/capture_004.png",
+            "time": "2026-06-01 11:40:51"
+        },
+        {
+            "index": 5,
+            "file": "screenshots/map_recorder/map404/capture_005.png",
+            "time": "2026-06-01 11:41:15"
+        }
+    ],
+    "points": [
+        {
+            "order": 1,
+            "x": 469,
+            "y": 371,
+            "capture_index": 0
+        },
+        {
+            "order": 2,
+            "x": 638,
+            "y": 339,
+            "capture_index": 0
+        },
+        {
+            "order": 3,
+            "x": 456,
+            "y": 489,
+            "capture_index": 0
+        },
+        {
+            "order": 4,
+            "x": 559,
+            "y": 446,
+            "capture_index": 1
+        },
+        {
+            "order": 5,
+            "x": 365,
+            "y": 464,
+            "capture_index": 1
+        },
+        {
+            "order": 6,
+            "x": 339,
+            "y": 434,
+            "capture_index": 2
+        },
+        {
+            "order": 7,
+            "x": 561,
+            "y": 538,
+            "capture_index": 4
+        },
+        {
+            "order": 8,
+            "x": 330,
+            "y": 544,
+            "capture_index": 4
+        },
+        {
+            "order": 9,
+            "x": 444,
+            "y": 310,
+            "capture_index": 5
+        },
+        {
+            "order": 10,
+            "x": 661,
+            "y": 474,
+            "capture_index": 5
+        }
+    ],
+    "points_deduped": [
+        {
+            "slot": 1,
+            "x": 469,
+            "y": 371,
+            "merged_from_orders": [
+                1
+            ]
+        },
+        {
+            "slot": 2,
+            "x": 638,
+            "y": 339,
+            "merged_from_orders": [
+                2
+            ]
+        },
+        {
+            "slot": 3,
+            "x": 456,
+            "y": 489,
+            "merged_from_orders": [
+                3
+            ]
+        },
+        {
+            "slot": 4,
+            "x": 559,
+            "y": 446,
+            "merged_from_orders": [
+                4
+            ]
+        },
+        {
+            "slot": 5,
+            "x": 365,
+            "y": 464,
+            "merged_from_orders": [
+                5
+            ]
+        },
+        {
+            "slot": 6,
+            "x": 339,
+            "y": 434,
+            "merged_from_orders": [
+                6
+            ]
+        },
+        {
+            "slot": 7,
+            "x": 561,
+            "y": 538,
+            "merged_from_orders": [
+                7
+            ]
+        },
+        {
+            "slot": 8,
+            "x": 330,
+            "y": 544,
+            "merged_from_orders": [
+                8
+            ]
+        },
+        {
+            "slot": 9,
+            "x": 444,
+            "y": 310,
+            "merged_from_orders": [
+                9
+            ]
+        },
+        {
+            "slot": 10,
+            "x": 661,
+            "y": 474,
+            "merged_from_orders": [
+                10
+            ]
+        }
+    ]
+}

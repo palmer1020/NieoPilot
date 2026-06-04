@@ -1,0 +1,22 @@
+{
+    "schema": "nieopilot_wild_mode_v1",
+    "slug": "埃尔特",
+    "name": "埃尔特(480)",
+    "route_hint": "埃尔特",
+    "to_script": "to埃尔特",
+    "map_a_id": 414,
+    "map_b_id": 404,
+    "map_entry_stem": "414to404",
+    "target_pet_ids": [
+        480
+    ],
+    "target_mp3_ids": [
+        480
+    ],
+    "delete_swf_ids": [
+        491,
+        492,
+        493
+    ],
+    "create_time": "2026-06-01 12:11:47"
+}

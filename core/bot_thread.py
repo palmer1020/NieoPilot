@@ -16,7 +16,19 @@ from core.battle_runner import BattleRunner
 from core.training_level_runner import TrainingLevelRunner
 
 # 野外捕捉（螳螂/稀有精灵）
-from core.dar_route_runner import DarRouteRunner, DEFAULT_PROFILE_MANTIS, DEFAULT_PROFILE_DUGULU, DEFAULT_PROFILE_SHUANGTA, DEFAULT_PROFILE_XIAODOUYA, DEFAULT_PROFILE_FLASH_PIPI, EYEBALL_PROFILE
+from core.dar_route_runner import (
+    DarRouteRunner,
+    DEFAULT_PROFILE_MANTIS,
+    DEFAULT_PROFILE_DUGULU,
+    DEFAULT_PROFILE_SHUANGTA,
+    DEFAULT_PROFILE_XIAODOUYA,
+    DEFAULT_PROFILE_FLASH_PIPI,
+    EYEBALL_PROFILE,
+    WildCaptureProfile,
+)
+from core.wild_mode_registry import BUILTIN_WILD_PROFILE_KEYS, resolve_wild_capture_profile
+
+_BUILTIN_WILD_KEYS = BUILTIN_WILD_PROFILE_KEYS
 
 # 已移除 CalibrationTestRunner（438测试功能已删除）
 
@@ -232,6 +244,36 @@ class BotWorker(QThread):
         self.dar_route_runner._check_and_fill_missing_swf_files()
         self.dar_route_runner._check_and_delete_swf_files(profile)
 
+    def _resolve_wild_capture_profile(self, profile_name: str) -> WildCaptureProfile:
+        return resolve_wild_capture_profile(self.project_root, profile_name)
+
+    @staticmethod
+    def _wild_profile_supports_pre_reconnect(profile_name: str, profile: WildCaptureProfile) -> bool:
+        if profile_name in _BUILTIN_WILD_KEYS:
+            return True
+        if getattr(profile, "slug", None):
+            map_zero = getattr(profile, "map_zero_id", None)
+            if map_zero is not None:
+                try:
+                    return int(map_zero) != int(profile.map_swf_id)
+                except (TypeError, ValueError):
+                    pass
+            return bool(getattr(profile, "to_script", None))
+        return False
+
+    @staticmethod
+    def _wild_uses_unified_pre(profile_name: str, profile: WildCaptureProfile) -> bool:
+        if profile_name in ("dugulu", "shuangta", "xiaodouya", "eyeball"):
+            return True
+        if getattr(profile, "slug", None):
+            map_zero = getattr(profile, "map_zero_id", None)
+            if map_zero is not None:
+                try:
+                    return int(map_zero) != int(profile.map_swf_id)
+                except (TypeError, ValueError):
+                    pass
+        return False
+
     @staticmethod
     def _parse_int(v, default=None):
         if v is None:
@@ -357,7 +399,7 @@ class BotWorker(QThread):
                                 bool(tasks.get("non_mantis_use_super_capsule", False))
                             )
                         else:
-                            self.dar_route_runner.set_non_mantis_capsule_tier("super")
+                            self.dar_route_runner.set_non_mantis_capsule_tier("cycle")
                     except Exception:
                         pass
 
@@ -369,7 +411,7 @@ class BotWorker(QThread):
                             bool(tasks.get("resist_drain_logic", False))
                         )
                         self.dar_route_runner.set_enable_molecule_converter(
-                            bool(tasks.get("enable_molecule_converter", False))
+                            bool(tasks.get("enable_molecule_converter", True))
                         )
                     except Exception:
                         pass
@@ -618,39 +660,17 @@ class BotWorker(QThread):
                     # ---- 野外捕捉（螳螂/稀有精灵）----
                     if tasks.get("wild_capture") and (not self.stop_current):
                         profile_name = (tasks.get("wild_capture_profile") or "mantis").lower().strip()
-                        if profile_name == "mantis":
-                            profile = DEFAULT_PROFILE_MANTIS
-                        elif profile_name == "dugulu":
-                            profile = DEFAULT_PROFILE_DUGULU
-                        elif profile_name == "shuangta":
-                            profile = DEFAULT_PROFILE_SHUANGTA
-                        elif profile_name == "xiaodouya":
-                            profile = DEFAULT_PROFILE_XIAODOUYA
-                        elif profile_name == "flash_pipi":
-                            profile = DEFAULT_PROFILE_FLASH_PIPI
-                        elif profile_name == "eyeball":
-                            from core.dar_route_runner import EYEBALL_PROFILE
-                            profile = EYEBALL_PROFILE
-                        else:
-                            profile = DEFAULT_PROFILE_DUGULU
+                        profile = self._resolve_wild_capture_profile(profile_name)
 
                         self._prepare_swf_wild(profile)
                         self.emit_and_log(
-                            f"🌲 野外捕捉启动：profile={profile_name} 前台={use_foreground}", "SYSTEM"
+                            f"🌲 野外捕捉启动：profile={profile_name} ({profile.name}) 前台={use_foreground}",
+                            "SYSTEM",
                         )
 
-                        # 野外前置：支持列表内默认先做前置；仅在 wild_skip_rotation_pre 时跳过
-                        _pre_profiles = (
-                            "flash_pipi",
-                            "mantis",
-                            "dugulu",
-                            "shuangta",
-                            "xiaodouya",
-                            "eyeball",
-                        )
-                        do_rare_pre = profile_name in _pre_profiles and (
-                            not bool(tasks.get("wild_skip_rotation_pre", False))
-                        )
+                        do_rare_pre = self._wild_profile_supports_pre_reconnect(
+                            profile_name, profile
+                        ) and (not bool(tasks.get("wild_skip_rotation_pre", False)))
                         if do_rare_pre:
                             if profile_name == "flash_pipi":
                                 while not self.stop_current and not self._stop_event.is_set():
@@ -676,7 +696,7 @@ class BotWorker(QThread):
                                         "⚠️ [螳螂] 野外前置重连失败，重试完整流程（1-5）直到启动模式",
                                         "WARN",
                                     )
-                            elif profile_name in ("dugulu", "shuangta", "xiaodouya", "eyeball"):
+                            elif self._wild_uses_unified_pre(profile_name, profile):
                                 while not self.stop_current and not self._stop_event.is_set():
                                     ok = self.dar_route_runner._execute_unified_wild_rare_pre_reconnect(
                                         profile,
@@ -700,20 +720,7 @@ class BotWorker(QThread):
                     # ---- 智能追踪测试 ----
                     if tasks.get("smart_tracking_test") and (not self.stop_current):
                         profile_name = (tasks.get("wild_capture_profile") or "dugulu").lower().strip()
-                        if profile_name == "mantis":
-                            profile = DEFAULT_PROFILE_MANTIS
-                        elif profile_name == "dugulu":
-                            profile = DEFAULT_PROFILE_DUGULU
-                        elif profile_name == "shuangta":
-                            profile = DEFAULT_PROFILE_SHUANGTA
-                        elif profile_name == "xiaodouya":
-                            profile = DEFAULT_PROFILE_XIAODOUYA
-                        elif profile_name == "flash_pipi":
-                            profile = DEFAULT_PROFILE_FLASH_PIPI
-                        elif profile_name == "eyeball":
-                            profile = EYEBALL_PROFILE
-                        else:
-                            profile = DEFAULT_PROFILE_DUGULU
+                        profile = self._resolve_wild_capture_profile(profile_name)
 
                         self._prepare_swf_wild(profile)
                         self.emit_and_log(f"🧪 智能追踪测试启动：profile={profile_name} 前台={use_foreground}", "SYSTEM")
@@ -729,9 +736,8 @@ class BotWorker(QThread):
                         is_test_mode = bool(tasks.get("rotation_test_mode", False))
                         mode_text = "测试模式（固定时间间隔切换）" if is_test_mode else "正式模式（根据北京时间自动切换）"
                         rare_slot = str(tasks.get("rotation_rare_slot") or "shuangta").strip().lower()
-                        if rare_slot not in ("shuangta", "mantis"):
-                            rare_slot = "shuangta"
-                        rare_lbl = "双塔" if rare_slot == "shuangta" else "螳螂"
+                        profile = resolve_wild_capture_profile(self.project_root, rare_slot)
+                        rare_lbl = profile.name
                         self.emit_and_log(f"🔄 启动轮换模式（{mode_text}；非尼奥稀有={rare_lbl}）", "SYSTEM")
                         self._prepare_swf_fill_union()
                         use_foreground = bool(tasks.get("use_foreground", False))
@@ -784,22 +790,60 @@ class BotWorker(QThread):
                             test_msg += " [测试·10图闪光艾菲亚/11图艾斯菲格]"
                         sub_mode = str(tasks.get("nieo_sub_mode") or "nieo").strip().lower()
                         is_pure_energy = sub_mode == "pure_energy"
+                        custom_slug = tasks.get("nieo_custom_slug") or (
+                            sub_mode if sub_mode not in ("nieo", "pure_energy") else None
+                        )
 
-                        # 前置重连：尼奥走 to尼奥/map11；纯净能量走 to纯净能量/map26（Step3 与野外稀有同源 Pick 三宠）
+                        # 前置重连：尼奥走 to尼奥/map11；纯净能量走 to纯净能量/map26；自定义走 manifest.to_script
                         if nieo_pre_rotation_first:
+                            custom_profile = None
+                            if custom_slug:
+                                from core.nieo_mode_registry import get_profile
+                                custom_profile = get_profile(
+                                    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                    custom_slug,
+                                )
                             while not self.stop_current and not self._stop_event.is_set():
                                 ok = self.dar_route_runner._execute_nieo_pre_rotation_reconnect(
                                     use_foreground=use_foreground,
                                     stop_event=self._stop_event,
                                     pem_route=is_pure_energy,
+                                    to_script=(
+                                        custom_profile.to_script if custom_profile else None
+                                    ),
+                                    expected_map_id=(
+                                        custom_profile.map_a_id if custom_profile else None
+                                    ),
                                 )
                                 if ok:
                                     break
-                                tag = "纯净能量" if is_pure_energy else "尼奥"
+                                tag = "纯净能量" if is_pure_energy else (
+                                    f"自定义尼奥({custom_slug})" if custom_profile else "尼奥"
+                                )
                                 self.emit_and_log(f"⚠️ [{tag}] 前置重连失败，将重试完整流程（步骤1–5）直到成功", "WARN")
 
                         if not self.stop_current and not self._stop_event.is_set():
-                            if is_pure_energy:
+                            if custom_slug:
+                                from core.nieo_mode_registry import get_profile
+                                root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                                profile = get_profile(root, custom_slug)
+                                if profile is None:
+                                    self.emit_and_log(
+                                        f"❌ 未找到自定义尼奥模式 slug={custom_slug}，请重启 Dashboard",
+                                        "ERROR",
+                                    )
+                                else:
+                                    self.emit_and_log(
+                                        f"🌊 启动自定义尼奥模式：{profile.name}{test_msg}",
+                                        "SYSTEM",
+                                    )
+                                    self.dar_route_runner.run_configured_nieo_mode(
+                                        profile,
+                                        stop_event=self._stop_event,
+                                        use_foreground=use_foreground,
+                                        skip_nie_77=skip_nie_77,
+                                    )
+                            elif is_pure_energy:
                                 self.emit_and_log("⚡ 启动纯净能量(资源)模式（26/27，技能四战胜）" + test_msg, "SYSTEM")
                                 self.dar_route_runner.run_pure_energy_resource_mode(
                                     stop_event=self._stop_event,

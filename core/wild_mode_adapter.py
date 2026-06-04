@@ -45,7 +45,7 @@ class WildModeAdapter:
         Stage 3: 野外捕捉动作逻辑
         
         - 第1回合：技能1（或无敌胶囊）
-        - 第2回合开始：切换捕捉面板 -> 胶囊（具体档位由 UnifiedBattleFramework 全局「高超高特高超」循环）
+        - 第2回合开始：切换捕捉面板 -> 胶囊（默认「超超特」3 格循环，见 unified_battle_framework）
         """
         if round_idx == 1:
             if invincible_first_round:

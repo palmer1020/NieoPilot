@@ -1,0 +1,31 @@
+{
+    "key": "埃尔特.9",
+    "category": "埃尔特",
+    "name": "9",
+    "shape": "polygon",
+    "points": [
+        [
+            441,
+            310
+        ],
+        [
+            443,
+            310
+        ],
+        [
+            443,
+            312
+        ],
+        [
+            441,
+            312
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-01 12:11:47",
+        "desc": "map_recorder order=9"
+    }
+}

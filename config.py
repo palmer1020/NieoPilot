@@ -95,6 +95,12 @@ GAME_SWF_FOLDER = os.path.join(GAME_ASSET_BASE_PATH, "pet", "swf")
 GAME_SWF_OG_FOLDER = os.path.join(GAME_ASSET_BASE_PATH, "pet", "swf_og")
 GAME_SWF_OG_TEMPLATE = os.path.join(GAME_SWF_OG_FOLDER, "254.swf")
 
+GAME_GROUP_FIGHT_PET_SWF_DIR = os.path.join(
+    GAME_ASSET_BASE_PATH, "groupFightResource", "pet"
+)
+GAME_GROUP_FIGHT_PET_SWF_OG_DIR = os.path.join(
+    GAME_ASSET_BASE_PATH, "groupFightResource", "pet_og"
+)
 GAME_FIGHT_PET_SWF_DIR = os.path.join(
     GAME_ASSET_BASE_PATH, "fightResource", "pet", "swf"
 )
@@ -116,6 +122,8 @@ GAME_ROBOT_MODULE_APP = os.path.join(
 )
 GAME_PETSTORAGE_SWF = os.path.join(GAME_ROBOT_MODULE_APP, "PetStorage.swf")
 GAME_PETSTORAGE_OG_SWF = os.path.join(GAME_ROBOT_MODULE_APP, "PetStorage.og.swf")
+
+GAME_NONO_SUPER_DIR = os.path.join(GAME_ASSET_BASE_PATH, "nono", "super")
 
 # 9. 项目数据目录
 HV_SAMPLES_PATH = os.path.join(BASE_PATH, "hv_samples")

@@ -1,0 +1,31 @@
+{
+    "key": "埃尔特.7",
+    "category": "埃尔特",
+    "name": "7",
+    "shape": "polygon",
+    "points": [
+        [
+            330,
+            549
+        ],
+        [
+            332,
+            549
+        ],
+        [
+            332,
+            551
+        ],
+        [
+            330,
+            551
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-01 12:11:47",
+        "desc": "map_recorder order=7"
+    }
+}

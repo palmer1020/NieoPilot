@@ -218,3 +218,73 @@ def iter_lines_map_ids(lines: Iterable[str]) -> List[int]:
                 except ValueError:
                     pass
     return ids
+
+
+# 刷新重连后：若屏蔽→回基地之间内核 fightResource/pet/swf 恰为这三只，可跳过放回仓库+取精灵
+ROTATION_PARTY_FIGHT_PET_SWF_IDS: frozenset[int] = frozenset({12, 1337, 1459})
+
+
+def iter_fight_pet_swf_ids_in_line(line: str) -> Iterator[int]:
+    """从一行（含 path= 片段）解析 fightResource/pet/swf/{id}.swf 的数字 id。"""
+    for m in finditer_kernel_line(RE_FIGHT_PET_ID, line):
+        try:
+            yield int(m.group(1))
+        except ValueError:
+            continue
+
+
+def iter_party_pet_swf_ids_in_line(line: str) -> Iterator[int]:
+    """fightResource/pet/swf 与 resource/pet/swf（校准路径）并集。"""
+    seen: set[int] = set()
+    for pat in (RE_FIGHT_PET_ID, RE_PET_ID_CALIB):
+        for m in finditer_kernel_line(pat, line):
+            try:
+                pid = int(m.group(1))
+            except ValueError:
+                continue
+            if pid not in seen:
+                seen.add(pid)
+                yield pid
+
+
+def collect_fight_pet_swf_ids_between_latest_two_maps(
+    lines: Iterable[str],
+) -> Tuple[set[int], Optional[Tuple[int, int]]]:
+    """
+    自下而上定位最新两条 map 行，在两者之间（不含 map 行）统计 pet/swf id 集合
+    （含 fightResource/pet/swf 与 resource/pet/swf）。
+
+    典型：进图 map(8) → 加载 012/1337/1459 → 回基地 map(500001)；中间段恰为三宠时可跳过取宠。
+    若不足两条 map，返回空集与 None（调用方不得跳过）。
+    """
+    seq = [str(ln) for ln in lines]
+    if not seq:
+        return set(), None
+
+    map_indices: List[int] = []
+    for i in range(len(seq) - 1, -1, -1):
+        if first_map_id_in_line(seq[i]) is not None:
+            map_indices.append(i)
+            if len(map_indices) >= 2:
+                break
+
+    if len(map_indices) < 2:
+        return set(), None
+
+    newer_map_idx, older_map_idx = map_indices[0], map_indices[1]
+    if older_map_idx >= newer_map_idx:
+        return set(), None
+
+    found: set[int] = set()
+    for i in range(older_map_idx + 1, newer_map_idx):
+        for pid in iter_party_pet_swf_ids_in_line(seq[i]):
+            found.add(pid)
+    return found, (newer_map_idx, older_map_idx)
+
+
+def rotation_party_ready_from_kernel_lines(lines: Iterable[str]) -> bool:
+    """屏蔽后日志段内，两 map 之间 fight pet/swf 集合是否恰好为 {12, 1337, 1459}。"""
+    ids, bounds = collect_fight_pet_swf_ids_between_latest_two_maps(lines)
+    if bounds is None:
+        return False
+    return ids == ROTATION_PARTY_FIGHT_PET_SWF_IDS

@@ -1,0 +1,22 @@
+{
+    "schema": "nieopilot_wild_mode_v1",
+    "slug": "嘟拉",
+    "name": "嘟拉(618)",
+    "route_hint": "嘟拉",
+    "to_script": "to嘟拉",
+    "map_a_id": 430,
+    "map_b_id": 429,
+    "map_entry_stem": "430to429",
+    "target_pet_ids": [
+        618
+    ],
+    "target_mp3_ids": [
+        618
+    ],
+    "delete_swf_ids": [
+        523,
+        524,
+        525
+    ],
+    "create_time": "2026-06-01 13:06:09"
+}

@@ -53,7 +53,9 @@ class Dashboard(QWidget):
 
         # ---------- 基础控制 ----------
         base_group = QGroupBox("基础控制")
-        base_layout = QHBoxLayout()
+        base_outer = QVBoxLayout()
+        base_row1 = QHBoxLayout()
+        base_row2 = QHBoxLayout()
 
         self.btn_launch = QPushButton("🎮 启动游戏")
         self.btn_launch.clicked.connect(self.on_launch_game)
@@ -98,16 +100,44 @@ class Dashboard(QWidget):
         self.btn_template_recorder = QPushButton("🖼️ 模板录制器")
         self.btn_template_recorder.clicked.connect(self.on_open_template_recorder)
 
-        base_layout.addWidget(self.btn_launch)
-        base_layout.addWidget(self.btn_clear_game_temp)
-        base_layout.addWidget(self.btn_delete_screenshots)
-        base_layout.addWidget(self.btn_refresh_trinity)
-        base_layout.addWidget(self.btn_debug)
-        base_layout.addWidget(self.btn_script_recorder)
-        base_layout.addWidget(self.btn_region_recorder)
-        base_layout.addWidget(self.btn_settings_region_recorder)
-        base_layout.addWidget(self.btn_template_recorder)
-        base_group.setLayout(base_layout)
+        self.btn_map_recorder = QPushButton("🗺️ 地图记录器")
+        self.btn_map_recorder.setToolTip(
+            "分批标注地图刷新点：Enter 截取 1200×700 → GUI 点选 → 红点叠加；"
+            "ESC/F10 保存 fix_script/map<内核mapID>.json（截图仅内存，不落盘）"
+        )
+        self.btn_map_recorder.clicked.connect(self.on_open_map_recorder)
+
+        self.btn_rare_mode_builder = QPushButton("🧬 稀有模式建立器")
+        self.btn_rare_mode_builder.setToolTip(
+            "向导建立自定义稀有模式：to 脚本 / 地图 A→B / 11 点路线 → assets/wild_modes"
+        )
+        self.btn_rare_mode_builder.clicked.connect(self.on_open_rare_mode_builder)
+
+        self.btn_nieo_mode_builder = QPushButton("🌊 尼奥模式建立器")
+        self.btn_nieo_mode_builder.setToolTip(
+            "向导建立自定义三图尼奥模式：A/B/C 地图 / 传送 / 捕捉·战胜·跳过 → assets/nieo_modes"
+        )
+        self.btn_nieo_mode_builder.clicked.connect(self.on_open_nieo_mode_builder)
+
+        base_row1.addWidget(self.btn_launch)
+        base_row1.addWidget(self.btn_clear_game_temp)
+        base_row1.addWidget(self.btn_delete_screenshots)
+        base_row1.addWidget(self.btn_refresh_trinity)
+        base_row1.addWidget(self.btn_debug)
+        base_row1.addStretch()
+
+        base_row2.addWidget(self.btn_script_recorder)
+        base_row2.addWidget(self.btn_region_recorder)
+        base_row2.addWidget(self.btn_settings_region_recorder)
+        base_row2.addWidget(self.btn_template_recorder)
+        base_row2.addWidget(self.btn_map_recorder)
+        base_row2.addWidget(self.btn_rare_mode_builder)
+        base_row2.addWidget(self.btn_nieo_mode_builder)
+        base_row2.addStretch()
+
+        base_outer.addLayout(base_row1)
+        base_outer.addLayout(base_row2)
+        base_group.setLayout(base_outer)
         control_panel.addWidget(base_group)
 
         # ---------- 资源模板（SWF → 微端） ----------
@@ -116,18 +146,17 @@ class Dashboard(QWidget):
         swf_res_layout = QHBoxLayout()
         self.btn_swf_petstorage = QPushButton("📦 PetStorage")
         self.btn_swf_petstorage.setToolTip(
-            "宠物仓库：assets/PetStorage.swf → 微端 "
-            "NieoData\\module\\com\\robot\\module\\app\\PetStorage.swf；"
-            "覆盖前若无则生成同目录 PetStorage.og.swf。"
-            "同时将 resource\\nono\\super\\action 改名为 super_og（若无 action 则跳过）。"
+            "宠物仓库：assets/PetStorage.swf → 微端 PetStorage.swf（备份 PetStorage.og.swf）。\n"
+            "nono\\super：nono_1~4 备份为 .og.swf 后用 nono_5 覆盖；action → action_og。"
         )
         self.btn_swf_petstorage.clicked.connect(
             lambda: self._on_swf_sync("PetStorage", "sync_petstorage")
         )
         self.btn_swf_pet254 = QPushButton("🐾 Pet SWF (254)")
         self.btn_swf_pet254.setToolTip(
-            "先按 swf_og 内已有序号将 pet\\swf 缺失文件从 OG 补齐；再对每个文件：若无同名 OG 则备份，再用 "
-            "swf/254.swf 覆盖 resource\\pet\\swf 下全部 .swf。"
+            "用 254.swf 同步两套目录（均先 og 补齐缺失、再备份 OG、再 254 覆盖）：\n"
+            "• pet\\swf ← swf\\254.swf（备份 pet\\swf_og）\n"
+            "• groupFightResource\\pet ← swf\\254.swf（备份 groupFightResource\\pet_og）"
         )
         self.btn_swf_pet254.clicked.connect(
             lambda: self._on_swf_sync("Pet 254", "sync_pet_254")
@@ -154,16 +183,14 @@ class Dashboard(QWidget):
         swf_restore_layout = QHBoxLayout()
         self.btn_restore_petstorage = QPushButton("↩ PetStorage OG")
         self.btn_restore_petstorage.setToolTip(
-            "从 PetStorage.og.swf 还原到插件目录（见 config GAME_PETSTORAGE_*）；"
-            "同时将 resource\\nono\\super\\super_og 改回 action（若无 super_og 则跳过）。"
+            "还原 PetStorage.og.swf；nono\\super 从 nono_1~4.og.swf 写回；action_og → action。"
         )
         self.btn_restore_petstorage.clicked.connect(
             lambda: self._on_swf_restore("PetStorage OG", "restore_petstorage_from_og")
         )
         self.btn_restore_pet254 = QPushButton("↩ Pet SWF OG")
         self.btn_restore_pet254.setToolTip(
-            "以 swf_og 为准：其中每个 .swf 都会写回 pet\\swf（可恢复已从 pet\\swf 删除的序号）；"
-            "live 里若有没有备份过的多余 .swf 不会被动删除。"
+            "从 OG 写回两套 pet 目录：pet\\swf ← swf_og；groupFightResource\\pet ← pet_og"
         )
         self.btn_restore_pet254.clicked.connect(
             lambda: self._on_swf_restore("Pet SWF OG", "restore_pet_254_from_og")
@@ -201,7 +228,7 @@ class Dashboard(QWidget):
         self.btn_pre_daily = QPushButton("📋 预选日常")
         self.btn_pre_daily.setToolTip(
             "登录/基地门控后跳过分子转化仪（不改 30 min 节流），清背包→仓库 Pick→"
-            "开背包身边跟随→仅跑「每日签到」脚本。\n"
+            "开背包身边跟随→接受任务→每日签到。\n"
             "与「一键执行日常」互不替代；本流程结束后不会自动衔接完整日常。"
         )
         self.btn_pre_daily.clicked.connect(self.on_run_pre_daily)
@@ -242,10 +269,10 @@ class Dashboard(QWidget):
         daily_layout.addLayout(row1)
 
         self.chk_enable_molecule_converter = QCheckBox("执行分子转化仪")
-        self.chk_enable_molecule_converter.setChecked(False)
+        self.chk_enable_molecule_converter.setChecked(True)
         self.chk_enable_molecule_converter.setToolTip(
-            "勾选：刷新登录、轮换、野外重连等走到基地门控后，按原逻辑执行分子转化仪（含节流与强制路径）。\n"
-            "不勾选（默认）：任何模式均不执行分子转化仪，且不写入 30 min 节流时间戳。"
+            "勾选（默认）：刷新登录、轮换、野外重连等走到基地门控后，按原逻辑执行分子转化仪（含节流与强制路径）。\n"
+            "不勾选：任何模式均不执行分子转化仪，且不写入 30 min 节流时间戳。"
         )
 
         # 第二行：勇者之塔等（扭蛋已合并到上行）
@@ -263,19 +290,21 @@ class Dashboard(QWidget):
         self.btn_1v1_x2 = QPushButton("⚔ 1v1x2")
         self.btn_1v1_x2.clicked.connect(self.on_run_1v1_x2)
 
-        self._capsule_tier_label = QLabel("捕捉胶囊档位：")
+        self._capsule_tier_label = QLabel("捕捉胶囊：")
         self._capsule_tier_label.setToolTip(
-            "除螳螂对战敌方野生 122（首回合仍投无敌胶囊）外，所有捕捉投掷均使用该档。"
-            "螳螂遇非 122 与其他稀有目标一样只跟本下拉框。"
+            "除螳螂对战敌方野生 122（首回合仍投无敌胶囊）外，捕捉投掷均按本项策略。"
+            "默认超→超→特循环；亦可改为全程仅超级/仅高级/仅特级。"
         )
         self.combo_cap_tier = QComboBox()
-        self.combo_cap_tier.addItem("超级（默认）", "super")
-        self.combo_cap_tier.addItem("高级", "high")
-        self.combo_cap_tier.addItem("特级", "special")
-        self.combo_cap_tier.setMinimumWidth(120)
+        self.combo_cap_tier.addItem("超超特（默认循环）", "cycle")
+        self.combo_cap_tier.addItem("仅超级", "super")
+        self.combo_cap_tier.addItem("仅高级", "high")
+        self.combo_cap_tier.addItem("仅特级", "special")
+        self.combo_cap_tier.setMinimumWidth(140)
         self.combo_cap_tier.setToolTip(
-            "超级 / 高级 / 特级三选一。"
-            "敌方为野生螳螂（122）时首回合仍为无敌胶囊，之后才跟本档位。"
+            "默认：超级→超级→特级 循环投掷。\n"
+            "备选：全程只投超级 / 高级 / 特级单档。\n"
+            "敌方为野生螳螂（122）时首回合仍为无敌胶囊，之后才跟本策略。"
         )
 
         row2.addWidget(self.btn_hero_tower)
@@ -337,13 +366,7 @@ class Dashboard(QWidget):
         self.btn_rare.clicked.connect(self.start_rare_capture)
 
         self.rare_combo = QComboBox()
-        self.rare_combo.addItem("螳螂（122 / map=11）", userData="mantis")
-        self.rare_combo.addItem("嘟咕噜（254 / map=323）", userData="dugulu")
-        self.rare_combo.addItem("双塔（102/143 / map=320）", userData="shuangta")
-        self.rare_combo.addItem("小豆芽（27 / map=11）", userData="xiaodouya")
-        self.rare_combo.addItem("闪光皮皮（164 / map=10）", userData="flash_pipi")
-        self.rare_combo.addItem("眼球（269 / map=60）", userData="eyeball")
-        self.rare_combo.setCurrentIndex(self.rare_combo.findData("flash_pipi"))  # 默认选中闪光皮皮
+        self._load_wild_modes()
 
         # 默认会跑整套野外前置；仅当勾选时才跳过（不跑 to 前整套）
         self.chk_wild_skip_rotation_pre = QCheckBox(
@@ -405,10 +428,10 @@ class Dashboard(QWidget):
         self.btn_nieo.clicked.connect(self.start_nieo_mode)
         row1.addWidget(self.btn_nieo)
         self.combo_nieo_sub = QComboBox()
-        self.combo_nieo_sub.addItem("尼奥", "nieo")
-        self.combo_nieo_sub.addItem("纯净能量(资源)", "pure_energy")
-        self.combo_nieo_sub.setCurrentIndex(0)
-        self.combo_nieo_sub.setToolTip("与左侧按钮一起使用：选择尼奥 10/11 或 纯净能量 26/27 资源图")
+        self._load_nieo_modes()
+        self.combo_nieo_sub.setToolTip(
+            "与左侧按钮一起使用：内置尼奥 / 纯净能量 / 自定义三图尼奥（重启后刷新自定义项）"
+        )
         row1.addWidget(self.combo_nieo_sub)
         nieo_layout.addLayout(row1)
 
@@ -487,13 +510,12 @@ class Dashboard(QWidget):
 
         rot_top.addWidget(QLabel("非尼奥稀有："))
         self.rotation_rare_combo = QComboBox()
-        self.rotation_rare_combo.addItem("双塔", "shuangta")
-        self.rotation_rare_combo.addItem("螳螂", "mantis")
-        self.rotation_rare_combo.setMinimumWidth(100)
+        self.rotation_rare_combo.setMinimumWidth(160)
         self.rotation_rare_combo.setToolTip(
             "北京时间非尼奥时段内跑所选稀有；尼奥时段仍为尼奥模式。"
-            "时间与原先一致（尼奥约 19:55–午夜前后，其余为所选稀有）。"
+            "含内置六种 + 稀有模式建立器创建的自定义模式（重启后刷新列表）。"
         )
+        self._load_rotation_rare_modes()
         rot_top.addWidget(self.rotation_rare_combo)
 
         self.chk_rotation_test_mode = QCheckBox("测试模式（固定间隔切换）")
@@ -886,7 +908,7 @@ class Dashboard(QWidget):
             "use_foreground": self.chk_foreground.isChecked(),
         }
         self.log_message(
-            "📋 启动预选日常（跳过分子转化仪；仅签到前准备 + 每日签到）",
+            "📋 启动预选日常（跳过分子转化仪；Pick + 身边跟随 + 接受任务 + 每日签到）",
             "SYSTEM",
         )
         self._lock_ui()
@@ -951,6 +973,121 @@ class Dashboard(QWidget):
         except Exception as e:
             self.log_message(f"❌ 启动脚本录制器失败: {e}", "ERROR")
     
+    def _fill_rare_select_combo(self, combo, *, default_key=None) -> None:
+        from core.wild_mode_registry import list_rare_select_options
+
+        prev = combo.currentData() if combo.count() else None
+        combo.clear()
+        for label, key in list_rare_select_options(self._project_root()):
+            combo.addItem(label, userData=key)
+        pick = prev or default_key
+        if pick:
+            idx = combo.findData(pick)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+
+    def _load_rotation_rare_modes(self):
+        """非尼奥轮换下拉：内置稀有 + assets/wild_modes。"""
+        if not hasattr(self, "rotation_rare_combo"):
+            return
+        try:
+            self._fill_rare_select_combo(self.rotation_rare_combo, default_key="shuangta")
+        except Exception as e:
+            self.log_message(f"⚠ 加载轮换稀有模式失败: {e}", "WARN")
+
+    def _load_wild_modes(self):
+        """野外捕捉下拉：内置稀有 + assets/wild_modes。"""
+        if not hasattr(self, "rare_combo"):
+            return
+        try:
+            self._fill_rare_select_combo(self.rare_combo, default_key="flash_pipi")
+        except Exception as e:
+            self.log_message(f"⚠ 加载自定义稀有模式失败: {e}", "WARN")
+
+    def _fill_nieo_select_combo(self, combo, *, default_key=None) -> None:
+        from core.nieo_mode_registry import list_nieo_select_options
+
+        prev = combo.currentData() if combo.count() else None
+        combo.clear()
+        combo.addItem("尼奥（map=10/11）", "nieo")
+        combo.addItem("纯净能量(资源)（map=26/27）", "pure_energy")
+        for label, key in list_nieo_select_options(self._project_root()):
+            combo.addItem(label, userData=key)
+        pick = prev or default_key or "nieo"
+        idx = combo.findData(pick)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
+
+    def _load_nieo_modes(self):
+        """尼奥下拉：内置 + assets/nieo_modes。"""
+        if not hasattr(self, "combo_nieo_sub"):
+            return
+        try:
+            self._fill_nieo_select_combo(self.combo_nieo_sub, default_key="nieo")
+        except Exception as e:
+            self.log_message(f"⚠ 加载自定义尼奥模式失败: {e}", "WARN")
+
+    def on_open_nieo_mode_builder(self):
+        """打开尼奥模式建立器"""
+        import subprocess
+        import os
+        import sys
+
+        builder_path = os.path.join(self._project_root(), "tools", "nieo_mode_builder.py")
+        try:
+            env = os.environ.copy()
+            env.setdefault("PYTHONIOENCODING", "utf-8")
+            subprocess.Popen(
+                [sys.executable, builder_path],
+                creationflags=subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0,
+                env=env,
+            )
+            self.log_message("🌊 尼奥模式建立器已启动", "SYSTEM")
+        except Exception as e:
+            self.log_message(f"❌ 启动尼奥模式建立器失败: {e}", "ERROR")
+
+    def on_open_rare_mode_builder(self):
+        """打开稀有精灵模式建立器"""
+        import subprocess
+        import os
+        import sys
+
+        builder_path = os.path.join(self._project_root(), "tools", "rare_mode_builder.py")
+        try:
+            env = os.environ.copy()
+            env.setdefault("PYTHONIOENCODING", "utf-8")
+            subprocess.Popen(
+                [sys.executable, builder_path],
+                creationflags=subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0,
+                env=env,
+            )
+            self.log_message("🧬 稀有模式建立器已启动", "SYSTEM")
+        except Exception as e:
+            self.log_message(f"❌ 启动稀有模式建立器失败: {e}", "ERROR")
+
+    def on_open_map_recorder(self):
+        """打开地图记录器（分批标注刷新点）"""
+        import subprocess
+        import os
+        import sys
+
+        recorder_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "tools",
+            "map_recorder.py",
+        )
+        try:
+            env = os.environ.copy()
+            env.setdefault("PYTHONIOENCODING", "utf-8")
+            subprocess.Popen(
+                [sys.executable, recorder_path],
+                creationflags=subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0,
+                env=env,
+            )
+            self.log_message("🗺️ 地图记录器已启动", "SYSTEM")
+        except Exception as e:
+            self.log_message(f"❌ 启动地图记录器失败: {e}", "ERROR")
+
     def on_open_region_recorder(self):
         """打开区域录制器"""
         import subprocess
@@ -1468,12 +1605,14 @@ class Dashboard(QWidget):
         self.log_message("日志已清空", "SYSTEM")
 
     def _capsule_task_kv(self) -> dict:
-        """螳螂遇野生 122 首回合无敌；其余捕捉投掷档位由本下拉框（超级/高级/特级）决定。"""
-        tier = "super"
+        """螳螂遇野生 122 首回合无敌；其余捕捉投掷由本下拉（默认超超特循环 / 单档备选）决定。"""
+        tier = "cycle"
         combo = getattr(self, "combo_cap_tier", None)
         if combo is not None:
             d = combo.currentData()
-            if d in ("high", "special", "super"):
+            if d in ("cycle", "default", "super_super_special"):
+                tier = "cycle"
+            elif d in ("high", "special", "super"):
                 tier = d
         return {"non_mantis_capsule_tier": tier}
 
@@ -1482,27 +1621,7 @@ class Dashboard(QWidget):
         if not hasattr(self, "rare_combo"):
             return
         sel = self.rare_combo.currentData() or ""
-        if hasattr(self, "chk_wild_skip_rotation_pre"):
-            ok_pre = sel in (
-                "flash_pipi",
-                "mantis",
-                "dugulu",
-                "shuangta",
-                "xiaodouya",
-                "eyeball",
-            )
-            self.chk_wild_skip_rotation_pre.setEnabled(ok_pre)
-            if not ok_pre:
-                self.chk_wild_skip_rotation_pre.setChecked(False)
-
-    def start_rare_capture(self):
-        profile = self.rare_combo.currentData() or "flash_pipi"
-        tasks = {
-            "wild_capture": True,
-            "wild_capture_profile": profile,
-            "use_foreground": self.chk_foreground.isChecked(),
-        }
-        profiles_pre = (
+        _builtin_pre = (
             "flash_pipi",
             "mantis",
             "dugulu",
@@ -1510,11 +1629,26 @@ class Dashboard(QWidget):
             "xiaodouya",
             "eyeball",
         )
-        wild_skip = False
-        if profile in profiles_pre and getattr(self, "chk_wild_skip_rotation_pre", None):
-            wild_skip = bool(self.chk_wild_skip_rotation_pre.isChecked())
-        if profile in profiles_pre:
-            tasks["wild_skip_rotation_pre"] = wild_skip
+        ok_pre = sel in _builtin_pre
+        if not ok_pre and sel:
+            from core.wild_mode_registry import get_profile
+
+            pf = get_profile(self._project_root(), sel)
+            if pf is not None:
+                map_zero = getattr(pf, "map_zero_id", None)
+                if map_zero is not None:
+                    try:
+                        ok_pre = int(map_zero) != int(pf.map_swf_id)
+                    except (TypeError, ValueError):
+                        ok_pre = bool(getattr(pf, "to_script", None))
+                else:
+                    ok_pre = bool(getattr(pf, "to_script", None))
+        if hasattr(self, "chk_wild_skip_rotation_pre"):
+            self.chk_wild_skip_rotation_pre.setEnabled(ok_pre)
+            if not ok_pre:
+                self.chk_wild_skip_rotation_pre.setChecked(False)
+
+    def _wild_profile_label(self, profile_key: str) -> str:
         labels = {
             "mantis": "螳螂（122）",
             "dugulu": "嘟咕噜",
@@ -1523,9 +1657,54 @@ class Dashboard(QWidget):
             "flash_pipi": "闪光皮皮",
             "eyeball": "眼球",
         }
-        label = labels.get(profile, profile)
+        if profile_key in labels:
+            return labels[profile_key]
+        from core.wild_mode_registry import get_profile
+
+        pf = get_profile(self._project_root(), profile_key)
+        if pf is not None:
+            return pf.name
+        return profile_key
+
+    def _wild_supports_pre(self, profile_key: str) -> bool:
+        _builtin = (
+            "flash_pipi",
+            "mantis",
+            "dugulu",
+            "shuangta",
+            "xiaodouya",
+            "eyeball",
+        )
+        if profile_key in _builtin:
+            return True
+        from core.wild_mode_registry import get_profile
+
+        pf = get_profile(self._project_root(), profile_key)
+        if pf is None:
+            return False
+        map_zero = getattr(pf, "map_zero_id", None)
+        if map_zero is not None:
+            try:
+                return int(map_zero) != int(pf.map_swf_id)
+            except (TypeError, ValueError):
+                pass
+        return bool(getattr(pf, "to_script", None))
+
+    def start_rare_capture(self):
+        profile = self.rare_combo.currentData() or "flash_pipi"
+        tasks = {
+            "wild_capture": True,
+            "wild_capture_profile": profile,
+            "use_foreground": self.chk_foreground.isChecked(),
+        }
+        wild_skip = False
+        if self._wild_supports_pre(profile) and getattr(self, "chk_wild_skip_rotation_pre", None):
+            wild_skip = bool(self.chk_wild_skip_rotation_pre.isChecked())
+        if self._wild_supports_pre(profile):
+            tasks["wild_skip_rotation_pre"] = wild_skip
+        label = self._wild_profile_label(profile)
         sfx = ""
-        if profile in profiles_pre:
+        if self._wild_supports_pre(profile):
             sfx = " [跳过前置]" if wild_skip else " [启动前置重连]"
         self.log_message(f"🧿 启动野外捕捉：{label}{sfx}", "SYSTEM")
         self._lock_ui()
@@ -1559,8 +1738,6 @@ class Dashboard(QWidget):
         rare_slot = "shuangta"
         if hasattr(self, "rotation_rare_combo"):
             rare_slot = self.rotation_rare_combo.currentData() or "shuangta"
-            if rare_slot not in ("shuangta", "mantis"):
-                rare_slot = "shuangta"
         return {
             "rotation_mode": True,
             "use_foreground": self.chk_foreground.isChecked(),
@@ -1577,7 +1754,7 @@ class Dashboard(QWidget):
         is_test_mode = bool(tasks.get("rotation_test_mode"))
         mode_text = "测试模式（固定时间间隔切换）" if is_test_mode else "正式模式（根据北京时间自动切换）"
         slot = tasks.get("rotation_rare_slot") or "shuangta"
-        rare_text = "双塔" if slot == "shuangta" else "螳螂"
+        rare_text = self._wild_profile_label(slot)
         self.log_message(
             f"🔄 启动轮换模式（{mode_text}；非尼奥稀有={rare_text}）",
             "SYSTEM",
@@ -1591,7 +1768,7 @@ class Dashboard(QWidget):
         is_test_mode = bool(tasks.get("rotation_test_mode"))
         mode_text = "测试模式（固定时间间隔切换）" if is_test_mode else "正式模式（根据北京时间自动切换）"
         slot = tasks.get("rotation_rare_slot") or "shuangta"
-        rare_text = "双塔" if slot == "shuangta" else "螳螂"
+        rare_text = self._wild_profile_label(slot)
         self.log_message(
             f"🔄 日常任务完成，自动启动轮换模式（{mode_text}；非尼奥稀有={rare_text}）",
             "SYSTEM",
@@ -1693,7 +1870,7 @@ class Dashboard(QWidget):
         self._emit_start(tasks)
 
     def start_nieo_mode(self):
-        """启动尼奥模式或纯净能量(资源)（下拉选择）"""
+        """启动尼奥模式、纯净能量(资源)或自定义三图尼奥（下拉选择）"""
         sub = "nieo"
         if hasattr(self, "combo_nieo_sub"):
             sub = self.combo_nieo_sub.currentData() or "nieo"
@@ -1724,6 +1901,9 @@ class Dashboard(QWidget):
             test_msg += " [测试·10图闪光艾菲亚/11图艾斯菲格]"
         if sub == "pure_energy":
             self.log_message(f"⚡ 启动纯净能量(资源)模式（26/27，技能四战胜）{test_msg}", "SYSTEM")
+        elif sub not in ("nieo", "pure_energy"):
+            tasks["nieo_custom_slug"] = sub
+            self.log_message(f"🌊 启动自定义尼奥模式（slug={sub}）{test_msg}", "SYSTEM")
         else:
             self.log_message(f"🌊 启动尼奥模式（10/11地图循环）{test_msg}", "SYSTEM")
         self._lock_ui()

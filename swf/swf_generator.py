@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SWF 文件批量替换与补齐脚本
+SWF 文件批量替换脚本
 
 功能：
 1. 查找模板文件（优先本目录下的 254.swf 等，其次游戏 NieoData/resource/pet 下）
-2. 步骤1：将游戏 pet/swf 目录下每个已有文件的内容替换为模板内容
-3. 步骤2：补齐 1.swf ~ 5000.swf（缺失的创建，已有的覆盖）
+2. 将游戏 pet/swf 目录下每个已有文件的内容替换为模板内容（可排除指定序号）
 
 用法（在项目根目录）：
   python swf/swf_generator.py
   python swf/swf_generator.py 254
+  python swf/swf_generator.py 254 16,27
   python swf/swf_generator.py --dry-run
 """
 
@@ -95,32 +95,15 @@ def run(template_id: str = "254", excludes: set = None, dry_run: bool = False):
         copied += 1
 
     if not swf_files:
-        print(f"[步骤1] swf 目录下没有 swf 文件，跳过")
-
-    # 步骤2：补齐 1.swf ~ 5000.swf
-    fill_count = 0
-    fill_skipped = 0
-    for i in range(1, 5001):
-        stem = str(i)
-        if stem in excludes:
-            fill_skipped += 1
-            continue
-        dst_path = DST_DIR / f"{stem}.swf"
-        if dry_run and fill_count < 5:  # 仅预览时前几个打印详情
-            exists = dst_path.exists()
-            print(f"  [预览] {'覆盖' if exists else '新建'} {stem}.swf")
-        else:
-            shutil.copyfile(template_file, dst_path)
-        fill_count += 1
+        print(f"[INFO] swf 目录下没有 swf 文件，跳过")
 
     print("\n✅ 完成")
     print(f"模板文件：{template_file}")
     print(f"输出目录：{DST_DIR}")
-    print(f"[步骤1] swf 目录替换：{copied}，跳过：{skipped}")
-    print(f"[步骤2] 1-5000 填充：{fill_count}，跳过：{fill_skipped}")
+    print(f"替换：{copied}，跳过：{skipped}")
     if excludes:
         print(f"跳过列表：{sorted(excludes, key=lambda x: (len(x), x))}")
-    return copied, fill_count
+    return copied
 
 
 def main():

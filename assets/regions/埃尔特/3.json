@@ -1,0 +1,31 @@
+{
+    "key": "埃尔特.3",
+    "category": "埃尔特",
+    "name": "3",
+    "shape": "polygon",
+    "points": [
+        [
+            455,
+            490
+        ],
+        [
+            457,
+            490
+        ],
+        [
+            457,
+            492
+        ],
+        [
+            455,
+            492
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-01 12:11:47",
+        "desc": "map_recorder order=3"
+    }
+}

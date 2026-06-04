@@ -1,0 +1,31 @@
+{
+    "key": "埃尔特.5",
+    "category": "埃尔特",
+    "name": "5",
+    "shape": "polygon",
+    "points": [
+        [
+            338,
+            433
+        ],
+        [
+            340,
+            433
+        ],
+        [
+            340,
+            435
+        ],
+        [
+            338,
+            435
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-01 12:11:47",
+        "desc": "map_recorder order=5"
+    }
+}

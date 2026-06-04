@@ -1,0 +1,31 @@
+{
+    "key": "埃尔特.4",
+    "category": "埃尔特",
+    "name": "4",
+    "shape": "polygon",
+    "points": [
+        [
+            467,
+            372
+        ],
+        [
+            469,
+            372
+        ],
+        [
+            469,
+            374
+        ],
+        [
+            467,
+            374
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-01 12:11:47",
+        "desc": "map_recorder order=4"
+    }
+}

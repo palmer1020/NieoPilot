@@ -86,8 +86,8 @@ class BattleRunner:
     KEY_SKILL4 = "对战.使用技能四"
     KEY_PROBE = "对战.回合探针"
 
-    # 与 UnifiedBattleFramework 默认一致：非螳螂野外以特级为主（螳螂/覆盖由 DarRouteRunner 注入）
-    _CAPSULE_CYCLE_TIERS = ("special",)
+    # 与 UnifiedBattleFramework 默认一致：超→超→特
+    _CAPSULE_CYCLE_TIERS = ("super", "super", "special")
 
     # ---------- 人机验证 region key ----------
     KEY_HV_PANEL = "人机验证.人机验证"

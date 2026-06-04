@@ -1,5 +1,97 @@
 {
     "name": "孵化",
-    "create_time": "2026-05-31 00:00:00",
-    "steps": []
+    "create_time": "2026-06-01 11:00:38",
+    "steps": [
+        {
+            "action": "click",
+            "x": 579,
+            "y": 220,
+            "delay": 1.0,
+            "desc": "Step 1 打开"
+        },
+        {
+            "action": "click",
+            "x": 466,
+            "y": 445,
+            "delay": 1,
+            "desc": "Step 2 雄性"
+        },
+        {
+            "action": "click",
+            "x": 536,
+            "y": 263,
+            "delay": 1.5,
+            "desc": "Step 3 精灵一"
+        },
+        {
+            "action": "click",
+            "x": 708,
+            "y": 262,
+            "delay": 0.4,
+            "desc": "Step 4 精灵二 "
+        },
+        {
+            "action": "click",
+            "x": 602,
+            "y": 518,
+            "delay": 0.8,
+            "desc": "Step 5 确认"
+        },
+        {
+            "action": "click",
+            "x": 699,
+            "y": 446,
+            "delay": 1,
+            "desc": "Step 6 雌性"
+        },
+        {
+            "action": "click",
+            "x": 561,
+            "y": 265,
+            "delay": 1.5,
+            "desc": "Step 7"
+        },
+        {
+            "action": "click",
+            "x": 672,
+            "y": 250,
+            "delay": 0.4,
+            "desc": "Step 8"
+        },
+        {
+            "action": "click",
+            "x": 629,
+            "y": 525,
+            "delay": 0.8,
+            "desc": "Step 9 确认"
+        },
+        {
+            "action": "click",
+            "x": 629,
+            "y": 525,
+            "delay": 0.4,
+            "desc": "Step 10 开始孵化"
+        },
+        {
+            "action": "click",
+            "x": 532,
+            "y": 447,
+            "delay": 1,
+            "desc": "Step 11 确认孵化"
+        },
+        {
+            "action": "click",
+            "x": 634,
+            "y": 427,
+            "delay": 3.17,
+            "desc": "Step 12"
+        },
+        {
+            "action": "click",
+            "x": 860,
+            "y": 157,
+            "delay": 0.5,
+            "desc": "Step 13 关闭"
+        }
+    ]
 }

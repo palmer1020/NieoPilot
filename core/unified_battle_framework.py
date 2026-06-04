@@ -254,8 +254,9 @@ class UnifiedBattleFramework:
                 continue
         return None
 
-    # 默认胶囊循环：超级单档（未传 override 时；螳螂 122 等在 DarRouteRunner 侧覆盖为 legacy 六档）
-    _CAPSULE_CYCLE_TIERS: Tuple[str, ...] = ("super",)
+    # 默认胶囊循环：超→超→特（未传 override 时）；Dashboard 可选单档备选
+    DEFAULT_CAPSULE_CYCLE_TIERS: Tuple[str, ...] = ("super", "super", "special")
+    _CAPSULE_CYCLE_TIERS: Tuple[str, ...] = DEFAULT_CAPSULE_CYCLE_TIERS
 
     # 投掷精灵胶囊（非切换面板）：每次单击后固定等待 CAPSULE_THROW_INTERVAL_S，再判灰；未变灰则再单击
     CAPSULE_THROW_INTERVAL_S: float = 1.0
@@ -1351,7 +1352,7 @@ class UnifiedBattleFramework:
                     cap_key = mid
                     label_zh = "中级"
                 else:
-                    # 尼奥 / 稀有 / 野外等：凡投胶囊均走全局循环（默认「高超高特高超」），与技能回合无关
+                    # 尼奥 / 稀有 / 野外等：凡投胶囊均走全局循环（默认「超超特」），与技能回合无关
                     tiers = (
                         self._capsule_cycle_tiers_override
                         if self._capsule_cycle_tiers_override is not None

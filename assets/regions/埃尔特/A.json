@@ -1,0 +1,31 @@
+{
+    "key": "埃尔特.A",
+    "category": "埃尔特",
+    "name": "A",
+    "shape": "polygon",
+    "points": [
+        [
+            673,
+            453
+        ],
+        [
+            675,
+            453
+        ],
+        [
+            675,
+            455
+        ],
+        [
+            673,
+            455
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-01 12:11:47",
+        "desc": "map_recorder order=10"
+    }
+}
