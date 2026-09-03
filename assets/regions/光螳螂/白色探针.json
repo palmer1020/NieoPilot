@@ -1,0 +1,31 @@
+{
+    "key": "光螳螂.白色探针",
+    "category": "光螳螂",
+    "name": "白色探针",
+    "shape": "polygon",
+    "points": [
+        [
+            297,
+            533
+        ],
+        [
+            299,
+            533
+        ],
+        [
+            299,
+            535
+        ],
+        [
+            297,
+            535
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-12 12:46:20",
+        "desc": "region_viewer"
+    }
+}

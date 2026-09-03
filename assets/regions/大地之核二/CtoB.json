@@ -1,0 +1,31 @@
+{
+    "key": "大地之核二.CtoB",
+    "category": "大地之核二",
+    "name": "CtoB",
+    "shape": "polygon",
+    "points": [
+        [
+            1042,
+            163
+        ],
+        [
+            1044,
+            163
+        ],
+        [
+            1044,
+            165
+        ],
+        [
+            1042,
+            165
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-13 06:46:32",
+        "desc": "来自 地图/46to49.json（A==C==46，CtoB同传送点）"
+    }
+}

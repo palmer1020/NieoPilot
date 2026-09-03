@@ -1,0 +1,22 @@
+{
+    "schema": "nieopilot_wild_mode_v1",
+    "slug": "德普",
+    "name": "德普(576)",
+    "route_hint": "德普",
+    "to_script": "to德普",
+    "map_a_id": 460,
+    "map_b_id": 459,
+    "map_entry_stem": "460to459",
+    "target_pet_ids": [
+        576
+    ],
+    "target_mp3_ids": [
+        576
+    ],
+    "delete_swf_ids": [
+        574,
+        575
+    ],
+    "import_from": null,
+    "create_time": "2026-06-10 13:09:54"
+}

@@ -1,0 +1,31 @@
+{
+    "key": "融合.副4",
+    "category": "融合",
+    "name": "副4",
+    "shape": "polygon",
+    "points": [
+        [
+            1043,
+            221
+        ],
+        [
+            1045,
+            221
+        ],
+        [
+            1045,
+            223
+        ],
+        [
+            1043,
+            223
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-21 10:53:06",
+        "desc": "region_viewer"
+    }
+}

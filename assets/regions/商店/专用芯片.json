@@ -1,0 +1,31 @@
+{
+    "key": "商店.专用芯片",
+    "category": "商店",
+    "name": "专用芯片",
+    "shape": "polygon",
+    "points": [
+        [
+            838,
+            230
+        ],
+        [
+            840,
+            230
+        ],
+        [
+            840,
+            232
+        ],
+        [
+            838,
+            232
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-18 02:56:56",
+        "desc": "region_viewer"
+    }
+}

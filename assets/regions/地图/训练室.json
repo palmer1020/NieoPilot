@@ -1,0 +1,31 @@
+{
+    "key": "地图.训练室",
+    "category": "地图",
+    "name": "训练室",
+    "shape": "polygon",
+    "points": [
+        [
+            833,
+            455
+        ],
+        [
+            835,
+            455
+        ],
+        [
+            835,
+            457
+        ],
+        [
+            833,
+            457
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-17 05:00:29",
+        "desc": "region_viewer"
+    }
+}

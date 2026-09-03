@@ -1,0 +1,31 @@
+{
+    "key": "大地之核一.Z",
+    "category": "大地之核一",
+    "name": "Z",
+    "shape": "polygon",
+    "points": [
+        [
+            633,
+            568
+        ],
+        [
+            635,
+            568
+        ],
+        [
+            635,
+            570
+        ],
+        [
+            633,
+            570
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-13 09:50:00",
+        "desc": "复制自旧大地之核一.Z（map49相同；nieo_skip_z_click=True，实际不点击）"
+    }
+}

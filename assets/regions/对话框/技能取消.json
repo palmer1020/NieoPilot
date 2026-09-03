@@ -1,0 +1,31 @@
+{
+    "key": "对话框.技能取消",
+    "category": "对话框",
+    "name": "技能取消",
+    "shape": "polygon",
+    "points": [
+        [
+            625,
+            528
+        ],
+        [
+            627,
+            528
+        ],
+        [
+            627,
+            530
+        ],
+        [
+            625,
+            530
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-19 11:56:58",
+        "desc": "region_viewer"
+    }
+}

@@ -1,0 +1,31 @@
+{
+    "key": "熔岩晶体一.Z",
+    "category": "熔岩晶体一",
+    "name": "Z",
+    "shape": "polygon",
+    "points": [
+        [
+            268,
+            355
+        ],
+        [
+            270,
+            355
+        ],
+        [
+            270,
+            357
+        ],
+        [
+            268,
+            357
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-12 11:46:02",
+        "desc": "map_recorder order=10"
+    }
+}

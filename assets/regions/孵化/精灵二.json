@@ -1,0 +1,12 @@
+{
+    "key": "孵化.精灵二",
+    "category": "孵化",
+    "name": "精灵二",
+    "shape": "polygon",
+    "points": [[650, 268], [652, 268], [652, 270], [650, 270]],
+    "click": {"random": true},
+    "meta": {
+        "created_at": "2026-07-15 11:54:16",
+        "desc": "generated grid center=(651,269)"
+    }
+}

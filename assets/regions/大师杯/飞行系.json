@@ -1,0 +1,31 @@
+{
+    "key": "大师杯.飞行系",
+    "category": "大师杯",
+    "name": "飞行系",
+    "shape": "polygon",
+    "points": [
+        [
+            424,
+            370
+        ],
+        [
+            426,
+            370
+        ],
+        [
+            426,
+            372
+        ],
+        [
+            424,
+            372
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-18 13:02:24",
+        "desc": "region_viewer"
+    }
+}

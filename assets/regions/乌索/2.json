@@ -1,0 +1,31 @@
+{
+    "key": "乌索.2",
+    "category": "乌索",
+    "name": "2",
+    "shape": "polygon",
+    "points": [
+        [
+            579,
+            225
+        ],
+        [
+            581,
+            225
+        ],
+        [
+            581,
+            227
+        ],
+        [
+            579,
+            227
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-23 11:09:29",
+        "desc": "map_recorder order=2"
+    }
+}

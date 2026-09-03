@@ -1,0 +1,31 @@
+{
+    "key": "经验.nono区域",
+    "category": "经验",
+    "name": "nono区域",
+    "shape": "polygon",
+    "points": [
+        [
+            212,
+            380
+        ],
+        [
+            214,
+            380
+        ],
+        [
+            214,
+            382
+        ],
+        [
+            212,
+            382
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-21 00:00:00",
+        "desc": "split from fix_script/经验.json Step 1"
+    }
+}

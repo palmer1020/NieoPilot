@@ -1,0 +1,17 @@
+{
+    "key": "地图.动力室",
+    "category": "地图",
+    "name": "动力室",
+    "shape": "polygon",
+    "points": [[176, 520], [178, 520], [178, 522], [176, 522]],
+    "click": {
+        "random": false
+    },
+    "meta": {
+        "created_at": "2026-07-16 00:00:00",
+        "desc": "地图网格：动力室",
+        "map_id": 6,
+        "newnpc_multi": 0,
+        "gate_strategy": "newnpc"
+    }
+}

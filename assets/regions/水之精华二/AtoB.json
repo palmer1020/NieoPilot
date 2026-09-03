@@ -1,0 +1,31 @@
+{
+    "key": "水之精华二.AtoB",
+    "category": "水之精华二",
+    "name": "AtoB",
+    "shape": "polygon",
+    "points": [
+        [
+            962,
+            184
+        ],
+        [
+            964,
+            184
+        ],
+        [
+            964,
+            186
+        ],
+        [
+            962,
+            186
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-18 05:48:25",
+        "desc": "A==C（map21），复制自 CtoB"
+    }
+}

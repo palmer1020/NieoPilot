@@ -1,0 +1,31 @@
+{
+    "key": "融合.右",
+    "category": "融合",
+    "name": "右",
+    "shape": "polygon",
+    "points": [
+        [
+            814,
+            395
+        ],
+        [
+            816,
+            395
+        ],
+        [
+            816,
+            397
+        ],
+        [
+            814,
+            397
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-21 11:03:49",
+        "desc": "region_viewer"
+    }
+}

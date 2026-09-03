@@ -1,0 +1,31 @@
+{
+    "key": "孵化.右",
+    "category": "孵化",
+    "name": "右",
+    "shape": "polygon",
+    "points": [
+        [
+            703,
+            434
+        ],
+        [
+            705,
+            434
+        ],
+        [
+            705,
+            436
+        ],
+        [
+            703,
+            436
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-15 11:33:26",
+        "desc": "region_viewer"
+    }
+}

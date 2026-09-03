@@ -1,0 +1,31 @@
+{
+    "key": "乌索.3",
+    "category": "乌索",
+    "name": "3",
+    "shape": "polygon",
+    "points": [
+        [
+            843,
+            428
+        ],
+        [
+            845,
+            428
+        ],
+        [
+            845,
+            430
+        ],
+        [
+            843,
+            430
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-23 11:09:29",
+        "desc": "map_recorder order=3"
+    }
+}

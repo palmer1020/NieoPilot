@@ -1,0 +1,31 @@
+{
+    "key": "大师杯.火系",
+    "category": "大师杯",
+    "name": "火系",
+    "shape": "polygon",
+    "points": [
+        [
+            487,
+            261
+        ],
+        [
+            489,
+            261
+        ],
+        [
+            489,
+            263
+        ],
+        [
+            487,
+            263
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-18 13:01:25",
+        "desc": "region_viewer"
+    }
+}

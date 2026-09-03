@@ -1,0 +1,31 @@
+{
+    "key": "融合.副3",
+    "category": "融合",
+    "name": "副3",
+    "shape": "polygon",
+    "points": [
+        [
+            882,
+            219
+        ],
+        [
+            884,
+            219
+        ],
+        [
+            884,
+            221
+        ],
+        [
+            882,
+            221
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-21 10:52:56",
+        "desc": "region_viewer"
+    }
+}

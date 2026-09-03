@@ -1,0 +1,17 @@
+{
+    "schema": "nieopilot_event_pet_mode_v1",
+    "slug": "yite",
+    "name": "伊特(471)",
+    "route_hint": "伊特",
+    "to_script": "to伊特",
+    "map_a_id": 414,
+    "entry_pet_id": 471,
+    "region_prefix": "伊特",
+    "hunt_strategy": "eit_ui_v2",
+    "battle_strategy": "eit_hp_jita_capture",
+    "min_cycles_before_entry": 5,
+    "pick_flight_reverse": 4,
+    "pick_flight_pet_id": 166,
+    "delete_swf_ids": [],
+    "create_time": "2026-06-01 00:00:00"
+}

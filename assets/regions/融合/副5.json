@@ -1,0 +1,31 @@
+{
+    "key": "融合.副5",
+    "category": "融合",
+    "name": "副5",
+    "shape": "polygon",
+    "points": [
+        [
+            882,
+            308
+        ],
+        [
+            884,
+            308
+        ],
+        [
+            884,
+            310
+        ],
+        [
+            882,
+            310
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-21 10:53:14",
+        "desc": "region_viewer"
+    }
+}

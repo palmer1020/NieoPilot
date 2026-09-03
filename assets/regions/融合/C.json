@@ -1,0 +1,31 @@
+{
+    "key": "融合.C",
+    "category": "融合",
+    "name": "C",
+    "shape": "polygon",
+    "points": [
+        [
+            593,
+            477
+        ],
+        [
+            595,
+            477
+        ],
+        [
+            595,
+            479
+        ],
+        [
+            593,
+            479
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-21 11:02:09",
+        "desc": "region_viewer"
+    }
+}

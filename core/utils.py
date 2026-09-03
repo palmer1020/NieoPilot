@@ -4,7 +4,7 @@ import time
 import subprocess
 import threading
 import math
-from typing import Callable, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Sequence, Tuple
 
 import win32gui
 import win32api
@@ -30,6 +30,11 @@ class WindowManager:
     def __init__(self):
         self.hwnd = 0
         self.content_padding = None
+        self._fixed_viewport: Optional[Tuple[float, float, float, float]] = None
+        self._fixed_viewport_hwnd = 0
+        self.last_calibration_canvas_path = ""
+        self.last_calibration_framed_path = ""
+        self._calibration_revision = 0
         # 未扫边时 get_current_viewport 只提示一次（不自动扫边，依赖界面手动校准）
         self._viewport_zero_pad_logged = False
 
@@ -38,6 +43,133 @@ class WindowManager:
         self._log_thread_started = False
         # launch_game 最近一次失败原因（供界面展示，避免误报「仅路径错误」）
         self.last_launch_error = ""
+
+        # move_start / move_end 拖拽状态
+        self._drag_active = False
+        self._drag_foreground = False
+        self._drag_start_game: Optional[Tuple[float, float]] = None
+
+    def move_cancel(self) -> None:
+        """若左键仍按住则松开，并清除拖拽状态。"""
+        if not self._drag_active:
+            return
+        try:
+            if self._drag_foreground:
+                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+            elif self.hwnd and self._drag_start_game:
+                coords = self.game_to_screen(*self._drag_start_game)
+                if coords:
+                    lp = self._screen_to_client_lparam(coords[0], coords[1])
+                    if lp is not None:
+                        win32gui.PostMessage(self.hwnd, win32con.WM_LBUTTONUP, 0, lp)
+        except Exception:
+            pass
+        self._drag_active = False
+        self._drag_start_game = None
+
+    def move_start(self, gx: float, gy: float, *, foreground: bool = False) -> bool:
+        """move_start：移到起点并按下左键（保持按住）。"""
+        if not self.find_window():
+            return False
+        coords = self.game_to_screen(gx, gy)
+        if not coords:
+            return False
+        sx, sy = coords
+        try:
+            if foreground:
+                win32api.SetCursorPos((sx, sy))
+                time.sleep(0.02)
+                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, sx, sy, 0, 0)
+            else:
+                if not self.hwnd:
+                    return False
+                lp = self._screen_to_client_lparam(sx, sy)
+                if lp is None:
+                    return False
+                win32gui.PostMessage(
+                    self.hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp
+                )
+                time.sleep(0.02)
+        except Exception:
+            return False
+        self._drag_active = True
+        self._drag_foreground = bool(foreground)
+        self._drag_start_game = (float(gx), float(gy))
+        return True
+
+    def move_end(
+        self,
+        gx: float,
+        gy: float,
+        duration_s: float,
+        *,
+        foreground: Optional[bool] = None,
+        abort_check: Optional[Callable[[], bool]] = None,
+    ) -> bool:
+        """move_end：从 move_start 起点拖到终点，耗时 duration_s 后松开左键。"""
+        if not self._drag_active or self._drag_start_game is None:
+            return False
+        if not self.find_window():
+            self.move_cancel()
+            return False
+
+        use_fg = self._drag_foreground if foreground is None else bool(foreground)
+        gx1, gy1 = self._drag_start_game
+        start = self.game_to_screen(gx1, gy1)
+        end = self.game_to_screen(gx, gy)
+        if not start or not end:
+            self.move_cancel()
+            return False
+
+        duration_s = max(0.0, float(duration_s))
+        sx1, sy1 = start
+        sx2, sy2 = end
+        steps = max(2, int(math.ceil(duration_s / 0.01))) if duration_s > 0 else 1
+        interval = duration_s / steps if duration_s > 0 else 0.0
+
+        try:
+            if use_fg:
+                for i in range(1, steps + 1):
+                    if abort_check and abort_check():
+                        self.move_cancel()
+                        return False
+                    t = i / steps
+                    cx = int(round(sx1 + (sx2 - sx1) * t))
+                    cy = int(round(sy1 + (sy2 - sy1) * t))
+                    win32api.SetCursorPos((cx, cy))
+                    if interval > 0:
+                        time.sleep(interval)
+                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, sx2, sy2, 0, 0)
+            else:
+                if not self.hwnd:
+                    self.move_cancel()
+                    return False
+                lp_end = self._screen_to_client_lparam(sx2, sy2)
+                if lp_end is None:
+                    self.move_cancel()
+                    return False
+                for i in range(1, steps + 1):
+                    if abort_check and abort_check():
+                        self.move_cancel()
+                        return False
+                    t = i / steps
+                    cx = int(round(sx1 + (sx2 - sx1) * t))
+                    cy = int(round(sy1 + (sy2 - sy1) * t))
+                    lp = self._screen_to_client_lparam(cx, cy)
+                    if lp is not None:
+                        win32gui.PostMessage(
+                            self.hwnd, win32con.WM_MOUSEMOVE, win32con.MK_LBUTTON, lp
+                        )
+                    if interval > 0:
+                        time.sleep(interval)
+                win32gui.PostMessage(self.hwnd, win32con.WM_LBUTTONUP, 0, lp_end)
+        except Exception:
+            self.move_cancel()
+            return False
+
+        self._drag_active = False
+        self._drag_start_game = None
+        return True
 
     # ===============================
     # Window / Process
@@ -50,6 +182,8 @@ class WindowManager:
             logger.info(f"🔄 检测到新窗口句柄 ({new_hwnd})，清除旧缓存...")
             self.hwnd = new_hwnd
             self.content_padding = None
+            self._fixed_viewport = None
+            self._fixed_viewport_hwnd = 0
             self._viewport_zero_pad_logged = False
 
         self.hwnd = new_hwnd
@@ -79,8 +213,7 @@ class WindowManager:
         self.last_launch_error = ""
 
         if self.find_window():
-            logger.info("窗口已存在，正在激活...")
-            self.maximize_window()
+            logger.info("窗口已存在，已连接（不自动最大化）")
             return True
 
         if not os.path.exists(GAME_PATH):
@@ -106,8 +239,7 @@ class WindowManager:
             # 等窗口出现（FindWindow 按窗口标题精确匹配，须与 config.WINDOW_TITLE 一致）
             for _ in range(40):
                 if self.find_window():
-                    logger.info("✅ 捕获窗口，正在最大化...")
-                    self.maximize_window()
+                    logger.info("✅ 捕获窗口（不自动最大化）")
                     return True
                 time.sleep(0.5)
 
@@ -147,8 +279,8 @@ class WindowManager:
     # ===============================
     def visual_debug(self) -> bool:
         """
-        屏幕校准/可视化调试（不扫边）：
-        1) 整段客户区 + FIXED_RATIO(12:7) 由 get_current_viewport 推算
+        屏幕校准/可视化调试：
+        1) 扫描纯黑 RGB=(0,0,0) 边界，遇到非纯黑内容得到初始 viewport
         2) 输出 viewport 与逻辑坐标到屏幕坐标对应关系
         3) 保存：screenshots/calibration/ 下全 client 截图 + 带细白框标出 12:7 内容区
         """
@@ -162,8 +294,16 @@ class WindowManager:
         except Exception:
             pass
 
-        # 不调用 scan_boundaries；映射仅用整段 client 与 12:7
+        # 点击「校准屏幕」才允许重新扫边并定义固定画布；之后加载/截图不再扫边。
         self.content_padding = None
+        self._fixed_viewport = None
+        self._fixed_viewport_hwnd = 0
+        self._viewport_zero_pad_logged = False
+        self.last_calibration_canvas_path = ""
+        self.last_calibration_framed_path = ""
+        self._calibration_revision += 1
+        logger.info(f"📐 第 {self._calibration_revision} 次校准：清除旧画布与旧 padding，强制重新扫边")
+        self.scan_boundaries(force=True)
 
         vp = self.get_current_viewport()
         if not vp:
@@ -171,7 +311,13 @@ class WindowManager:
             return False
 
         vx, vy, vw, vh = vp
+        self._fixed_viewport = (float(vx), float(vy), float(vw), float(vh))
+        self._fixed_viewport_hwnd = self.hwnd
         logger.info(f"👀 调试 viewport: x={vx:.1f}, y={vy:.1f}, w={vw:.1f}, h={vh:.1f}")
+        logger.info(
+            f"📌 按纯黑边界扫边后的固定 1200×700 画布已锁定：x={vx:.1f}, y={vy:.1f}, w={vw:.1f}, h={vh:.1f}；"
+            "后续加载/截图将沿用该画布，直到再次点击校准屏幕"
+        )
 
         points = [
             ("左上", 0, 0),
@@ -204,7 +350,7 @@ class WindowManager:
 
             out_dir = os.path.join(BASE_PATH, "screenshots", "calibration")
             os.makedirs(out_dir, exist_ok=True)
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
             path_full = os.path.join(out_dir, f"client_full_{ts}.png")
             full_img.save(path_full)
             logger.info(f"📷 已保存全 client: {path_full}")
@@ -224,7 +370,26 @@ class WindowManager:
             dr.line([right, top, right, bottom], fill=wcol, width=1)
             path_framed = os.path.join(out_dir, f"client_viewport_{ts}.png")
             framed.save(path_framed)
+            self.last_calibration_framed_path = path_framed
             logger.info(f"📷 已保存白框标出 12:7 内容区: {path_framed}")
+
+            canvas_img = ImageGrab.grab(
+                (
+                    int(math.floor(vx)),
+                    int(math.floor(vy)),
+                    int(math.ceil(vx + vw)),
+                    int(math.ceil(vy + vh)),
+                ),
+                all_screens=True,
+            )
+            if canvas_img.mode != "RGB":
+                canvas_img = canvas_img.convert("RGB")
+            if canvas_img.size != (GAME_LOGIC_W, GAME_LOGIC_H):
+                canvas_img = canvas_img.resize((GAME_LOGIC_W, GAME_LOGIC_H))
+            path_canvas = os.path.join(out_dir, f"calibration_canvas_{ts}.png")
+            canvas_img.save(path_canvas)
+            self.last_calibration_canvas_path = path_canvas
+            logger.info(f"📷 已保存固定 1200×700 校准画布: {path_canvas}")
         except Exception as e:
             logger.error(f"📷 校准截图保存失败: {e}")
 
@@ -241,9 +406,16 @@ class WindowManager:
             and abs(pixel[2] - bg_color[2]) < threshold
         )
 
-    def scan_boundaries(self):
+    def scan_boundaries(self, *, force: bool = False):
         """扫描游戏内容区 padding（会写入 self.content_padding）"""
         if not self.hwnd:
+            return
+        if (
+            not force
+            and self._fixed_viewport is not None
+            and self._fixed_viewport_hwnd == self.hwnd
+        ):
+            logger.info("📐 已有手动校准固定画布，跳过 scan_boundaries，避免重定义 1200×700 画布")
             return
         try:
             try:
@@ -257,37 +429,71 @@ class WindowManager:
             w, h = r - l, b - t
             
             img = ImageGrab.grab((ox, oy, ox + w, oy + h), all_screens=True)
+            if img.mode != "RGB":
+                img = img.convert("RGB")
             px = img.load()
 
-            bg = px[0, 0]
+            def is_pure_black(pixel) -> bool:
+                return pixel[0] == 0 and pixel[1] == 0 and pixel[2] == 0
 
-            # 扫四边 padding
-            left_pad = 0
+            def column_non_black_ratio(x: int) -> float:
+                non_black = 0
+                for y in range(h):
+                    if not is_pure_black(px[x, y]):
+                        non_black += 1
+                return non_black / max(1, h)
+
+            def row_non_black_ratio(y: int) -> float:
+                non_black = 0
+                for x in range(w):
+                    if not is_pure_black(px[x, y]):
+                        non_black += 1
+                return non_black / max(1, w)
+
+            # 扫四边 padding：找最靠外且非纯黑像素占比 >= 50% 的列/行。
+            # 少量控件/文字浮在黑边上时不会把边界提前拉进黑边。
+            min_non_black_ratio = 0.50
+            left_pad = None
             for x in range(w):
-                if not self._is_bg_color(px[x, h // 2], bg):
+                if column_non_black_ratio(x) >= min_non_black_ratio:
                     left_pad = x
                     break
 
-            right_pad = 0
+            right_pad = None
             for x in range(w - 1, -1, -1):
-                if not self._is_bg_color(px[x, h // 2], bg):
+                if column_non_black_ratio(x) >= min_non_black_ratio:
                     right_pad = w - 1 - x
                     break
 
-            top_pad = 0
+            top_pad = None
             for y in range(h):
-                if not self._is_bg_color(px[w // 2, y], bg):
+                if row_non_black_ratio(y) >= min_non_black_ratio:
                     top_pad = y
                     break
 
-            bottom_pad = 0
+            bottom_pad = None
             for y in range(h - 1, -1, -1):
-                if not self._is_bg_color(px[w // 2, y], bg):
+                if row_non_black_ratio(y) >= min_non_black_ratio:
                     bottom_pad = h - 1 - y
                     break
 
+            if left_pad is None or right_pad is None or top_pad is None or bottom_pad is None:
+                logger.warning("📐 scan_boundaries 未找到非纯黑占比 >= 50% 的边界，忽略本次扫边")
+                self.content_padding = None
+                return
+
+            if (left_pad + right_pad) >= w * 0.25 or (top_pad + bottom_pad) >= h * 0.25:
+                logger.warning(
+                    f"📐 scan_boundaries 结果过大，疑似地图暗边误判，忽略: "
+                    f"L{left_pad}, T{top_pad}, R{right_pad}, B{bottom_pad}"
+                )
+                self.content_padding = None
+                return
+
             self.content_padding = (left_pad, top_pad, right_pad, bottom_pad)
-            logger.info(f"📐 content_padding: L{left_pad}, T{top_pad}, R{right_pad}, B{bottom_pad}")
+            logger.info(
+                f"📐 content_padding(非黑>=50%): L{left_pad}, T{top_pad}, R{right_pad}, B{bottom_pad}"
+            )
 
         except Exception as e:
             logger.error(f"scan_boundaries 异常: {e}")
@@ -298,6 +504,12 @@ class WindowManager:
         if not self.hwnd:
             if not self.find_window():
                 return None
+
+        if self._fixed_viewport is not None:
+            if self._fixed_viewport_hwnd == self.hwnd:
+                return self._fixed_viewport
+            self._fixed_viewport = None
+            self._fixed_viewport_hwnd = 0
 
         l, t, r, b = win32gui.GetClientRect(self.hwnd)
         ox, oy = win32gui.ClientToScreen(self.hwnd, (0, 0))
@@ -381,6 +593,32 @@ class WindowManager:
         time.sleep(0.05)
         win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, sx, sy, 0, 0)
 
+    def hover_game_point_is_hand_cursor(
+        self, gx: float, gy: float, *, settle_s: float = 0.12
+    ) -> Optional[bool]:
+        """Move the real cursor to a game point and report whether it becomes IDC_HAND."""
+        coords = self.game_to_screen(gx, gy)
+        if not coords:
+            return None
+        try:
+            if self.hwnd and win32gui.GetForegroundWindow() != self.hwnd:
+                win32gui.SetForegroundWindow(self.hwnd)
+                time.sleep(0.08)
+            if self.hwnd and win32gui.GetForegroundWindow() != self.hwnd:
+                return None
+            sx, sy = coords
+            win32api.SetCursorPos((int(sx), int(sy)))
+            time.sleep(max(0.0, float(settle_s)))
+            cursor_info = win32gui.GetCursorInfo()
+            if not cursor_info or len(cursor_info) < 2:
+                return None
+            current_cursor = cursor_info[1]
+            hand_cursor = win32gui.LoadCursor(0, getattr(win32con, "IDC_HAND", 32649))
+            return int(current_cursor) == int(hand_cursor)
+        except Exception as e:
+            logger.warning(f"前台悬停读取手型光标失败: {e}")
+            return None
+
     def click_background(self, gx, gy, **_kwargs):
         coords = self.game_to_screen(gx, gy)
         if not coords or not self.hwnd:
@@ -397,6 +635,35 @@ class WindowManager:
             win32gui.PostMessage(self.hwnd, win32con.WM_LBUTTONUP, 0, l_param)
         except Exception:
             pass
+
+    def _screen_to_client_lparam(self, sx: int, sy: int) -> Optional[int]:
+        if not self.hwnd:
+            return None
+        try:
+            ox, oy = win32gui.ClientToScreen(self.hwnd, (0, 0))
+            rel_x = int(sx - ox)
+            rel_y = int(sy - oy)
+            return (rel_y << 16) | (rel_x & 0xFFFF)
+        except Exception:
+            return None
+
+    def move_drag(
+        self,
+        gx1: float,
+        gy1: float,
+        gx2: float,
+        gy2: float,
+        duration_s: float,
+        *,
+        foreground: bool = False,
+        abort_check: Optional[Callable[[], bool]] = None,
+    ) -> bool:
+        """兼容：等价于 move_start + move_end。"""
+        if not self.move_start(gx1, gy1, foreground=foreground):
+            return False
+        return self.move_end(
+            gx2, gy2, duration_s, foreground=foreground, abort_check=abort_check
+        )
 
     def click_client(self, cx: int, cy: int, foreground: bool = False) -> bool:
         """
@@ -758,8 +1025,192 @@ def screenshots_subdir(project_root: str, category: str) -> str:
 BAG_UI_READY_PROBE_KEY = "精灵背包.清空精灵一"
 BAG_UI_READY_ORANGE_RGB = (255, 153, 1)  # #FF9901
 BAG_UI_READY_ORANGE_TOLERANCE = 45.0
-BAG_OPEN_READY_TIMEOUT_SEC = 5.0
+BAG_OPEN_READY_TIMEOUT_SEC = 7.0
 BAG_OPEN_READY_POLL_SEC = 0.12
+BAG_EMPTY_DEEP_BLUE_CONFIRM_SEC = 10.0
+BAG_SLOT_OCCUPIED_RGB_CENTERS = {
+    "orange": (254, 104, 1),
+    # 当前显示器常见的青色均值约为(186,238,253)；旧显示器的(148,223,252)
+    # 到该中心仍在45距离阈值内，因此同时兼容两种显示效果。
+    "cyan": (186, 238, 253),
+    "purple": (71, 28, 83),
+}
+BAG_SLOT_OCCUPIED_MAX_DISTANCE = 45.0
+BAG_SLOT_EMPTY_DEEP_BLUE_RGB = (24, 73, 146)  # #184992
+BAG_SLOT_EMPTY_MAX_DISTANCE = 55.0
+BAG_COUNT_SCAN_TIMEOUT_SEC: Optional[float] = 10.0
+BAG_COUNT_SCAN_STABLE_SCANS = 2
+
+# map10 白色探针（代替内核 newNpc/multi）：由纯白变为非纯白即就绪
+MAP10_WHITE_PROBE_STILL_WHITE_MIN_CHANNEL = 240
+MAP10_WHITE_PROBE_STILL_WHITE_MIN_MEAN = 248.0
+MAP10_WHITE_PROBE_KEY_NIEO = "尼奥一.白色探针"
+MAP10_WHITE_PROBE_KEY_FLASH = "闪光皮皮.白色探针"
+MAP10_WHITE_PROBE_POLL_SEC = 0.02
+MAP10_WHITE_PROBE_NEUTRAL_GRAY_MAX_SPREAD = 8
+MAP10_WHITE_PROBE_NEUTRAL_GRAY_MIN_MEAN = 120.0
+
+
+def is_map10_white_probe_still_white_rgb(rgb: Tuple[int, int, int]) -> bool:
+    """白色探针仍为纯白（map10 NPC 尚未就绪）。"""
+    r, g, b = rgb
+    if min(r, g, b) < MAP10_WHITE_PROBE_STILL_WHITE_MIN_CHANNEL:
+        return False
+    return (r + g + b) / 3.0 >= MAP10_WHITE_PROBE_STILL_WHITE_MIN_MEAN
+
+
+def is_map10_white_probe_ready_rgb(rgb: Tuple[int, int, int]) -> bool:
+    """白色探针已变成有效非白色，视为 map10 NPC 已就绪。"""
+    if is_map10_white_probe_still_white_rgb(rgb):
+        return False
+    r, g, b = rgb
+    mean = (r + g + b) / 3.0
+    spread = max(r, g, b) - min(r, g, b)
+    if mean >= MAP10_WHITE_PROBE_NEUTRAL_GRAY_MIN_MEAN and spread <= MAP10_WHITE_PROBE_NEUTRAL_GRAY_MAX_SPREAD:
+        return False
+    return True
+
+
+def resolve_map10_white_probe_key(
+    regions,
+    *,
+    prefer_key: Optional[str] = None,
+    mode: Optional[str] = None,
+) -> Optional[str]:
+    """解析 map10 白色探针 region key（显式 prefer > 尼奥模式尼奥一 > 闪光皮皮 > 尼奥一）。"""
+    if prefer_key and regions.get(prefer_key):
+        return prefer_key
+    if mode == "nieo" and regions.get(MAP10_WHITE_PROBE_KEY_NIEO):
+        return MAP10_WHITE_PROBE_KEY_NIEO
+    if regions.get(MAP10_WHITE_PROBE_KEY_FLASH):
+        return MAP10_WHITE_PROBE_KEY_FLASH
+    if regions.get(MAP10_WHITE_PROBE_KEY_NIEO):
+        return MAP10_WHITE_PROBE_KEY_NIEO
+    return None
+
+
+def wait_map10_white_probe_ready(
+    regions,
+    *,
+    emit_fn: Optional[Callable[[str, str], None]] = None,
+    stop_check: Optional[Callable[[], bool]] = None,
+    white_probe_key: Optional[str] = None,
+    mode: Optional[str] = None,
+    log_tag: str = "map10",
+    timeout_s: float = 30.0,
+    poll_s: float = MAP10_WHITE_PROBE_POLL_SEC,
+    two_phase: bool = False,
+) -> bool:
+    """
+    轮询白色探针直至就绪（map10 / 露西之核 map55 等代替 newNpc 认证）。
+
+    two_phase=False：探针当前为非纯白即就绪（map10 首开）。
+    two_phase=True：须先观察到纯白（进图加载），再由纯白变为非纯白（NPC 就绪）；
+      用于 A→B 再入时避免残留旧色被误判为就绪（如露西之核 54→55）。
+    """
+    probe_key = resolve_map10_white_probe_key(
+        regions, prefer_key=white_probe_key, mode=mode
+    )
+    if not probe_key:
+        if emit_fn:
+            emit_fn(
+                f"⚠️ [{log_tag}] 未找到白色探针区域"
+                f"（{MAP10_WHITE_PROBE_KEY_FLASH} / {MAP10_WHITE_PROBE_KEY_NIEO}）",
+                "WARN",
+            )
+        return False
+
+    deadline = time.time() + timeout_s
+
+    if two_phase:
+        if emit_fn:
+            emit_fn(
+                f"🔍 [{log_tag}] 等待 {probe_key} 先变白再变非白（两阶段进图认证）…",
+                "INFO",
+            )
+        saw_white = False
+        last_sample_log_ts = 0.0
+        while time.time() < deadline:
+            if stop_check and stop_check():
+                return False
+            rgb = mean_rgb_for_region_key(regions, probe_key)
+            if rgb and is_map10_white_probe_still_white_rgb(rgb):
+                saw_white = True
+                if emit_fn:
+                    r, g, b = rgb
+                    emit_fn(
+                        f"✅ [{log_tag}] 白色探针已变白（RGB=({r},{g},{b})），等待变非白…",
+                        "SUCCESS",
+                    )
+                break
+            now = time.time()
+            if emit_fn and now - last_sample_log_ts >= 0.5:
+                emit_fn(
+                    f"🔍 [{log_tag}] 等待白色探针先变白：{probe_key} RGB={rgb}",
+                    "DEBUG",
+                )
+                last_sample_log_ts = now
+            time.sleep(poll_s)
+        if not saw_white:
+            if emit_fn:
+                emit_fn(
+                    f"⏱️ [{log_tag}] 等待白色探针先变白超时（{timeout_s}s）",
+                    "WARN",
+                )
+            return False
+        last_sample_log_ts = 0.0
+        while time.time() < deadline:
+            if stop_check and stop_check():
+                return False
+            rgb = mean_rgb_for_region_key(regions, probe_key)
+            if rgb and is_map10_white_probe_ready_rgb(rgb):
+                if emit_fn:
+                    r, g, b = rgb
+                    emit_fn(
+                        f"✅ [{log_tag}] 白色探针已非纯白（RGB=({r},{g},{b})）",
+                        "SUCCESS",
+                    )
+                return True
+            now = time.time()
+            if emit_fn and now - last_sample_log_ts >= 0.5:
+                emit_fn(
+                    f"🔍 [{log_tag}] 等待白色探针变非白：{probe_key} RGB={rgb}",
+                    "DEBUG",
+                )
+                last_sample_log_ts = now
+            time.sleep(poll_s)
+        if emit_fn:
+            emit_fn(
+                f"⏱️ [{log_tag}] 等待白色探针由白变非白超时（{timeout_s}s）",
+                "WARN",
+            )
+        return False
+
+    if emit_fn:
+        emit_fn(
+            f"🔍 [{log_tag}] 等待 {probe_key} 由白色变为非白色（map10 NPC 就绪）…",
+            "INFO",
+        )
+    t0 = time.time()
+    while time.time() - t0 < timeout_s:
+        if stop_check and stop_check():
+            return False
+        rgb = mean_rgb_for_region_key(regions, probe_key)
+        if rgb and is_map10_white_probe_ready_rgb(rgb):
+            if emit_fn:
+                r, g, b = rgb
+                emit_fn(
+                    f"✅ [{log_tag}] 白色探针已非纯白（RGB=({r},{g},{b})）",
+                    "SUCCESS",
+                )
+            return True
+        time.sleep(poll_s)
+    if emit_fn:
+        emit_fn(
+            f"⏱️ [{log_tag}] 等待白色探针变非白超时（{timeout_s}s）",
+            "WARN",
+        )
+    return False
 
 
 def is_bag_ui_ready_orange_rgb(
@@ -789,6 +1240,214 @@ def mean_rgb_for_region_key(regions, region_key: str) -> Optional[Tuple[int, int
         return None
 
 
+def classify_pet_bag_slot_rgb(
+    rgb: Optional[Tuple[int, int, int]],
+) -> Optional[str]:
+    """背包槽位颜色：橙/青/紫为有宠，深蓝为无宠，其余无法确认。"""
+    if rgb is None:
+        return None
+    r, g, b = rgb
+    occupied_distance_sq, occupied_color = min(
+        (
+            (r - center[0]) ** 2 + (g - center[1]) ** 2 + (b - center[2]) ** 2,
+            color,
+        )
+        for color, center in BAG_SLOT_OCCUPIED_RGB_CENTERS.items()
+    )
+    if occupied_distance_sq <= BAG_SLOT_OCCUPIED_MAX_DISTANCE ** 2:
+        return occupied_color
+
+    empty_r, empty_g, empty_b = BAG_SLOT_EMPTY_DEEP_BLUE_RGB
+    empty_distance_sq = (
+        (r - empty_r) ** 2 + (g - empty_g) ** 2 + (b - empty_b) ** 2
+    )
+    if empty_distance_sq <= BAG_SLOT_EMPTY_MAX_DISTANCE ** 2 or (
+        r <= 70
+        and 35 <= g <= 120
+        and 100 <= b <= 195
+        and (b - r) >= 55
+        and (b - g) >= 25
+    ):
+        return "deep_blue"
+    return None
+
+
+def pet_bag_slot_color_label(color: Optional[str]) -> str:
+    return {
+        "orange": "橙色有宠",
+        "cyan": "青色有宠",
+        "purple": "紫色有宠",
+        "deep_blue": "深蓝空槽",
+    }.get(color or "", "未知")
+
+
+def analyze_pet_bag_slot_colors(
+    colors: Sequence[Optional[str]],
+) -> Dict[str, Any]:
+    """
+    背包只接受连续前缀有宠、连续后缀空槽：1…N 有宠，N+1…6 深蓝。
+    例如 1/2/3/4 有宠有效；1/3/4/5 有宠属于中间空洞，无效。
+    """
+    states = tuple(colors)
+    occupied_colors = frozenset(BAG_SLOT_OCCUPIED_RGB_CENTERS)
+    unknown_slots = [i + 1 for i, color in enumerate(states) if color is None]
+    if unknown_slots:
+        return {
+            "ok": False,
+            "count": None,
+            "colors": states,
+            "reason": f"槽位{unknown_slots}颜色未知",
+        }
+
+    first_empty = next(
+        (i for i, color in enumerate(states) if color == "deep_blue"),
+        len(states),
+    )
+    invalid_occupied_slots = [
+        i + 1
+        for i, color in enumerate(states[first_empty:], start=first_empty)
+        if color in occupied_colors
+    ]
+    invalid_states = [
+        i + 1
+        for i, color in enumerate(states)
+        if color not in occupied_colors and color != "deep_blue"
+    ]
+    if invalid_states:
+        return {
+            "ok": False,
+            "count": None,
+            "colors": states,
+            "reason": f"槽位{invalid_states}状态无效",
+        }
+    if invalid_occupied_slots:
+        return {
+            "ok": False,
+            "count": None,
+            "colors": states,
+            "reason": (
+                f"槽位{invalid_occupied_slots}在空槽之后仍有宠，"
+                "不符合后置空槽规则"
+            ),
+        }
+    return {
+        "ok": True,
+        "count": first_empty,
+        "colors": states,
+        "reason": "",
+    }
+
+
+def scan_pet_bag_count(
+    regions,
+    *,
+    emit_fn: Optional[Callable[[str, str], None]] = None,
+    stop_check: Optional[Callable[[], bool]] = None,
+    log_tag: str = "背包",
+    timeout_s: Optional[float] = BAG_COUNT_SCAN_TIMEOUT_SEC,
+    poll_s: float = BAG_OPEN_READY_POLL_SEC,
+) -> Dict[str, Any]:
+    """背包 UI 就绪后扫描 1–6 槽位，稳定确认连续宠物数量。"""
+    required_keys = tuple(f"精灵背包.{pos}" for pos in range(1, 7))
+    missing_keys = [key for key in required_keys if regions.get(key) is None]
+    if missing_keys:
+        result = {
+            "ok": False,
+            "count": None,
+            "colors": (None,) * 6,
+            "data": {},
+            "reason": f"缺少槽位探针：{', '.join(missing_keys)}",
+        }
+        if emit_fn:
+            emit_fn(f"⚠️ [{log_tag}] 背包数量扫描失败：{result['reason']}", "WARN")
+        return result
+
+    deadline = (
+        None
+        if timeout_s is None
+        else time.time() + max(0.0, float(timeout_s))
+    )
+    stable_signature = None
+    stable_scans = 0
+    last_wait_log = 0.0
+    last_result: Dict[str, Any] = {
+        "ok": False,
+        "count": None,
+        "colors": (None,) * 6,
+        "data": {},
+        "reason": "尚未扫描",
+    }
+    while deadline is None or time.time() <= deadline:
+        if stop_check and stop_check():
+            return {
+                **last_result,
+                "ok": False,
+                "count": None,
+                "reason": "扫描被停止",
+            }
+
+        data: Dict[int, Dict[str, Any]] = {}
+        colors = []
+        for pos, key in enumerate(required_keys, start=1):
+            rgb = mean_rgb_for_region_key(regions, key)
+            color = classify_pet_bag_slot_rgb(rgb)
+            colors.append(color)
+            data[pos] = {"key": key, "rgb": rgb, "color": color}
+
+        analyzed = analyze_pet_bag_slot_colors(colors)
+        last_result = {**analyzed, "data": data}
+        signature = tuple(colors)
+        if analyzed["ok"] and signature == stable_signature:
+            stable_scans += 1
+        elif analyzed["ok"]:
+            stable_signature = signature
+            stable_scans = 1
+        else:
+            stable_signature = None
+            stable_scans = 0
+
+        if stable_scans >= BAG_COUNT_SCAN_STABLE_SCANS:
+            desc = "；".join(
+                f"{pos}={pet_bag_slot_color_label(item['color'])}"
+                for pos, item in data.items()
+            )
+            if emit_fn:
+                emit_fn(
+                    f"🎒 [{log_tag}] 背包宠物数量={analyzed['count']}；{desc}",
+                    "SUCCESS",
+                )
+            return last_result
+        now = time.time()
+        if emit_fn and now - last_wait_log >= 1.0:
+            reason = analyzed.get("reason") or (
+                f"等待相同结果稳定 {stable_scans}/{BAG_COUNT_SCAN_STABLE_SCANS}"
+            )
+            emit_fn(
+                f"🔄 [{log_tag}] 背包数量继续等待稳定：{reason}",
+                "DEBUG",
+            )
+            last_wait_log = now
+        time.sleep(max(0.01, float(poll_s)))
+
+    desc = "；".join(
+        f"{pos}=RGB{item['rgb']}→{pet_bag_slot_color_label(item['color'])}"
+        for pos, item in last_result.get("data", {}).items()
+    )
+    timed_out = {
+        **last_result,
+        "ok": False,
+        "count": None,
+        "reason": last_result.get("reason") or "有限扫描时间内结果未稳定",
+    }
+    if emit_fn:
+        emit_fn(
+            f"🔄 [{log_tag}] 有限扫描时间结束，未取得稳定结果："
+            f"{timed_out['reason']}；{desc}",
+            "DEBUG",
+        )
+    return timed_out
+
+
 def wait_pet_bag_ui_ready_after_open(
     regions,
     *,
@@ -798,21 +1457,51 @@ def wait_pet_bag_ui_ready_after_open(
     timeout_s: float = BAG_OPEN_READY_TIMEOUT_SEC,
     poll_s: float = BAG_OPEN_READY_POLL_SEC,
     probe_key: str = BAG_UI_READY_PROBE_KEY,
+    bag_scan_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+    allow_empty_bag: bool = False,
+    empty_confirm_s: float = BAG_EMPTY_DEEP_BLUE_CONFIRM_SEC,
 ) -> bool:
     """
     打开精灵背包后轮询「清空精灵一」探针，检测到橙色 #FF9901 即视为 UI 就绪。
-    超时仍返回 False 但不阻塞后续流程（由调用方决定是否继续）。
+    清包场景可启用 allow_empty_bag：精灵一探针连续深蓝满 10 秒，判定背包为 0 只。
+    其他恢复/跟随场景不接受空背包，避免继续点击不存在的精灵。
     """
+    empty_confirm_s = max(0.0, float(empty_confirm_s))
+    effective_timeout_s = max(
+        max(0.0, float(timeout_s)),
+        empty_confirm_s if allow_empty_bag else 0.0,
+    )
     if emit_fn:
+        empty_text = (
+            f"；若持续深蓝满 {empty_confirm_s:g}s，则确认背包为0只"
+            if allow_empty_bag
+            else ""
+        )
         emit_fn(
-            f"⏳ [{log_tag}] 扫描清空精灵一探针，等待橙色就绪(#FF9901)，{timeout_s}s超时",
+            f"⏳ [{log_tag}] 扫描清空精灵一探针，等待橙色就绪(#FF9901)"
+            f"{empty_text}，{effective_timeout_s:g}s超时",
             "INFO",
         )
     t0 = time.time()
-    while time.time() - t0 < timeout_s:
+    base_deadline = t0 + effective_timeout_s
+    deep_blue_since = None
+    deep_blue_deadline = None
+    last_rgb = None
+    last_debug_at = 0.0
+    while True:
+        loop_now = time.time()
+        active_deadline = max(
+            base_deadline,
+            deep_blue_deadline
+            if deep_blue_deadline is not None
+            else base_deadline,
+        )
+        if loop_now > active_deadline:
+            break
         if stop_check and stop_check():
             return False
         rgb = mean_rgb_for_region_key(regions, probe_key)
+        last_rgb = rgb
         if rgb and is_bag_ui_ready_orange_rgb(rgb):
             if emit_fn:
                 r, g, b = rgb
@@ -820,13 +1509,98 @@ def wait_pet_bag_ui_ready_after_open(
                     f"✅ [{log_tag}] 背包UI就绪（清空精灵一 RGB=({r},{g},{b})）",
                     "SUCCESS",
                 )
+            bag_scan = scan_pet_bag_count(
+                regions,
+                emit_fn=emit_fn,
+                stop_check=stop_check,
+                log_tag=log_tag,
+            )
+            if bag_scan_callback:
+                try:
+                    bag_scan_callback(bag_scan)
+                except Exception:
+                    pass
+            if not bag_scan.get("ok"):
+                if emit_fn:
+                    emit_fn(
+                        f"⚠️ [{log_tag}] 背包六槽数量在 "
+                        f"{float(BAG_COUNT_SCAN_TIMEOUT_SEC or 0):g}s 内未稳定，"
+                        "本次开包判定失败",
+                        "WARN",
+                    )
+                return False
             return True
+
+        now = time.time()
+        probe_color = classify_pet_bag_slot_rgb(rgb)
+        if allow_empty_bag and probe_color == "deep_blue":
+            if deep_blue_since is None:
+                deep_blue_since = now
+                # 空包的 10 秒必须从首次确认深蓝开始完整计算，不能与开包总超时共用起点。
+                deep_blue_deadline = (
+                    deep_blue_since
+                    + empty_confirm_s
+                    + max(0.02, float(poll_s))
+                )
+            deep_blue_elapsed = now - deep_blue_since
+            if deep_blue_elapsed >= empty_confirm_s:
+                empty_scan = {
+                    "ok": True,
+                    "count": 0,
+                    "colors": ("deep_blue",) * 6,
+                    "data": {
+                        1: {
+                            "key": probe_key,
+                            "rgb": rgb,
+                            "color": "deep_blue",
+                        }
+                    },
+                    "reason": "",
+                }
+                if bag_scan_callback:
+                    try:
+                        bag_scan_callback(empty_scan)
+                    except Exception:
+                        pass
+                if emit_fn:
+                    emit_fn(
+                        f"✅ [{log_tag}] 精灵一探针连续深蓝 "
+                        f"{empty_confirm_s:g}s，确认背包为0只精灵",
+                        "SUCCESS",
+                    )
+                return True
+        else:
+            deep_blue_since = None
+            deep_blue_deadline = None
+
+        if emit_fn and now - last_debug_at >= 0.5:
+            rgb_text = "None" if rgb is None else f"({rgb[0]},{rgb[1]},{rgb[2]})"
+            if allow_empty_bag and deep_blue_since is not None:
+                elapsed = max(0.0, now - deep_blue_since)
+                emit_fn(
+                    f"🔎 [{log_tag}] 精灵一为深蓝空槽候选，"
+                    f"持续={elapsed:.1f}/{empty_confirm_s:g}s，RGB={rgb_text}",
+                    "DEBUG",
+                )
+            else:
+                emit_fn(
+                    f"🔎 [{log_tag}] 清空精灵一探针未就绪，RGB={rgb_text}",
+                    "DEBUG",
+                )
+            last_debug_at = now
         time.sleep(poll_s)
     if emit_fn:
-        emit_fn(f"⚠️ [{log_tag}] 等待背包UI就绪超时({timeout_s}s)，继续执行", "WARN")
+        last_rgb_text = (
+            "None"
+            if last_rgb is None
+            else f"({last_rgb[0]},{last_rgb[1]},{last_rgb[2]})"
+        )
+        emit_fn(
+            f"⚠️ [{log_tag}] 等待背包UI就绪超时({effective_timeout_s:g}s)，"
+            f"最后清空精灵一 RGB={last_rgb_text}",
+            "WARN",
+        )
     return False
 
 
 window_manager = WindowManager()
-
-

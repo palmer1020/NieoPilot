@@ -1,97 +1,83 @@
 {
     "name": "接受任务",
-    "create_time": "2026-06-03 11:18:33",
+    "create_time": "2026-09-01 09:53:23",
     "steps": [
         {
             "action": "click",
-            "x": 1052,
-            "y": 57,
+            "x": 1069,
+            "y": 56,
             "delay": 1.0,
             "desc": "Step 1"
         },
         {
             "action": "click",
-            "x": 650,
-            "y": 209,
-            "delay": 1.38,
+            "x": 590,
+            "y": 239,
+            "delay": 1.0,
             "desc": "Step 2"
         },
         {
             "action": "click",
-            "x": 485,
-            "y": 537,
-            "delay": 1.18,
+            "x": 537,
+            "y": 540,
+            "delay": 1.0,
             "desc": "Step 3"
         },
         {
             "action": "click",
-            "x": 604,
-            "y": 451,
-            "delay": 1.3,
+            "x": 632,
+            "y": 445,
+            "delay": 1.0,
             "desc": "Step 4"
         },
         {
             "action": "click",
-            "x": 729,
-            "y": 225,
-            "delay": 1.28,
+            "x": 667,
+            "y": 237,
+            "delay": 1.0,
             "desc": "Step 5"
         },
         {
             "action": "click",
-            "x": 480,
-            "y": 531,
-            "delay": 1.35,
+            "x": 524,
+            "y": 548,
+            "delay": 1.0,
             "desc": "Step 6"
         },
         {
             "action": "click",
-            "x": 582,
-            "y": 439,
-            "delay": 1.25,
+            "x": 622,
+            "y": 427,
+            "delay": 1.0,
             "desc": "Step 7"
         },
         {
             "action": "click",
-            "x": 784,
-            "y": 209,
-            "delay": 1.55,
+            "x": 741,
+            "y": 232,
+            "delay": 1.0,
             "desc": "Step 8"
         },
         {
             "action": "click",
-            "x": 781,
-            "y": 218,
-            "delay": 0.5,
+            "x": 527,
+            "y": 558,
+            "delay": 1.0,
             "desc": "Step 9"
         },
         {
             "action": "click",
-            "x": 717,
-            "y": 214,
-            "delay": 1.33,
+            "x": 601,
+            "y": 434,
+            "delay": 1.0,
             "desc": "Step 10"
         },
         {
             "action": "click",
-            "x": 492,
-            "y": 543,
-            "delay": 1.43,
+            "x": 824,
+            "y": 85,
+            "delay": 1.0,
             "desc": "Step 11"
-        },
-        {
-            "action": "click",
-            "x": 623,
-            "y": 436,
-            "delay": 1.4,
-            "desc": "Step 12"
-        },
-        {
-            "action": "click",
-            "x": 800,
-            "y": 82,
-            "delay": 1.38,
-            "desc": "Step 13"
         }
     ]
 }

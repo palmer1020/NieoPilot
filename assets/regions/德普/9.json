@@ -1,0 +1,31 @@
+{
+    "key": "德普.9",
+    "category": "德普",
+    "name": "9",
+    "shape": "polygon",
+    "points": [
+        [
+            1034,
+            213
+        ],
+        [
+            1036,
+            213
+        ],
+        [
+            1036,
+            215
+        ],
+        [
+            1034,
+            215
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-10 13:09:53",
+        "desc": "map_recorder order=9"
+    }
+}

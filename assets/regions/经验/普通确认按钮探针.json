@@ -1,0 +1,31 @@
+{
+    "key": "经验.普通确认按钮探针",
+    "category": "经验",
+    "name": "普通确认按钮探针",
+    "shape": "polygon",
+    "points": [
+        [
+            635,
+            438
+        ],
+        [
+            637,
+            438
+        ],
+        [
+            637,
+            440
+        ],
+        [
+            635,
+            440
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-21 00:00:00",
+        "desc": "psychic exp normal confirm button probe"
+    }
+}

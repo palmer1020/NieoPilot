@@ -1,0 +1,31 @@
+{
+    "key": "荣誉兑换.左边确认",
+    "category": "荣誉兑换",
+    "name": "左边确认",
+    "shape": "polygon",
+    "points": [
+        [
+            464,
+            475
+        ],
+        [
+            466,
+            475
+        ],
+        [
+            466,
+            477
+        ],
+        [
+            464,
+            477
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-13 05:10:29",
+        "desc": "region_viewer"
+    }
+}

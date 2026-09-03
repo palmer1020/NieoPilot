@@ -1,0 +1,31 @@
+{
+    "key": "旧大地之核一.Z",
+    "category": "旧大地之核一",
+    "name": "Z",
+    "shape": "polygon",
+    "points": [
+        [
+            633,
+            568
+        ],
+        [
+            635,
+            568
+        ],
+        [
+            635,
+            570
+        ],
+        [
+            633,
+            570
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-11 10:30:04",
+        "desc": "map_recorder order=10"
+    }
+}

@@ -479,10 +479,6 @@ class MapRecorderApp:
         if not window_manager.find_window():
             messagebox.showwarning("截图失败", "未找到游戏窗口，请先启动游戏。")
             return
-        try:
-            window_manager.scan_boundaries()
-        except Exception:
-            pass
 
         img = window_manager.grab_game_bbox(0, 0, GAME_LOGIC_W, GAME_LOGIC_H)
         if img is None:
@@ -741,11 +737,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     if not window_manager.find_window():
         print("⚠ 未检测到游戏窗口；可先开游戏，Enter 截图时会再次检测。")
     else:
-        try:
-            window_manager.scan_boundaries()
-            print("✅ 已连接游戏窗口并完成扫边。")
-        except Exception as e:
-            print(f"⚠ 扫边失败（{e}），Enter 截图前建议在 Dashboard 校准屏幕。")
+        print("✅ 已连接游戏窗口。截图将使用 Dashboard 校准屏幕锁定的 1200×700 画布。")
 
     app = MapRecorderApp(map_id, options)
     app.run()

@@ -1,0 +1,31 @@
+{
+    "key": "乌索.7",
+    "category": "乌索",
+    "name": "7",
+    "shape": "polygon",
+    "points": [
+        [
+            309,
+            417
+        ],
+        [
+            311,
+            417
+        ],
+        [
+            311,
+            419
+        ],
+        [
+            309,
+            419
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-23 11:09:29",
+        "desc": "map_recorder order=7"
+    }
+}

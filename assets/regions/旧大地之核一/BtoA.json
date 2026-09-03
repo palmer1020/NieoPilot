@@ -1,0 +1,19 @@
+{
+    "key": "旧大地之核一.BtoA",
+    "category": "旧大地之核一",
+    "name": "BtoA",
+    "shape": "polygon",
+    "points": [
+        [94, 134],
+        [96, 134],
+        [96, 136],
+        [94, 136]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-11 12:00:00",
+        "desc": "地图 49 → 501（BtoA）"
+    }
+}

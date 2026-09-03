@@ -1,0 +1,31 @@
+{
+    "key": "大师杯.战斗系",
+    "category": "大师杯",
+    "name": "战斗系",
+    "shape": "polygon",
+    "points": [
+        [
+            798,
+            259
+        ],
+        [
+            800,
+            259
+        ],
+        [
+            800,
+            261
+        ],
+        [
+            798,
+            261
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-18 13:02:14",
+        "desc": "region_viewer"
+    }
+}

@@ -1,0 +1,83 @@
+{
+    "name": "B",
+    "create_time": "2025-12-17 14:48:37",
+    "steps": [
+        {
+            "action": "click",
+            "x": 627,
+            "y": 123,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 1114,
+            "y": 441,
+            "delay": 1.0,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 650,
+            "y": 85,
+            "delay": 0.36,
+            "desc": "Step 3"
+        },
+                {
+            "action": "click",
+            "x": 650,
+            "y": 85,
+            "delay": 0.36,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 1116,
+            "y": 366,
+            "delay": 1.11,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 760,
+            "y": 100,
+            "delay": 0.3,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 760,
+            "y": 100,
+            "delay": 0.3,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 760,
+            "y": 100,
+            "delay": 0.3,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 760,
+            "y": 100,
+            "delay": 0.3,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 760,
+            "y": 100,
+            "delay": 0.3,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 760,
+            "y": 100,
+            "delay": 0.3,
+            "desc": "Step 5"
+        }
+    ]
+}

@@ -1,0 +1,31 @@
+{
+    "key": "地图.船长室",
+    "category": "地图",
+    "name": "船长室",
+    "shape": "polygon",
+    "points": [
+        [
+            234,
+            393
+        ],
+        [
+            236,
+            393
+        ],
+        [
+            236,
+            395
+        ],
+        [
+            234,
+            395
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-17 05:00:00",
+        "desc": "region_viewer"
+    }
+}

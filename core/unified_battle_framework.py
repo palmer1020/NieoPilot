@@ -79,8 +79,16 @@ class BattleConfig:
     test_mode_capsule_only_mid: bool = False  # 测试模式：后续回合只使用中级胶囊（不交替高级）
     test_mode: bool = False  # 是否为测试模式
     round_timeout_sec: Optional[float] = None  # 单回合等待灰变蓝或战斗结束的超时（秒），None=禁用
-    # 覆盖默认「高超高特高超」循环；例如轮换模式「超特超超特超」
+    # 覆盖默认胶囊档位；由 Dashboard 下拉框传入，例如仅高级、仅超级、仅特级、超特循环。
     capsule_cycle_tiers_override: Optional[Tuple[str, ...]] = None
+    # 伊特等模式：Stage3 启动时清空内核队列，避免旧 map 信号误判战斗结束
+    clear_kernel_on_stage3_start: bool = False
+    # 至少打完该回合数后才允许 map / map10 白色探针触发战斗结束（0=不限制）
+    min_rounds_before_kernel_end: int = 0
+    # 禁用 map10 白色探针作为战斗结束条件（非尼奥 map10 场景）
+    skip_map10_white_end: bool = False
+    # 技能战胜确认后跳过通用 1AND1 清理（尼奥单图超时战胜）
+    skip_post_victory_1and1: bool = False
 
 
 class UnifiedBattleFramework:
@@ -89,20 +97,20 @@ class UnifiedBattleFramework:
     """
     # 战后「通用白 + 确认蓝」1AND1 清理：整段等待+连点最长秒数（避免探针卡死时无限点击）
     POST_BATTLE_CONFIRM_DIALOG_TIMEOUT_SEC = 20.0
-    
+
     # Region keys
     KEY_BIG_PROBE = "游戏.大探针"
     KEY_SMALL_PROBE = "游戏.小探针"
-    KEY_GAME_CELLS = ["游戏.1a", "游戏.1b", "游戏.2a", "游戏.2b", 
+    KEY_GAME_CELLS = ["游戏.1a", "游戏.1b", "游戏.2a", "游戏.2b",
                       "游戏.3a", "游戏.3b", "游戏.4a", "游戏.4b"]
-    
+
     # 探针颜色（RGB）
     COLOR_BIG_PROBE = (47, 167, 238)  # 2FA7EE
     COLOR_SMALL_PROBE = (255, 255, 255)  # FFFFFF
     COLOR_ORANGE_CELL = (254, 103, 0)  # FE6700
-    
+
     # 内核资源匹配请用 core.kernel_log_match（RE_* + line_matches，含 path= 反斜杠与无 resource 前缀片段）
-    
+
     # Stage 4 region keys
     KEY_VICTORY_PROBE = "对话框.对战胜利确认"  # 黄色探针
     KEY_VICTORY_CONFIRM = "对话框.对战胜利确认按钮"
@@ -111,37 +119,38 @@ class UnifiedBattleFramework:
     KEY_SKILL_REPLACE_CANCEL = "对话框.技能替换取消"
     KEY_SKILL_REPLACE_CANCEL_BTN = "对话框.技能替换取消按钮"
     KEY_GENERAL_PROBE = "对话框.通用探针"  # 白色
-    
-    # 地图10白色探针（用于替代newNPC信号）
+
+    # map10 白色探针（由纯白变非纯白，用于替代 newNpc/multi）
     KEY_WHITE_PROBE_MAP10 = "尼奥一.白色探针"
     KEY_NORMAL_CONFIRM_PROBE = "对话框.普通确认探针"  # 蓝色
-    KEY_NORMAL_CONFIRM_BTN = "对话框.普通确认按钮"
-    
+    KEY_NORMAL_CONFIRM_BTN = "对话框.普通确认"
+
     # 邮件配置
     EMAIL_ADDRESS = "1713518932qqcom@gmail.com"
-    
+
     # 电池区域
     KEY_BATTERY = "系统.电池"
     COLOR_BATTERY_RED = (255, 0, 0)  # #FF0000
     COLOR_BATTERY_BLACK = (0, 0, 0)  # #000000
-    
+
     def __init__(self, bot, regions: RegionStore, template_root: str):
         self.bot = bot
         self.regions = regions
         self.template_root = template_root
-        
+
         self._kernel_q = deque(maxlen=6000)
         self._kernel_cb = None
         self._last_action: Optional[LastActionType] = None
         self._round_idx = 0
-        
+        self._last_victory_map_detected_at: float = 0.0
+
         # 捕捉胶囊全局循环：「高→超→高→特→高→超」每 6 次一循环，跨对战累计（技能回合不占位）
         self._capsule_cycle_index: int = 0
         self._capsule_cycle_tiers_override: Optional[Tuple[str, ...]] = None
-        
+
         # 日志节流：记录上次输出时间，避免高频日志刷屏
         self._log_throttle: Dict[str, float] = {}
-        
+
         # ✅ petswf到PetItem的时间差记录（用于统计趋势）
         self._petswf_to_petitem_durations: List[float] = []
         # ✅ stage3退出原因："normal" | "abort" | "round_timeout"（供调用方区分）
@@ -157,15 +166,15 @@ class UnifiedBattleFramework:
         self._battle_duration: float = 0.0
         # run_battle 最后一次失败阶段（训练室 Stage2 入战重试用）
         self._last_run_battle_failure_stage: Optional[str] = None
-        
+
     # ================================
     # 工具方法
     # ================================
-    
+
     def _emit(self, text: str, level: str = "INFO", throttle_key: Optional[str] = None, throttle_interval: float = 0.0):
         """
         日志输出，支持节流
-        
+
         Args:
             text: 日志文本
             level: 日志级别
@@ -179,7 +188,7 @@ class UnifiedBattleFramework:
             if now - last_time < throttle_interval:
                 return  # 跳过本次日志
             self._log_throttle[throttle_key] = now
-        
+
         if hasattr(self.bot, "emit_and_log"):
             try:
                 self.bot.emit_and_log(text, level)
@@ -187,14 +196,14 @@ class UnifiedBattleFramework:
             except Exception:
                 pass
         print(f"[{level}] {text}")
-    
+
     def _require_region(self, key: str) -> Region:
         """获取region，不存在则抛出异常"""
         r = self.regions.get(key)
         if not r:
             raise KeyError(f"Region not found: {key}")
         return r
-    
+
     def _grab_region(self, key: str) -> Optional[Image.Image]:
         """截取region图像"""
         try:
@@ -203,33 +212,33 @@ class UnifiedBattleFramework:
             return window_manager.grab_game_bbox(x1, y1, x2, y2, min_size_px=2)
         except Exception:
             return None
-    
+
     def _region_center(self, key: str) -> Tuple[float, float]:
         """获取region中心点坐标"""
         r = self._require_region(key)
         x1, y1, x2, y2 = r.outer_bbox()
         return ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
-    
+
     def _click_xy(self, x: float, y: float, use_foreground: bool):
         """点击坐标"""
         if use_foreground:
             window_manager.click(x, y)
         else:
             window_manager.click_background(x, y)
-    
+
     def _click_region(self, key: str, use_foreground: bool):
         """点击region"""
         r = self._require_region(key)
         cx, cy = r.sample_click_point()
         self._click_xy(cx, cy, use_foreground)
         self._emit(f"🖱 点击 {key} -> ({cx:.0f},{cy:.0f})", "DEBUG", throttle_key=f"click_{key}", throttle_interval=1.0)
-    
+
     def _click_region_twice(self, key: str, use_foreground: bool, gap: float = 0.06):
         """连续点击region两次（提升胶囊点击成功率）"""
         self._click_region(key, use_foreground)
         time.sleep(max(0.0, gap))
         self._click_region(key, use_foreground)
-    
+
     def _double_click_battle_panel_after_round1_skill(self, config: BattleConfig, round_idx: int) -> None:
         """第一回合任意技能（skill/skill2/skill4）双击后：紧接着双击切换对战面板。胶囊路径不加。"""
         if round_idx != 1:
@@ -239,11 +248,11 @@ class UnifiedBattleFramework:
             return
         self._emit("🔄 第一回合：技能后双击切换对战面板", "INFO")
         self._click_region_twice(key, config.use_foreground, gap=0.06)
-    
+
     def _rs_get(self, key: str) -> Optional[Region]:
         """获取region（不存在返回None）"""
         return self.regions.get(key)
-    
+
     def _first_existing_key(self, candidates: List[str]) -> Optional[str]:
         """获取第一个存在的region键"""
         for k in candidates:
@@ -254,8 +263,8 @@ class UnifiedBattleFramework:
                 continue
         return None
 
-    # 默认胶囊循环：超→超→特（未传 override 时）；Dashboard 可选单档备选
-    DEFAULT_CAPSULE_CYCLE_TIERS: Tuple[str, ...] = ("super", "super", "special")
+    # 兜底默认：仅高级。主路径会显式传 Dashboard 下拉框值；这里防止边缘 BattleConfig 漏传后回到旧超/特循环。
+    DEFAULT_CAPSULE_CYCLE_TIERS: Tuple[str, ...] = ("high",)
     _CAPSULE_CYCLE_TIERS: Tuple[str, ...] = DEFAULT_CAPSULE_CYCLE_TIERS
 
     # 投掷精灵胶囊（非切换面板）：每次单击后固定等待 CAPSULE_THROW_INTERVAL_S，再判灰；未变灰则再单击
@@ -287,62 +296,112 @@ class UnifiedBattleFramework:
         rgb = self._mean_rgb(key)
         if rgb is None:
             return False
-        
+
         mr, mg, mb = rgb
         tr, tg, tb = target_rgb
-        
+
         if tolerance == 0:
             return (mr, mg, mb) == (tr, tg, tb)
         else:
             # 允许tolerance误差
             return (abs(mr - tr) <= tolerance) and (abs(mg - tg) <= tolerance) and (abs(mb - tb) <= tolerance)
-    
+
     def _mean_rgb(self, key: str) -> Optional[Tuple[int, int, int]]:
         """获取region平均RGB"""
         img = self._grab_region(key)
         if img is None:
             return None
-        
+
         arr = np.asarray(img.convert("RGB"), dtype=np.float32)
         if arr.size == 0:
             return None
-        
+
         mean = np.round(arr.mean(axis=(0, 1))).astype(int)
         return (int(mean[0]), int(mean[1]), int(mean[2]))
-    
+
+    @staticmethod
+    def _is_dialog_blue_probe_rgb(rgb: Optional[Tuple[int, int, int]]) -> bool:
+        if rgb is None:
+            return False
+        r, g, b = (int(rgb[0]), int(rgb[1]), int(rgb[2]))
+        if r >= 240 and g >= 240 and b >= 240:
+            return False
+        return b >= 150 and g >= 80 and r <= 170 and (b - g) >= 30 and (g - r) >= 20
+
+    @staticmethod
+    def _dialog_confirm_region_is_white_rgb(rgb: Optional[Tuple[int, int, int]]) -> bool:
+        if rgb is None:
+            return False
+        r, g, b = (int(rgb[0]), int(rgb[1]), int(rgb[2]))
+        return r >= 240 and g >= 240 and b >= 240
+
+    def _check_normal_1and1and1_probes(self) -> bool:
+        """普通111：原 1AND1 +「对话框.左边确认」区域为白色。"""
+        if not self._check_calibration_probes():
+            return False
+        rgb = self._mean_rgb("对话框.左边确认")
+        return self._dialog_confirm_region_is_white_rgb(rgb)
+
+    def _check_left_1and1and1_probes(self) -> bool:
+        """左边111：原 1AND1 +「对话框.普通确认」区域为白色。"""
+        if not self._check_calibration_probes():
+            return False
+        rgb = self._mean_rgb("对话框.普通确认")
+        return self._dialog_confirm_region_is_white_rgb(rgb)
+
     def _count_orange_in_pair(self, key_a: str, key_b: str) -> int:
-        """统计一对区域（a和b）中颜色严格为FE6700的数量，返回0/1/2"""
+        """Count colored cells in an a/b pair.
+
+        Calibration swfs 252/254/519 share the same shape, but use different
+        colors. Treat white as 0 and orange/cyan/purple as 1.
+        """
         count = 0
-        
+
         # 检查a区域
         rgb_a = self._mean_rgb(key_a)
-        if rgb_a == self.COLOR_ORANGE_CELL:
+        if self._is_calibration_colored_rgb(rgb_a):
             count += 1
-        
+
         # 检查b区域
         rgb_b = self._mean_rgb(key_b)
-        if rgb_b == self.COLOR_ORANGE_CELL:
+        if self._is_calibration_colored_rgb(rgb_b):
             count += 1
-        
+
         return count
-    
-    def _check_white_probe_non_white(self) -> bool:
+
+    @staticmethod
+    def _classify_calibration_cell_rgb(rgb: Optional[Tuple[int, int, int]]) -> Optional[str]:
+        """Return orange/cyan/purple/white/unknown for calibration cell probes."""
+        if rgb is None:
+            return None
+        r, g, b = (int(rgb[0]), int(rgb[1]), int(rgb[2]))
+        if r >= 245 and g >= 245 and b >= 245:
+            return "white"
+        if r >= 200 and 70 <= g <= 190 and b <= 100:
+            return "orange"
+        # 新显示器高亮青色的红通道可到约195，205仍与近白色分离。
+        if b >= 145 and g >= 120 and r <= 205:
+            return "cyan"
+        if r >= 95 and b >= 120 and g <= 145 and (b - g) >= 25:
+            return "purple"
+        return "unknown"
+
+    def _is_calibration_colored_rgb(self, rgb: Optional[Tuple[int, int, int]]) -> bool:
+        return self._classify_calibration_cell_rgb(rgb) in ("orange", "cyan", "purple")
+
+    def _check_map10_white_probe_ready(self) -> bool:
         """
-        检查白色探针是否为非纯白色（表示newNPC已出现，可结束战斗）
-        
-        注意：此方法仅在地图10时有效（通过检查内核日志中的map信号来判断）
-        如果不是地图10，直接返回False，不影响正常流程
-        
-        Returns:
-            True=非纯白色（newNPC已出现），False=纯白色、探针不存在或不在地图10（newNPC未出现）
+        检查 map10 白色探针是否已非纯白（代替 newNpc，可结束战斗）。
+
+        仅在最近内核 map 信号为 10 时有效；map11 或其他地图返回 False。
         """
         try:
-            # ✅ 首先检查内核日志中最近的地图信号（只针对地图10的补丁）
-            # 从队列末尾（最新）向队列开头（最旧）遍历，找到最近的一个地图信号
-            # 如果最近的地图信号是地图11，说明不是地图10，直接返回False
-            # 如果最近的地图信号是地图10，才继续检查白色探针
+            from core.utils import (
+                is_map10_white_probe_ready_rgb,
+                resolve_map10_white_probe_key,
+            )
+
             recent_map = None
-            # 反向遍历队列（从最新到最旧）
             for line in reversed(list(self._kernel_q)):
                 line_str = str(line)
                 mid = first_map_id_in_line(line_str)
@@ -352,56 +411,21 @@ class UnifiedBattleFramework:
                 if mid == 11:
                     recent_map = 11
                     break
-            
-            # 如果最近的地图信号是地图11，说明不是地图10，返回False
-            if recent_map == 11:
-                return False
-            
-            # 如果最近的地图信号不是地图10（包括没有找到任何地图信号），也返回False
+
             if recent_map != 10:
                 return False
-            
-            # ✅ 只有在确认是地图10后，才检查白色探针
-            # 尝试多个可能的白色探针键（闪光皮皮优先，然后是尼奥一）
-            white_probe_key = None
-            if self._rs_get("闪光皮皮.白色探针"):
-                white_probe_key = "闪光皮皮.白色探针"
-            elif self._rs_get(self.KEY_WHITE_PROBE_MAP10):
-                white_probe_key = self.KEY_WHITE_PROBE_MAP10
-            
+
+            white_probe_key = resolve_map10_white_probe_key(self.regions)
             if not white_probe_key:
-                # 白色探针不存在，返回False
                 return False
-            
-            reg = self._rs_get(white_probe_key)
-            if not reg:
+
+            rgb = self._mean_rgb(white_probe_key)
+            if rgb is None:
                 return False
-            
-            img = self._grab_region(white_probe_key)
-            if img is None:
-                return False
-            
-            pixels = list(img.getdata())
-            if not pixels:
-                return False
-            
-            # 检查是否所有像素都是纯白色（255,255,255），允许小的误差（tolerance=5）
-            tolerance = 5
-            white_count = 0
-            for r, g, b in pixels:
-                if abs(r - 255) <= tolerance and abs(g - 255) <= tolerance and abs(b - 255) <= tolerance:
-                    white_count += 1
-            
-            # 如果超过80%的像素是纯白色，认为是纯白色（newNPC未出现）
-            white_ratio = white_count / len(pixels)
-            is_white = white_ratio >= 0.8
-            
-            # 返回非纯白色（如果is_white为False，表示非纯白色，newNPC已出现）
-            return not is_white
+            return is_map10_white_probe_ready_rgb(rgb)
         except Exception:
-            # 任何异常都返回False，不影响正常流程
             return False
-    
+
     def _send_email(self, subject: str, body: str):
         """发送邮件（异常情况）"""
         try:
@@ -410,71 +434,71 @@ class UnifiedBattleFramework:
             msg['From'] = self.EMAIL_ADDRESS
             msg['To'] = self.EMAIL_ADDRESS
             msg['Subject'] = subject
-            
+
             msg.attach(MIMEText(body, 'plain', 'utf-8'))
-            
+
             # 这里需要配置SMTP服务器，暂时只记录日志
             # 实际发送需要配置SMTP认证信息
             self._emit(f"📧 [邮件] {subject}\n{body}", "WARN")
             # TODO: 实现实际邮件发送（需要SMTP配置）
-            
+
         except Exception as e:
             self._emit(f"❌ 邮件发送失败: {e}", "ERROR")
-    
+
     # ================================
     # 内核日志监听
     # ================================
-    
+
     def _start_kernel_listen(self, clear_queue: bool = True):
         """启动内核日志监听
-        
+
         Args:
             clear_queue: 是否清空队列。Stage 3 从 Stage 2 接管时传 False，保留 Stage 2 已捕获的 map 信号（解决普通逃跑 battle_success 误判）
         """
         if clear_queue:
             self._kernel_q.clear()
-        
+
         def _on_line(line: str):
             self._kernel_q.append(line)
-        
+
         self._kernel_cb = _on_line
         add_kernel_log_callback(self._kernel_cb)
-    
+
     def _stop_kernel_listen(self):
         """停止内核日志监听"""
         if self._kernel_cb:
             remove_kernel_log_callback(self._kernel_cb)
             self._kernel_cb = None
-    
+
     def _has_petitem(self, line: str) -> bool:
         """检查是否包含PetItem信号"""
         return line_matches(RE_PETITEM, line)
-    
+
     def _has_map(self, line: str) -> bool:
         """检查是否包含map信号（含 path=resource\\map\\ 格式）"""
         return bool(first_map_id_in_line(line)) or line_matches(RE_MAP_PATH_LOOSE, line)
-    
+
     def _has_newnpc(self, line: str) -> bool:
         """检查是否包含newNpc信号（/resource/newNpc/multi/0.swf）"""
         return line_matches(RE_NEWNPC_MULTI, line)
-    
+
     def _has_fight_skill(self, line: str) -> bool:
         """检查是否包含 fightResource/skill/swf（含 path= 反斜杠与无 resource 前缀片段）。"""
         return line_matches(RE_FIGHT_SKILL_SWF, line)
-    
+
     def _has_fight_pet(self, line: str) -> bool:
         """检查是否包含fightResource/pet/swf信号"""
         return line_matches(RE_FIGHT_PET, line)
-    
+
     def _check_battle_end(self) -> Tuple[bool, bool]:
         """
         检查战斗是否结束（从日志检测Map + multi newnpc）
-        
+
         返回: (map_seen, npc_seen)
         """
         map_seen = False
         npc_seen = False
-        
+
         # ✅ 从内核队列检查（实时检测，不消费队列）
         temp_q = list(self._kernel_q)  # 使用list复制，不消费队列
         for line in temp_q:
@@ -483,7 +507,7 @@ class UnifiedBattleFramework:
                 map_seen = True
             if self._has_newnpc(line_str):
                 npc_seen = True
-        
+
         return map_seen, npc_seen
 
     def _merge_kernel_buffer_after_stage2_gap(self) -> None:
@@ -501,19 +525,19 @@ class UnifiedBattleFramework:
         except Exception:
             pass
         self._kernel_gap_fill_cursor = None
-    
+
     def _check_map_after_calibration(self, expected_map_id: int) -> Optional[int]:
         """
         校准后检测地图变化（从内核日志中检测非目标地图）
-        
+
         Args:
             expected_map_id: 期望的地图ID
-            
+
         Returns:
             如果检测到非目标地图，返回该地图ID；否则返回None
         """
         exp = int(expected_map_id)
-        
+
         # 从内核队列检查（实时检测，不消费队列）
         temp_q = list(self._kernel_q)  # 使用list复制，不消费队列
         for line in temp_q:
@@ -523,28 +547,28 @@ class UnifiedBattleFramework:
                 continue
             if mid != exp:
                 return mid
-        
+
         return None
-    
+
     # ================================
     # Stage 2: 校准逻辑
     # ================================
-    
+
     def _check_calibration_probes(self) -> bool:
-        """检查是否出现校准探针（大探针=2FA7EE AND 小探针=FFFFFF）"""
-        big_ok = self._check_color_strict(self.KEY_BIG_PROBE, self.COLOR_BIG_PROBE, tolerance=5)
+        """Check calibration probes: small=white(0), big=any colored cell(1)."""
+        big_ok = self._is_calibration_colored_rgb(self._mean_rgb(self.KEY_BIG_PROBE))
         small_ok = self._check_color_strict(self.KEY_SMALL_PROBE, self.COLOR_SMALL_PROBE, tolerance=5)
         return big_ok and small_ok
-    
+
     def _calculate_x_values(self) -> Tuple[List[int], Dict[str, Region]]:
         """计算X1-X4值，返回(values, regions_dict)"""
         values = []
         regions_dict = {}
-        
+
         for i in range(1, 5):
             key_a = f"游戏.{i}a"
             key_b = f"游戏.{i}b"
-            
+
             try:
                 count = self._count_orange_in_pair(key_a, key_b)
                 values.append(count)
@@ -554,16 +578,16 @@ class UnifiedBattleFramework:
                 values.append(0)
                 regions_dict[f"{i}a"] = None
                 regions_dict[f"{i}b"] = None
-        
+
         return values, regions_dict
-    
+
     def _analyze_distribution(self, x_values: List[int]) -> Tuple[str, Optional[int]]:
         """
         分析X值分布，返回(distribution, target_index)
-        
+
         正常分布格式: "310", "301", "031", "130", "103", "013"
         这三个数字分别表示：count_1(值为1的个数), count_0(值为0的个数), count_2(值为2的个数)
-        
+
         正常分布：count_1, count_0, count_2 这三个计数中，必定有一个是1
         - 如果count_2=1，说明有1个值为2的X，应该点击那个值为2的X
         - 如果count_1=1，说明有1个值为1的X，应该点击那个值为1的X
@@ -573,18 +597,18 @@ class UnifiedBattleFramework:
         count_0 = x_values.count(0)
         count_1 = x_values.count(1)
         count_2 = x_values.count(2)
-        
+
         # 构建分布字符串（格式：count_1 + count_0 + count_2）
         simple_dist = f"{count_1}{count_0}{count_2}"
-        
+
         # 正常分布：count_1, count_0, count_2 这三个计数中，必定有一个是1
         # 必须是以下6种分布才是正常pattern
         normal_patterns = ["013", "031", "130", "103", "301", "310"]
-        
+
         # 验证：count_1 + count_0 + count_2 应该等于 4
         if (count_1 + count_0 + count_2) != 4:
             return simple_dist, None
-        
+
         # 检查是否为正常分布（三个计数中有一个为1）
         if simple_dist in normal_patterns:
             # 根据用户描述："取对应为1的那个值对应的X变量"
@@ -594,49 +618,49 @@ class UnifiedBattleFramework:
                 for i, val in enumerate(x_values):
                     if val == 1:
                         return simple_dist, i + 1  # 1-4
-            
+
             # 如果没有值为1的X，查找值为2的X（例如103分布）
             if count_2 == 1:
                 for i, val in enumerate(x_values):
                     if val == 2:
                         return simple_dist, i + 1  # 1-4
-            
+
             # 如果既没有值为1也没有值为2的X，查找值为0的X（理论上不应该出现）
             if count_0 == 1:
                 for i, val in enumerate(x_values):
                     if val == 0:
                         return simple_dist, i + 1  # 1-4
-            
+
             # 理论上不应该到这里
             return simple_dist, None
-        
+
         # 异常分布
         return simple_dist, None
-    
+
     def _calibrate_click_group(self, group_idx: int, use_foreground: bool) -> bool:
         """点击指定组（1-4）的a和b区域各自中心的中点"""
         try:
             key_a = f"游戏.{group_idx}a"
             key_b = f"游戏.{group_idx}b"
-            
+
             # 获取中心点
             cx_a, cy_a = self._region_center(key_a)
             cx_b, cy_b = self._region_center(key_b)
-            
+
             # 计算中点
             mid_x = (cx_a + cx_b) / 2.0
             mid_y = (cy_a + cy_b) / 2.0
-            
+
             # 快速点击
             self._click_xy(mid_x, mid_y, use_foreground)
             # 校准点击日志不节流（重要操作，需要看到每次点击）
             self._emit(f"🧭 校准点击：组{group_idx} -> ({mid_x:.0f},{mid_y:.0f})", "DEBUG")
             return True
-            
+
         except Exception as e:
             self._emit(f"❌ 校准点击失败: {e}", "ERROR")
             return False
-    
+
     def _handle_abnormal_distribution_fallback(
         self,
         x_values: List[int],
@@ -645,23 +669,22 @@ class UnifiedBattleFramework:
     ) -> Tuple[str, Optional[int]]:
         """
         处理异常分布的fallback逻辑（仅当校准出现异常分布时调用）
-        
+
         流程：
         1. 扫描游戏.1x, 2x, 3x, 4x区域，统计不为白色(255,255,255)的数量
         2. 若全部白色：返回 ("reconnect", None)，调用方执行普通刷新重连
         3. 若数量为3：排除白色点，对剩下3个点计算ab分布；若某count==1则点对应ab值（与正常校准一致）；否则任选非白色点
         4. 若数量为2或1：任选非白色点
         5. 保证：只要存在非白色x，至少返回一个可点击组
-        
+
         Returns:
             ("reconnect", None): 全部白色，需执行刷新重连
             ("click", group_idx): 可点击的组号(1-4)
         """
         self._emit(f"🔄 [异常分布fallback] 开始处理异常分布: {distribution}", "INFO")
-        
-        COLOR_WHITE = (255, 255, 255)
+
         x_non_white_indices = []
-        
+
         # 步骤1：扫描游戏.1x, 2x, 3x, 4x区域
         for i in range(1, 5):
             key_x = f"游戏.{i}x"
@@ -670,29 +693,29 @@ class UnifiedBattleFramework:
                 if rgb_x is None:
                     x_non_white_indices.append(i - 1)
                     self._emit(f"📊 [异常分布fallback] 游戏.{i}x 无法获取颜色，视为非白色", "DEBUG")
-                elif rgb_x != COLOR_WHITE:
+                elif self._classify_calibration_cell_rgb(rgb_x) != "white":
                     x_non_white_indices.append(i - 1)
                     self._emit(f"📊 [异常分布fallback] 游戏.{i}x 颜色非白色", "DEBUG")
             except Exception as e:
                 self._emit(f"⚠️ [异常分布fallback] 无法获取游戏.{i}x: {e}，视为非白色", "WARN")
                 x_non_white_indices.append(i - 1)
-        
+
         non_white_count = len(x_non_white_indices)
         self._emit(f"📊 [异常分布fallback] 非白色x区域数量: {non_white_count}", "INFO")
-        
+
         # 步骤2：全部白色 -> 执行普通刷新重连
         if non_white_count == 0:
             self._emit("⚠️ [异常分布fallback] 所有x区域都是白色，需执行刷新重连", "WARN")
             return ("reconnect", None)
-        
+
         # 步骤3：数量为3
         if non_white_count == 3:
             white_idx = [i for i in range(4) if i not in x_non_white_indices][0]
             self._emit(f"📊 [异常分布fallback] 排除白色的点：组{white_idx + 1}", "INFO")
-            
+
             remaining_indices = list(x_non_white_indices)
             remaining_ab_values = []
-            
+
             for idx in remaining_indices:
                 group_num = idx + 1
                 key_a = f"游戏.{group_num}a"
@@ -702,20 +725,14 @@ class UnifiedBattleFramework:
                     remaining_ab_values.append(ab_val)
                 except Exception:
                     remaining_ab_values.append(0)
-            
+
             count_0 = remaining_ab_values.count(0)
             count_1 = remaining_ab_values.count(1)
             count_2 = remaining_ab_values.count(2)
             remaining_dist = f"{count_1}{count_0}{count_2}"
             self._emit(f"📊 [异常分布fallback] 排除白色后三个点的分布: {remaining_dist} (count_0={count_0}, count_1={count_1}, count_2={count_2})", "INFO")
-            
-            # 与正常校准一致：哪个count==1，点对应ab值的点
-            if count_0 == 1:
-                for i, val in enumerate(remaining_ab_values):
-                    if val == 0:
-                        target_group = remaining_indices[i] + 1
-                        self._emit(f"🎯 [异常分布fallback] 分布{remaining_dist}，点ab=0的点：组{target_group}", "INFO")
-                        return ("click", target_group)
+
+            # 与正常校准一致，但绝不选 ab=0 的点；只允许选 ab=1/2。
             if count_1 == 1:
                 for i, val in enumerate(remaining_ab_values):
                     if val == 1:
@@ -728,27 +745,52 @@ class UnifiedBattleFramework:
                         target_group = remaining_indices[i] + 1
                         self._emit(f"🎯 [异常分布fallback] 分布{remaining_dist}，点ab=2的点：组{target_group}", "INFO")
                         return ("click", target_group)
-            
-            # 分布为111、300、030、003等，任选非白色点
-            target_idx = x_non_white_indices[0]
-            target_group = target_idx + 1
-            self._emit(f"🎯 [异常分布fallback] 分布{remaining_dist}，任选非白色点：组{target_group}", "INFO")
-            return ("click", target_group)
-        
-        # 步骤4：数量为2或1，任选非白色点
-        target_idx = x_non_white_indices[0]
-        target_group = target_idx + 1
-        self._emit(f"🎯 [异常分布fallback] 非白色数量为{non_white_count}，选择：组{target_group}", "INFO")
-        return ("click", target_group)
-    
+
+            # 分布为111、300、030、003等，只从 ab=1/2 候选中选；没有则交外部兜底。
+            for i, val in enumerate(remaining_ab_values):
+                if val in (1, 2):
+                    target_group = remaining_indices[i] + 1
+                    self._emit(
+                        f"🎯 [异常分布fallback] 分布{remaining_dist}，选ab={val}的点：组{target_group}",
+                        "INFO",
+                    )
+                    return ("click", target_group)
+            self._emit(
+                f"⚠️ [异常分布fallback] 分布{remaining_dist} 没有 ab=1/2 候选，交外部兜底",
+                "WARN",
+            )
+            return ("reconnect", None)
+
+        # 步骤4：数量为2或1，也只允许选 ab=1/2 的点。
+        for idx in x_non_white_indices:
+            group_num = idx + 1
+            key_a = f"游戏.{group_num}a"
+            key_b = f"游戏.{group_num}b"
+            try:
+                ab_val = self._count_orange_in_pair(key_a, key_b)
+            except Exception:
+                ab_val = 0
+            if ab_val in (1, 2):
+                self._emit(
+                    f"🎯 [异常分布fallback] 非白色数量为{non_white_count}，选ab={ab_val}的点：组{group_num}",
+                    "INFO",
+                )
+                return ("click", group_num)
+        self._emit(
+            f"⚠️ [异常分布fallback] 非白色数量为{non_white_count} 但没有 ab=1/2 候选，交外部兜底",
+            "WARN",
+        )
+        return ("reconnect", None)
+
     def stage2_calibration_and_petitem(
-        self, 
+        self,
         trigger_callback: Optional[Callable[[], Tuple[float, float]]] = None,
         use_foreground: bool = False,
         timeout_s: float = 10.0,
         skip_stage1: bool = False,  # 是否跳过Stage 1（野外模式已在外部完成Stage 1）
         config: Optional[BattleConfig] = None,  # 用于在检测到PetItem时立即执行第一回合动作
-        initial_cursor: Optional[int] = None  # 当skip_stage1=True时，用于检查此cursor之后的新日志
+        initial_cursor: Optional[int] = None,  # 当skip_stage1=True时，用于检查此cursor之后的新日志
+        check_calibration_after_fight_signal: bool = False,
     ) -> Tuple[bool, Optional[CalibrationResult]]:
         """
         Stage 2: 检测PetItem + 校准逻辑
@@ -763,7 +805,7 @@ class UnifiedBattleFramework:
            - fightResource/skill/swf（点击成功且未出现校准，停止点击但继续等待PetItem）
            - PetItem（进入Stage 3）
            - 校准探针（进入校准流程）
-        4. 如果出现校准探针（大探针=2FA7EE AND 小探针=FFFFFF），进入校准：
+        4. 如果出现校准探针（大探针=橙/青/紫任意有色 AND 小探针=FFFFFF），进入校准：
            - 计算X1-X4，分析分布
            - 如果是正常分布（310/301等），点击对应组
            - 点击后继续检测：
@@ -771,19 +813,23 @@ class UnifiedBattleFramework:
              * 如果不是1 AND 1，重新获取触发坐标并继续持续点击（仅当skip_stage1=False时）
         5. 如果检测到fightResource/skill/swf，停止点击，继续等待PetItem
         6. 如果检测到PetItem，进入Stage 3
-        
+
         返回: (success, calibration_result)
         """
         t0 = time.time()
         calibration_attempts = 0
-        max_calibration_attempts = 5
-        
+        max_calibration_attempts = 2
+
         # ✅ 补丁：在启动内核监听之前，先检查initial_cursor之前的日志中是否有fightResource/pet/swf/信号
         # 这样可以确保在野外稀有精灵模式和尼奥模式中都能正确记录时间
         # 注意：只在skip_stage1=True且提供了initial_cursor时执行，不影响其他场景
         # 时间测量是只读的，不影响任何OCR、精灵识别、入战等逻辑
         petswf_detected_time: Optional[float] = None
-        if skip_stage1 and initial_cursor is not None:
+        if (
+            skip_stage1
+            and initial_cursor is not None
+            and not check_calibration_after_fight_signal
+        ):
             try:
                 from core.logger import fetch_kernel_since
                 # 检查initial_cursor之前最多200条日志（确保能检测到fightResource/pet/swf/信号）
@@ -805,19 +851,19 @@ class UnifiedBattleFramework:
                 # 如果检查失败，不影响后续流程（petswf_detected_time保持为None，后续会继续检测）
                 # ✅ 时间测量失败不影响任何其他逻辑
                 pass
-        
+
         # 启动内核监听（尽早开始监听，以便及时检测PetItem）
         self._start_kernel_listen()
-        
+
         # 如果提供了initial_cursor，用于检查新日志（skip_stage1模式）
         check_cursor = initial_cursor
         if check_cursor is None and skip_stage1:
             # 如果没有提供cursor，则记录当前cursor（确保不丢失日志）
             check_cursor = kernel_cursor()
-        
+
         try:
             if skip_stage1:
-                self._emit("🔍 Stage 2: 等待PetItem或校准（野外模式，Stage 1已在外部完成）", "INFO")
+                self._emit("🔍 Stage 2: 等待PetItem或校准（Stage 1已在外部完成）", "INFO")
             else:
                 self._emit("🔍 Stage 2: 持续点击触发点直到检测到PetItem或校准", "INFO")
                 # 首先获取触发坐标
@@ -825,7 +871,7 @@ class UnifiedBattleFramework:
                     self._emit("❌ Stage 2: 未提供trigger_callback且skip_stage1=False", "ERROR")
                     return False, None
                 trigger_xy = trigger_callback()
-            
+
             last_click_time = 0.0
             click_interval = 0.1  # 每0.1秒点击一次
             saw_fight_skill = False  # 标志：是否已检测到fightResource/skill/swf（停止点击）
@@ -834,17 +880,19 @@ class UnifiedBattleFramework:
             skill_detected_time: Optional[float] = None  # skill出现的时间（用于右下角检测判断）
             round_probe_was_gray = False  # 回合探针是否曾经是灰色（用于检测先灰后蓝）
             round_probe_model = None  # 回合探针模板模型（延迟加载）
-            
+            calibration_skipped_after_petswf_logged = False
+            ignore_calibration_after_second = False
+
             while (time.time() - t0) < timeout_s:
                 # 检查中止
                 if self.bot and hasattr(self.bot, "stop_current") and self.bot.stop_current:
                     return False, None
-                
+
                 # 检查暂停
                 if self.bot and hasattr(self.bot, "is_paused"):
                     while self.bot.is_paused and not (hasattr(self.bot, "stop_current") and self.bot.stop_current):
                         time.sleep(0.05)
-                
+
                 # ✅ 0. 检测fightResource/pet/swf/信号（记录第一次出现的时间，必须在PetItem检测之前）
                 if petswf_detected_time is None:
                     # 检查内核队列
@@ -856,7 +904,7 @@ class UnifiedBattleFramework:
                                 petswf_detected_time = time.time()
                                 self._emit(f"📝 [时间统计] 检测到fightResource/pet/swf/信号（开始计时）", "INFO")
                                 break
-                    
+
                     # 如果skip_stage1且提供了cursor，也检查fetch_kernel_since
                     if petswf_detected_time is None and skip_stage1 and check_cursor is not None:
                         try:
@@ -870,7 +918,7 @@ class UnifiedBattleFramework:
                                         break
                         except Exception:
                             pass
-                
+
                 # 优先检查PetItem（最重要的信号，优先检测）- 检测到PetItem立即执行第一回合动作
                 # 1. 先检查内核队列（实时日志）
                 petitem_found = False
@@ -881,7 +929,7 @@ class UnifiedBattleFramework:
                         if self._has_petitem(line_str):
                             petitem_found = True
                             break
-                
+
                 # 2. 如果skip_stage1且提供了cursor，也检查fetch_kernel_since（避免遗漏日志）
                 if not petitem_found and skip_stage1 and check_cursor is not None:
                     try:
@@ -894,34 +942,34 @@ class UnifiedBattleFramework:
                                     break
                     except Exception:
                         pass
-                
+
                 if not STAGE2_STRICT_KERNEL_PETITEM_ONLY:
                     # ✅ 3. 检查右下角探针（先灰后蓝）作为PetItem出现的条件
                     if not petitem_found and (skill_detected_time is not None or petswf_detected_time is not None):
                         # 延迟加载回合探针模型
                         if round_probe_model is None:
                             round_probe_model = self._load_probe_templates()
-                        
+
                         if round_probe_model:
                             probe_state, blue_score, gray_score = self._detect_round_probe(round_probe_model)
-                            
+
                             # 如果探针曾经是灰色，现在变成蓝色，说明PetItem出现
                             if probe_state == "BLUE" and round_probe_was_gray:
                                 petitem_found = True
                                 self._emit("✅ 检测到右下角探针先灰后蓝，判定PetItem出现", "SUCCESS")
                             elif probe_state == "GRAY":
                                 round_probe_was_gray = True  # 标记探针曾经是灰色
-                
+
                 if petitem_found:
                     self._emit("✅ 检测到PetItem信号，立即执行第一回合动作", "SUCCESS")
-                    
+
                     # ✅ 记录petswf到PetItem的时间差
                     if petswf_detected_time is not None:
                         petitem_time = time.time()
                         duration = petitem_time - petswf_detected_time
                         self._petswf_to_petitem_durations.append(duration)
                         self._emit(f"📊 [时间统计] petswf到PetItem时间差: {duration:.3f}秒", "INFO")
-                        
+
                         # ✅ 每5次输出一次统计趋势
                         if len(self._petswf_to_petitem_durations) % 5 == 0:
                             recent_5 = self._petswf_to_petitem_durations[-5:]
@@ -929,7 +977,7 @@ class UnifiedBattleFramework:
                             min_duration = min(recent_5)
                             max_duration = max(recent_5)
                             total_count = len(self._petswf_to_petitem_durations)
-                            
+
                             # 计算趋势（如果总数>=10，对比前5个和后5个）
                             trend_msg = ""
                             if total_count >= 10:
@@ -941,16 +989,16 @@ class UnifiedBattleFramework:
                                     trend_msg = f" ✅ 趋势：减少（前5次平均{prev_avg:.3f}s -> 当前{avg_duration:.3f}s）"
                                 else:
                                     trend_msg = f" ➡️ 趋势：稳定（前5次平均{prev_avg:.3f}s -> 当前{avg_duration:.3f}s）"
-                            
+
                             self._emit(f"📈 [时间统计] 最近5次petswf到PetItem时间差 - 平均: {avg_duration:.3f}s, 最小: {min_duration:.3f}s, 最大: {max_duration:.3f}s, 总计: {total_count}次{trend_msg}", "INFO")
-                    
+
                     # ✅ 先调用PetItem检测回调（如果提供）
                     if config and config.on_petitem_detected:
                         try:
                             config.on_petitem_detected()
                         except Exception as e:
                             self._emit(f"⚠️ PetItem检测回调异常: {e}", "WARN")
-                    
+
                     # ✅ 立即执行第一回合动作（不等到Stage 3，不输出"进入Stage 3"）
                     if config:
                         round_idx = 1
@@ -963,9 +1011,9 @@ class UnifiedBattleFramework:
                             # ✅ 不在stage2中sleep，立即返回让stage3接管（_execute_action内部已有必要的sleep）
                             self._last_action = LastActionType.SKILL
                         self._emit("✅ 第一回合动作已执行", "SUCCESS")
-                    
+
                     return True, None
-                
+
                 # 1. 检查fightResource/skill/swf（点击成功且未出现校准，停止点击但继续等待PetItem）
                 if not saw_fight_skill:
                     temp_q = list(self._kernel_q)  # 使用list复制，不消费队列
@@ -977,84 +1025,122 @@ class UnifiedBattleFramework:
                             self._emit("✅ 检测到fightResource/skill/swf信号（点击成功，未出现校准），停止点击，继续等待PetItem", "SUCCESS")
                             last_click_time = float('inf')  # 设置为无限大，停止点击
                             break
-                
-                # 3. 检查校准探针
-                if self._check_calibration_probes():
+
+                # 3. 检查校准探针。检测到 fightResource/pet/swf 或 skill 后已经确认入战/入战中，
+                # 后续残留的校准探针不能再抢走 Stage 2 流程。
+                if (
+                    (petswf_detected_time is not None or saw_fight_skill)
+                    and not check_calibration_after_fight_signal
+                ):
+                    if (
+                        not calibration_skipped_after_petswf_logged
+                        and self._check_calibration_probes()
+                    ):
+                        self._emit(
+                            "ℹ️ Stage 2: 已检测到fightResource入战信号，跳过校准探针，仅等待PetItem",
+                            "INFO",
+                        )
+                        calibration_skipped_after_petswf_logged = True
+                elif (not ignore_calibration_after_second) and self._check_calibration_probes():
                     calibration_attempts += 1
                     if calibration_attempts > max_calibration_attempts:
-                        self._emit("❌ 校准尝试次数过多，暂停并发送邮件", "ERROR")
-                        self._send_email(
-                            "校准失败 - 尝试次数过多",
-                            f"校准尝试了{max_calibration_attempts}次仍无法完成。"
+                        self._emit(
+                            "⚠️ 校准已处理两次，后续校准探针交给外部兜底；Stage2只继续等待PetItem",
+                            "WARN",
                         )
-                        if self.bot:
-                            self.bot.is_paused = True
+                        ignore_calibration_after_second = True
                         return False, None
-                    
-                    self._emit(f"🧭 检测到校准探针（大=2FA7EE AND 小=FFFFFF），第{calibration_attempts}次校准", "WARN")
-                    
+
+                    self._emit(f"🧭 检测到校准探针（大=橙/青/紫任意有色 AND 小=FFFFFF），第{calibration_attempts}次校准", "WARN")
+
                     # 计算X1-X4
                     x_values, regions_dict = self._calculate_x_values()
                     # X值和分布分析日志不节流（校准过程的重要信息）
                     self._emit(f"📊 X值: X1={x_values[0]}, X2={x_values[1]}, X3={x_values[2]}, X4={x_values[3]}", "INFO")
-                    
+
                     # 分析分布
                     distribution, target_idx = self._analyze_distribution(x_values)
                     self._emit(f"📈 分布分析: {distribution}, 目标组: {target_idx}", "INFO")
-                    
+
                     # 检查是否为异常分布
                     if target_idx is None:
                         # 异常分布：4+0或2+2
                         count_0 = x_values.count(0)
                         count_1 = x_values.count(1)
                         count_2 = x_values.count(2)
-                        
-                        self._emit(f"❌ 异常分布: {distribution}（count_1={count_1}, count_0={count_0}, count_2={count_2}）", "ERROR")
-                        self._emit("⚠️ 正常分布应为: 013, 031, 130, 103, 301, 310", "WARN")
-                        self._send_email(
-                            "校准失败 - 异常分布",
-                            f"检测到异常分布: {distribution}\nX值: X1={x_values[0]}, X2={x_values[1]}, X3={x_values[2]}, X4={x_values[3]}\n正常分布应为: 013, 031, 130, 103, 301, 310"
+
+                        if calibration_attempts >= max_calibration_attempts:
+                            self._emit(
+                                f"⚠️ 第二次校准仍为异常分布: {distribution}（count_1={count_1}, count_0={count_0}, count_2={count_2}），交给外部兜底",
+                                "WARN",
+                            )
+                            return False, None
+
+                        self._emit(
+                            f"⚠️ 第一次校准异常分布: {distribution}（count_1={count_1}, count_0={count_0}, count_2={count_2}），尝试fallback选1/2点",
+                            "WARN",
                         )
-                        if self.bot:
-                            self.bot.is_paused = True
-                        return False, None
-                    
+                        fallback_action, fallback_target = self._handle_abnormal_distribution_fallback(
+                            x_values,
+                            distribution,
+                            use_foreground,
+                        )
+                        if fallback_action != "click" or fallback_target is None:
+                            self._emit(
+                                "⚠️ 第一次异常分布fallback无可用1/2点；不补点触发点，继续等待PetItem或第二次校准",
+                                "WARN",
+                            )
+                            last_click_time = float("inf")
+                            continue
+                        target_idx = fallback_target
+
+                    entry_seen_before_calibration_click = False
+                    for line in list(self._kernel_q):
+                        line_str = str(line)
+                        if self._has_petitem(line_str):
+                            entry_seen_before_calibration_click = True
+                            break
+                        if self._has_fight_pet(line_str):
+                            if petswf_detected_time is None:
+                                petswf_detected_time = time.time()
+                            entry_seen_before_calibration_click = True
+                            break
+                        if self._has_fight_skill(line_str):
+                            saw_fight_skill = True
+                            entry_seen_before_calibration_click = True
+                            break
+                    if (
+                        entry_seen_before_calibration_click
+                        and not check_calibration_after_fight_signal
+                    ):
+                        if not calibration_skipped_after_petswf_logged:
+                            self._emit(
+                                "ℹ️ Stage 2: 校准点击前检测到入战信号，取消校准点击，仅等待PetItem",
+                                "INFO",
+                            )
+                            calibration_skipped_after_petswf_logged = True
+                        continue
+
                     # 点击目标组
                     self._emit(f"🎯 校准点击：组{target_idx}（分布={distribution}）", "INFO")
                     self._calibrate_click_group(target_idx, use_foreground)
-                    time.sleep(0.1)  # 短暂等待点击生效
-                    
-                    # 点击后检查探针状态（必须1AND1消失才算校准成功）
-                    time.sleep(0.2)  # 等待点击生效
-                    if self._check_calibration_probes():
-                        # 仍然1 AND 1，说明校准失败
-                        self._emit(f"❌ 校准后探针仍为1 AND 1（点击组{target_idx}后），暂停并发送邮件", "ERROR")
-                        self._send_email(
-                            "校准失败 - 点击后仍为1 AND 1",
-                            f"校准点击组{target_idx}后，探针仍为1 AND 1状态。分布: {distribution}\nX值: X1={x_values[0]}, X2={x_values[1]}, X3={x_values[2]}, X4={x_values[3]}"
+                    time.sleep(0.1)
+
+                    # 校准点击后不再补点触发点；等待 PetItem/fightResource，最多允许第二次校准。
+                    last_click_time = float("inf")
+                    if calibration_attempts >= max_calibration_attempts:
+                        ignore_calibration_after_second = True
+                        self._emit(
+                            "✅ 第二次校准点击已执行；不再处理校准探针，交给外部地图/入战兜底，Stage2只等待PetItem",
+                            "SUCCESS",
                         )
-                        if self.bot:
-                            self.bot.is_paused = True
-                        return False, None
-                    
-                    # 校准成功：大探针小探针不再是1 AND 1（1AND1已消失）
-                    self._emit(f"✅ 校准成功（1AND1已消失，点击组{target_idx}有效），重新执行点击触发对战", "SUCCESS")
-                    
-                    if skip_stage1:
-                        # 野外模式：校准成功后，需要重新执行Stage 1（ABABAB移动+扫描）
-                        # 但这里无法执行，应该返回False让外部重新执行Stage 1
-                        self._emit("⚠️ 野外模式校准成功，需要外部重新执行Stage 1（ABABAB移动+扫描）", "WARN")
-                        return False, None
                     else:
-                        # 固定模式：重新执行Stage 1：点击触发对战
-                        if trigger_callback:
-                            trigger_xy = trigger_callback()  # 重新获取触发坐标
-                            self._click_xy(trigger_xy[0], trigger_xy[1], use_foreground)  # 立即点击一次触发对战
-                            last_click_time = time.time()  # 重置点击时间，准备持续点击
-                            # 重置超时计时器（给新的触发更多时间）
-                            t0 = time.time()
-                            continue
-                
+                        self._emit(
+                            "✅ 第一次校准点击已执行；不补点触发点，继续等待PetItem或第二次校准",
+                            "SUCCESS",
+                        )
+                    continue
+
                 # 4. 如果没有检测到fightResource/skill/swf或PetItem或校准探针
                 if not skip_stage1:
                     # 固定模式：持续点击触发点
@@ -1063,26 +1149,26 @@ class UnifiedBattleFramework:
                         self._click_xy(trigger_xy[0], trigger_xy[1], use_foreground)
                         last_click_time = now
                         # 节流：持续点击日志每2秒输出一次
-                        self._emit(f"🖱 持续点击触发点 ({trigger_xy[0]:.0f}, {trigger_xy[1]:.0f})", "DEBUG", 
+                        self._emit(f"🖱 持续点击触发点 ({trigger_xy[0]:.0f}, {trigger_xy[1]:.0f})", "DEBUG",
                                   throttle_key="continuous_trigger_click", throttle_interval=2.0)
                 # 野外模式：不持续点击，只等待检测信号
-                
+
                 time.sleep(0.02)  # 减少等待时间，提高检测频率（从0.05s改为0.02s）
-            
+
             if not STAGE2_STRICT_KERNEL_PETITEM_ONLY:
                 # 超时前最后检查：即使没检测到PetItem，也检查是否已进入战斗
                 if not petitem_found:
                     # 最后检查：检测回合探针（右下角蓝色探针）
                     if round_probe_model is None:
                         round_probe_model = self._load_probe_templates()
-                    
+
                     if round_probe_model and (skill_detected_time is not None or petswf_detected_time is not None):
                         probe_state, blue_score, gray_score = self._detect_round_probe(round_probe_model)
                         if probe_state == "BLUE" and blue_score >= 0.90:
                             # 虽然没有PetItem日志，但回合探针变蓝，说明已经进入战斗
                             self._emit("✅ 超时前最后检查：检测到回合探针变蓝，判定已进入战斗", "SUCCESS")
                             petitem_found = True
-                            
+
                             # 执行第一回合动作（如果还没有执行）
                             if config:
                                 round_idx = 1
@@ -1094,9 +1180,9 @@ class UnifiedBattleFramework:
                                     self._double_click_battle_panel_after_round1_skill(config, round_idx)
                                     self._last_action = LastActionType.SKILL
                                 self._emit("✅ 第一回合动作已执行（超时前最后检查）", "SUCCESS")
-                            
+
                             return True, None
-            
+
             # 超时
             self._emit(f"⏱️ Stage 2 超时（{timeout_s}s内未检测到PetItem）", "WARN")
             return False, None
@@ -1107,11 +1193,11 @@ class UnifiedBattleFramework:
             except Exception:
                 self._kernel_gap_fill_cursor = None
             self._stop_kernel_listen()
-    
+
     # ================================
     # Stage 3: 战斗循环
     # ================================
-    
+
     def _grab_probe_image(self) -> Optional[Image.Image]:
         """截取回合探针图像"""
         try:
@@ -1120,47 +1206,47 @@ class UnifiedBattleFramework:
             return window_manager.grab_game_bbox(x1, y1, x2, y2, min_size_px=2)
         except Exception:
             return None
-    
+
     def _load_probe_templates(self):
         """加载回合探针模板（与BattleRunner相同的逻辑）"""
         import os
         from core.battle_runner import ProbeModel, _blue_strength, _ahash_bits
-        
+
         PROBE_BLUE_REL = os.path.join("对战", "回合探针", "blue.png")
         PROBE_GRAY_REL = os.path.join("对战", "回合探针", "gray.png")
-        
+
         blue_path = os.path.join(self.template_root, PROBE_BLUE_REL)
         gray_path = os.path.join(self.template_root, PROBE_GRAY_REL)
-        
+
         if not os.path.exists(blue_path) or not os.path.exists(gray_path):
             self._emit(f"⚠️ 探针模板不存在：{blue_path} 或 {gray_path}", "WARN")
             return None
-        
+
         blue_img = Image.open(blue_path).convert("RGB")
         gray_img = Image.open(gray_path).convert("RGB")
-        
+
         blue_ref = _blue_strength(blue_img)
         gray_ref = _blue_strength(gray_img)
         span = max(10.0, abs(blue_ref - gray_ref))
-        
+
         ahash_size = 10
         blue_bits = _ahash_bits(blue_img, size=ahash_size)
         gray_bits = _ahash_bits(gray_img, size=ahash_size)
-        
+
         force = os.environ.get("NIEO_PROBE_MODE", "").strip().upper()
         color_gap = abs(blue_ref - gray_ref)
         if force in ("COLOR", "AHASH"):
             mode = force
         else:
             mode = "COLOR" if color_gap >= 6.0 else "AHASH"
-        
+
         if mode == "COLOR":
             self._emit(f"🧪 探针模式=COLOR (blue_ref={blue_ref:.2f}, gray_ref={gray_ref:.2f}, gap={color_gap:.2f})", "DEBUG")
             return ProbeModel(mode="COLOR", blue_ref=blue_ref, gray_ref=gray_ref, span=span, tie_eps=0.05)
-        
+
         self._emit(f"🧪 探针模式=AHASH (gap={color_gap:.2f}) size={ahash_size}", "DEBUG")
         return ProbeModel(mode="AHASH", blue_bits=blue_bits, gray_bits=gray_bits, ahash_size=ahash_size, tie_eps=0.03)
-    
+
     def _detect_round_probe(self, probe_model: Optional[Any] = None) -> Tuple[str, float, float]:
         """
         检测回合探针状态
@@ -1169,14 +1255,14 @@ class UnifiedBattleFramework:
         """
         if probe_model is None:
             return "UNKNOWN", 0.0, 0.0
-        
+
         img = self._grab_probe_image()
         if img is None:
             return "UNKNOWN", 0.0, 0.0
-        
+
         try:
             from core.battle_runner import _blue_strength, _ahash_bits, _sim_bits
-            
+
             if probe_model.mode == "COLOR":
                 v = _blue_strength(img)
                 s_blue = max(0.0, 1.0 - abs(v - probe_model.blue_ref) / float(probe_model.span))
@@ -1184,14 +1270,14 @@ class UnifiedBattleFramework:
                 if abs(s_blue - s_gray) < probe_model.tie_eps:
                     return ("UNKNOWN", s_blue, s_gray)
                 return ("BLUE", s_blue, s_gray) if s_blue > s_gray else ("GRAY", s_blue, s_gray)
-            
+
             bits = _ahash_bits(img, size=probe_model.ahash_size)
             s_blue = _sim_bits(bits, probe_model.blue_bits)
             s_gray = _sim_bits(bits, probe_model.gray_bits)
             if abs(s_blue - s_gray) < probe_model.tie_eps:
                 return ("UNKNOWN", s_blue, s_gray)
             return ("BLUE", s_blue, s_gray) if s_blue > s_gray else ("GRAY", s_blue, s_gray)
-        
+
         except Exception as e:
             self._emit(f"⚠️ 探针检测异常: {e}", "WARN")
             return "UNKNOWN", 0.0, 0.0
@@ -1226,10 +1312,10 @@ class UnifiedBattleFramework:
     def _execute_action(self, action_type: str, config: BattleConfig, round_idx: int = 0, invincible_first_round: bool = False):
         """
         执行动作（技能/胶囊/逃跑）
-        
+
         重要：投掷精灵胶囊改为「每次单击后固定等待 1s（CAPSULE_THROW_INTERVAL_S）再判灰，未灰则再单击」；
         切换对战/捕捉面板等仍为双击；技能、逃跑等仍为双击（见各处实现）。
-        
+
         Args:
             action_type: "skill"/"capsule"/"escape"
             config: 对战配置
@@ -1259,6 +1345,20 @@ class UnifiedBattleFramework:
                     self._double_click_battle_panel_after_round1_skill(config, round_idx)
                     time.sleep(0.1)
                     self._last_action = LastActionType.SKILL
+        elif action_type == "skill3":
+            skill3_key = self._first_existing_key(["战斗.使用技能三", "对战.使用技能三"])
+            if self._rs_get(skill3_key):
+                self._click_region_twice(skill3_key, config.use_foreground, gap=0.06)
+                self._double_click_battle_panel_after_round1_skill(config, round_idx)
+                time.sleep(0.1)
+                self._last_action = LastActionType.SKILL
+            else:
+                self._emit("⚠️ 未找到技能三 region，回退为技能一", "WARN")
+                if config.skill_key:
+                    self._click_region_twice(config.skill_key, config.use_foreground, gap=0.06)
+                    self._double_click_battle_panel_after_round1_skill(config, round_idx)
+                    time.sleep(0.1)
+                    self._last_action = LastActionType.SKILL
         elif action_type == "skill4":
             skill4_key = "对战.使用技能四"
             if self._rs_get(skill4_key):
@@ -1283,7 +1383,7 @@ class UnifiedBattleFramework:
                 time.sleep(0.3)  # 等待面板切换
             else:
                 self._emit("⚠️ 未找到切换对战面板的 region，跳过", "WARN")
-            
+
             # 实现胶囊逻辑（capsule_high表示尼尔家族模式：只使用高级胶囊）
             if round_idx == 1 and invincible_first_round:
                 # 第一回合：无敌胶囊
@@ -1352,7 +1452,7 @@ class UnifiedBattleFramework:
                     cap_key = mid
                     label_zh = "中级"
                 else:
-                    # 尼奥 / 稀有 / 野外等：凡投胶囊均走全局循环（默认「超超特」），与技能回合无关
+                    # 尼奥 / 稀有 / 野外等：凡投胶囊均走全局档位；未传 override 时兜底仅高级。
                     tiers = (
                         self._capsule_cycle_tiers_override
                         if self._capsule_cycle_tiers_override is not None
@@ -1436,19 +1536,27 @@ class UnifiedBattleFramework:
                 return
         elif action_type == "escape":
             # 逃跑逻辑：切换逃跑面板和确认逃跑都要点击两次
-            escape_panel = self._first_existing_key(["对战.逃跑.切换逃跑面板"])
-            escape_confirm = self._first_existing_key(["对战.逃跑.确认逃跑"])
+            escape_panel = self._first_existing_key([
+                "对战.逃跑.切换逃跑面板",
+                "战斗.切换逃跑面板",
+                "对战.切换逃跑面板",
+            ])
+            escape_confirm = self._first_existing_key([
+                "对战.逃跑.确认逃跑",
+                "对战.确认逃跑",
+                "战斗.确认逃跑",
+            ])
             if escape_panel and escape_confirm:
                 self._click_region_twice(escape_panel, config.use_foreground, gap=0.06)
                 time.sleep(0.3)
                 self._click_region_twice(escape_confirm, config.use_foreground, gap=0.06)
                 self._emit(f"🏃 回合{round_idx}：逃跑（所有区域点击两次）", "INFO")
             self._last_action = LastActionType.ESCAPE
-    
+
     def stage3_battle_loop(self, config: BattleConfig) -> bool:
         """
         Stage 3: 战斗循环
-        
+
         检测回合变化，执行动作，直到战斗结束
         """
         self._emit("⚔️ Stage 3: 战斗循环", "INFO")
@@ -1458,11 +1566,18 @@ class UnifiedBattleFramework:
         self._capsule_cycle_tiers_override = getattr(config, "capsule_cycle_tiers_override", None)
         self._battle_start_time = time.time()
         self._battle_duration = 0.0
-        
-        # ✅ 启动内核监听（不清空队列，保留 Stage 2 已捕获的 map 信号，避免普通逃跑时误判 battle_success=False）
-        self._start_kernel_listen(clear_queue=False)
-        self._merge_kernel_buffer_after_stage2_gap()
-        
+
+        min_end_round = max(0, int(getattr(config, "min_rounds_before_kernel_end", 0) or 0))
+        skip_map10_white = bool(getattr(config, "skip_map10_white_end", False))
+
+        # ✅ 启动内核监听（伊特等模式清空队列，避免旧 map 误判；其余模式保留 Stage2 信号）
+        if getattr(config, "clear_kernel_on_stage3_start", False):
+            self._start_kernel_listen(clear_queue=True)
+            self._kernel_gap_fill_cursor = None
+        else:
+            self._start_kernel_listen(clear_queue=False)
+            self._merge_kernel_buffer_after_stage2_gap()
+
         # 第一回合已在 Stage2（PetItem）里执行；本循环里 round_idx 语义为「已执行到的回合」，
         # 探针下一次变蓝时 round_idx 先 +1 再出招（即第二回合起）。勿与 BattleRunner.run_mantis_capture_mode 的一体化循环混用。
         round_idx = 1
@@ -1471,9 +1586,9 @@ class UnifiedBattleFramework:
         probe_model = self._load_probe_templates()
         last_probe_log = 0.0
         last_action_at = time.time()  # 第一回合已在Stage 2执行，记录执行时间（用于回合超时检测）
-        
+
         # ✅ 不sleep，立即开始检测后续回合（第一回合动作已经在stage2执行）
-        
+
         while True:
             now = time.time()
             # 检查中止
@@ -1485,7 +1600,7 @@ class UnifiedBattleFramework:
                 self._stage3_exit_reason = "abort"
                 self._battle_duration = time.time() - self._battle_start_time
                 return False
-            
+
             # ✅ 回合超时检测：单回合内等待灰变蓝或战斗结束超过 round_timeout_sec 则重连
             if config.round_timeout_sec is not None and (now - last_action_at) >= config.round_timeout_sec:
                 self._emit(
@@ -1496,66 +1611,82 @@ class UnifiedBattleFramework:
                 self._battle_duration = time.time() - self._battle_start_time
                 self._stop_kernel_listen()
                 return False
-            
+
             # 检查暂停
             if self.bot and hasattr(self.bot, "is_paused"):
                 while self.bot.is_paused and not (hasattr(self.bot, "stop_current") and self.bot.stop_current):
                     time.sleep(0.05)
-            
-            # ✅ 检查白色探针是否变白（地图10特殊处理，优先级高于map+newNPC检测）
-            white_probe_ready = self._check_white_probe_non_white()
-            if white_probe_ready:
-                self._emit(f"🏁 检测到白色探针变白（newNPC已出现，回合{round_idx}），结束战斗", "SUCCESS")
-                self._round_idx = round_idx
-                self._battle_duration = time.time() - self._battle_start_time
-                
-                # 停止内核监听
-                self._stop_kernel_listen()
-                
-                # 战斗结束后，快速检测校准探针（1 AND 1）是否出现并消失
-                self._wait_for_calibration_probes_to_disappear(use_foreground=config.use_foreground)
-                
-                return True
-            
+
+            # ✅ map10：白色探针已非纯白（代替 newNpc，优先级高于 map+newNPC）
+            if (not skip_map10_white) and round_idx >= min_end_round:
+                white_probe_ready = self._check_map10_white_probe_ready()
+                if white_probe_ready:
+                    map_seen, _ = self._check_battle_end()
+                    if map_seen and self._last_action == LastActionType.SKILL:
+                        self._last_victory_map_detected_at = time.time()
+                    self._emit(
+                        f"🏁 检测到白色探针已非纯白（map10 就绪，回合{round_idx}），结束战斗",
+                        "SUCCESS",
+                    )
+                    self._round_idx = round_idx
+                    self._battle_duration = time.time() - self._battle_start_time
+
+                    # 停止内核监听
+                    self._stop_kernel_listen()
+
+                    # 战斗结束后，快速检测校准探针（1 AND 1）是否出现并消失
+                    self._wait_for_calibration_probes_to_disappear(use_foreground=config.use_foreground)
+
+                    return True
+
             # ✅ 检查战斗结束（只需要map信号就可以开始，不需要等待newNPC）
-            map_seen, npc_seen = self._check_battle_end()
-            if map_seen:
-                self._emit(f"🏁 检测到战斗结束信号（Map，回合{round_idx}），开始战后处理", "SUCCESS")
-                self._round_idx = round_idx
-                self._battle_duration = time.time() - self._battle_start_time
-                
-                # 停止内核监听
-                self._stop_kernel_listen()
-                
-                # ✅ 不再在这里等待校准探针，直接返回让stage4处理
-                return True
-            
+            if round_idx >= min_end_round:
+                map_seen, npc_seen = self._check_battle_end()
+                if map_seen:
+                    if self._last_action == LastActionType.SKILL:
+                        self._last_victory_map_detected_at = time.time()
+                    self._emit(f"🏁 检测到战斗结束信号（Map，回合{round_idx}），开始战后处理", "SUCCESS")
+                    self._round_idx = round_idx
+                    self._battle_duration = time.time() - self._battle_start_time
+
+                    # 停止内核监听
+                    self._stop_kernel_listen()
+
+                    # ✅ 不再在这里等待校准探针，直接返回让stage4处理
+                    return True
+
             # 检测回合探针
             state, s_blue, s_gray = self._detect_round_probe(probe_model)
-            
+
             now = time.time()
             if now - last_probe_log >= 2.5:
                 last_probe_log = now
                 # 探针检测日志已节流（2.5秒间隔），不需要额外节流
                 self._emit(f"🔎 探针={state} blue={s_blue:.3f} gray={s_gray:.3f} 回合={round_idx}", "DEBUG")
-            
+
             # 回合检测逻辑：非蓝 -> 连续蓝触发
             if state == "BLUE":
                 blue_streak += 1
             else:
                 blue_streak = 0
                 armed = True
-            
+
             # 第一回合已在循环开始前执行（检测到PetItem后立即出招），这里只处理后续回合
             # 触发新回合（后续回合：非蓝->蓝触发）
             now = time.time()
             if armed and state == "BLUE" and blue_streak >= 1 and (now - last_action_at) >= 0.12:
                 round_idx += 1
                 self._emit(f"🎯 回合{round_idx}: 检测到可选技能", "INFO")
-                
+
                 # 执行动作
                 if config.action_callback:
                     action_type = config.action_callback(round_idx)
+                    if action_type == "switch_failed":
+                        self._emit(f"❌ 回合{round_idx}: 切换精灵失败，中止本场并交给重连恢复", "ERROR")
+                        self._stage3_exit_reason = "switch_failed"
+                        self._battle_duration = time.time() - self._battle_start_time
+                        self._stop_kernel_listen()
+                        return False
                     # 如果返回"switch"，表示已经在action_callback中处理了切换，跳过执行
                     if action_type == "switch":
                         self._emit(f"🔄 回合{round_idx}: 切换精灵（已在action_callback中处理）", "INFO")
@@ -1566,39 +1697,45 @@ class UnifiedBattleFramework:
                     self._click_region_twice(config.skill_key, config.use_foreground, gap=0.06)
                     time.sleep(0.55)
                     self._last_action = LastActionType.SKILL
-                
-                # ✅ 执行动作后，检查白色探针是否变白（地图10特殊处理）
-                # 如果白色探针变为非纯白色，表示newNPC已出现，可以结束战斗
+
+                # ✅ map10：动作后检查白色探针是否已非纯白
                 time.sleep(0.1)  # 给动作一点时间生效
-                white_probe_ready = self._check_white_probe_non_white()
-                if white_probe_ready:
-                    self._emit(f"🏁 检测到白色探针变白（newNPC已出现，回合{round_idx}），结束战斗", "SUCCESS")
-                    self._round_idx = round_idx
-                    self._battle_duration = time.time() - self._battle_start_time
-                    
-                    # 停止内核监听
-                    self._stop_kernel_listen()
-                    
-                    # 战斗结束后，快速检测校准探针（1 AND 1）是否出现并消失
-                    self._wait_for_calibration_probes_to_disappear(use_foreground=config.use_foreground)
-                    
-                    return True
-                
+                if (not skip_map10_white) and round_idx >= min_end_round:
+                    white_probe_ready = self._check_map10_white_probe_ready()
+                    if white_probe_ready:
+                        map_seen, _ = self._check_battle_end()
+                        if map_seen and self._last_action == LastActionType.SKILL:
+                            self._last_victory_map_detected_at = time.time()
+                        self._emit(
+                            f"🏁 检测到白色探针已非纯白（map10 就绪，回合{round_idx}），结束战斗",
+                            "SUCCESS",
+                        )
+                        self._round_idx = round_idx
+                        self._battle_duration = time.time() - self._battle_start_time
+
+                        # 停止内核监听
+                        self._stop_kernel_listen()
+
+                        # 战斗结束后，快速检测校准探针（1 AND 1）是否出现并消失
+                        self._wait_for_calibration_probes_to_disappear(use_foreground=config.use_foreground)
+
+                        return True
+
                 armed = False
                 blue_streak = 0
                 last_action_at = now
                 time.sleep(0.05)
                 continue
-            
+
             time.sleep(0.03)
-        
+
         self._battle_duration = time.time() - self._battle_start_time
         return True
-    
+
     # ================================
     # 战斗内恢复
     # ================================
-    
+
     def _execute_battle_recovery(self, use_foreground: bool):
         """执行战斗内恢复：双击切换道具面板+超级体力药剂"""
         try:
@@ -1607,46 +1744,46 @@ class UnifiedBattleFramework:
             if not os.path.exists(script_path):
                 self._emit(f"⚠ 战斗内恢复脚本不存在: {script_path}", "WARN")
                 return
-            
+
             # 读取并执行脚本
             import json
             with open(script_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            
+
             steps = data.get("steps", [])
             if not steps:
                 self._emit("⚠ 战斗内恢复脚本为空", "WARN")
                 return
-            
+
             self._emit("💊 开始执行战斗内恢复脚本", "INFO")
             for idx, step in enumerate(steps, start=1):
                 if self.bot and hasattr(self.bot, "stop_current") and self.bot.stop_current:
                     return
-                
+
                 gx = step.get("x")
                 gy = step.get("y")
                 if gx is None or gy is None:
                     continue
-                
+
                 delay = float(step.get("delay", 0.2))
                 if delay < 0:
                     delay = 0.0
-                
+
                 time.sleep(delay)
-                
+
                 if use_foreground:
                     window_manager.click(gx, gy)
                 else:
                     window_manager.click_background(gx, gy)
-            
+
             self._emit("✅ 战斗内恢复完成", "SUCCESS")
         except Exception as e:
             self._emit(f"💥 战斗内恢复异常: {e}", "ERROR")
-    
+
     # ================================
     # 战斗结束后等待校准探针消失
     # ================================
-    
+
     def _wait_for_calibration_probes_to_disappear(self, use_foreground: bool, timeout_s: float = 5.0):
         """
         战斗结束后，快速检测校准探针（1 AND 1）是否出现并消失
@@ -1655,22 +1792,22 @@ class UnifiedBattleFramework:
         """
         t0 = time.time()
         saw_11 = False  # 是否曾经检测到1 AND 1
-        
+
         self._emit("🔍 战斗结束后：检测校准探针状态", "DEBUG")
-        
+
         while (time.time() - t0) < timeout_s:
             # 检查中止
             if self.bot and hasattr(self.bot, "stop_current") and self.bot.stop_current:
                 return
-            
+
             # 检查暂停
             if self.bot and hasattr(self.bot, "is_paused"):
                 while self.bot.is_paused and not (hasattr(self.bot, "stop_current") and self.bot.stop_current):
                     time.sleep(0.05)
-            
+
             # 检测校准探针（1 AND 1）
             has_11 = self._check_calibration_probes()
-            
+
             if has_11:
                 if not saw_11:
                     saw_11 = True
@@ -1685,116 +1822,165 @@ class UnifiedBattleFramework:
                     # 从未检测到1 AND 1，直接返回
                     self._emit("✅ 未检测到校准探针，直接进入下一阶段", "DEBUG")
                     return
-            
+
             # 高频检测（每50ms检测一次，快速响应）
             time.sleep(0.05)
-        
+
         # 超时
         if saw_11:
             self._emit(f"⚠️ 校准探针（1 AND 1）在{timeout_s}s内未消失，继续执行", "WARN")
-    
+
     # ================================
     # Stage 4: 战斗结束处理
     # ================================
-    
-    def _wait_for_confirm_probes(self, config: BattleConfig, timeout_s: float = 2.0, is_training_room: bool = False):
-        """等待并点击 通用探针白色 + 普通确认探针蓝色 1 AND 1，循环点击直到确认消失
-        
-        Args:
-            config: 对战配置
-            timeout_s: 超时时间（如果为0或负数，表示不超时，一直循环直到消失）
-            is_training_room: 是否为训练室模式（已弃用）
+
+    def _wait_for_confirm_probes(
+        self,
+        config: BattleConfig,
+        timeout_s: float = 2.0,
+        is_training_room: bool = False,
+        min_confirm_clicks: int = 1,
+        on_first_detected: Optional[Callable[[], None]] = None,
+        quiet: bool = False,
+    ) -> bool:
+        """等待并点击 通用探针白色 + 普通确认探针蓝色 1 AND 1，循环点击直到确认消失。
+
+        轮询间隔约 50ms；探针双命中时每 100ms 点一次确认。结束条件：探针已消失且累计点击
+        ``>= min_confirm_clicks``（默认 1）。
+
+        Returns:
+            True=已消失且满足最少点击次数；False=超时/中止/未达标。
         """
         COLOR_WHITE = (255, 255, 255)
-        # 普通确认探针蓝色：根据常见UI设计，可能是浅蓝色或标准蓝色
-        COLOR_BLUE = (47, 167, 238)  # 使用与回合探针类似的蓝色
-        
+        COLOR_BLUE = (47, 167, 238)
+
+        min_clicks = max(1, int(min_confirm_clicks or 1))
         t0 = time.time()
-        click_interval = 0.1  # 点击间隔（100ms，快速响应）
-        has_clicked_at_least_once = False  # 是否至少点击过一次
-        
-        # 确保：进入时若1AND1已存在（如上次残留），首轮检测即发现并开始点击
+        click_interval = 0.1
+        confirm_click_count = 0
+        saw_1and1 = False
+        first_detect_callback_done = False
+
+        def _notify_first_detected() -> bool:
+            nonlocal first_detect_callback_done
+            if first_detect_callback_done:
+                return True
+            first_detect_callback_done = True
+            if on_first_detected is None:
+                return True
+            try:
+                on_first_detected()
+                return True
+            except Exception as e:
+                self._emit(f"⚠️ 1 AND 1 首次出现回调异常：{e}", "WARN")
+                return False
+
+        def _try_confirm_click() -> bool:
+            nonlocal confirm_click_count, saw_1and1
+            for key in (
+                self.KEY_NORMAL_CONFIRM_BTN,
+                "对话框.普通确认",
+                "刷新.普通确认",
+            ):
+                try:
+                    self._click_region(key, config.use_foreground)
+                    confirm_click_count += 1
+                    saw_1and1 = True
+                    time.sleep(click_interval)
+                    return True
+                except KeyError:
+                    continue
+            self._emit("⚠️ 确认按钮不存在（已尝试普通确认/刷新.普通确认）", "WARN")
+            return False
+
         ok_white, ok_blue = self._check_probe_pair(
             self.KEY_GENERAL_PROBE, COLOR_WHITE,
             self.KEY_NORMAL_CONFIRM_PROBE, COLOR_BLUE,
-            tolerance=5
+            tolerance=5,
         )
         if ok_white and ok_blue:
-            has_clicked_at_least_once = True
-            self._emit("✅ 检测到 1 AND 1（进入时已存在），循环点击直到消失", "SUCCESS")
-            try:
-                self._click_region(self.KEY_NORMAL_CONFIRM_BTN, config.use_foreground)
-                time.sleep(click_interval)
-            except KeyError:
-                self._emit("⚠️ 确认按钮不存在", "WARN")
-        
-        self._emit("⏳ 等待通用探针白色 + 普通确认探针蓝色 1 AND 1（必须出现过一次且直到消失）", "INFO")
-        
-        # 如果没有超时限制，使用一个很长的超时时间
-        effective_timeout = timeout_s if timeout_s > 0 else 3600.0  # 默认1小时
-        
+            if not quiet:
+                self._emit("✅ 检测到 1 AND 1（进入时已存在），循环点击直到消失", "SUCCESS")
+            if not _notify_first_detected():
+                return False
+            if not _try_confirm_click():
+                return False
+
+        need_desc = (
+            f"至少点击 {min_clicks} 次且直到消失"
+            if min_clicks > 1
+            else "必须出现过一次且直到消失"
+        )
+        if not quiet:
+            self._emit(
+                f"⏳ 等待 1 AND 1（{need_desc}，轮询 50ms）",
+                "INFO",
+            )
+
+        effective_timeout = timeout_s if timeout_s > 0 else 3600.0
+
         while (time.time() - t0) < effective_timeout:
             if config.abort_check and config.abort_check():
-                return
-            
-            # 检测两个探针
+                return False
+
             ok_white, ok_blue = self._check_probe_pair(
                 self.KEY_GENERAL_PROBE, COLOR_WHITE,
                 self.KEY_NORMAL_CONFIRM_PROBE, COLOR_BLUE,
-                tolerance=5
+                tolerance=5,
             )
-            
-            # 如果都是1，点击确认按钮（循环点击直到消失）
+
             if ok_white and ok_blue:
-                try:
-                    self._click_region(self.KEY_NORMAL_CONFIRM_BTN, config.use_foreground)
-                    if not has_clicked_at_least_once:
-                        self._emit("✅ 检测到 1 AND 1，开始循环点击确认（必须等到消失）", "SUCCESS")
-                        has_clicked_at_least_once = True
-                    time.sleep(click_interval)  # 点击后等待一小段时间再检测
-                    continue  # 继续循环检测
-                except KeyError:
-                    self._emit("⚠️ 确认按钮不存在", "WARN")
-                    break
-            else:
-                # 至少点过一次后，单次采样非双探针即判定消失（无多帧防抖）
-                if has_clicked_at_least_once:
-                    self._emit("✅ 1 AND 1 已消失，结束循环点击", "SUCCESS")
-                    return
-            
-            time.sleep(0.05)  # 检测间隔（50ms）
-        
-        # 超时处理（总时长达 effective_timeout 才走到这里）
+                if not saw_1and1:
+                    if not quiet:
+                        self._emit(
+                            "✅ 检测到 1 AND 1，开始循环点击确认（必须等到消失）",
+                            "SUCCESS",
+                        )
+                    if not _notify_first_detected():
+                        return False
+                if not _try_confirm_click():
+                    return False
+                continue
+
+            if saw_1and1 and confirm_click_count >= min_clicks:
+                if not quiet:
+                    self._emit(
+                        f"✅ 1 AND 1 已消失（累计点击 {confirm_click_count} 次），结束",
+                        "SUCCESS",
+                    )
+                return True
+
+            time.sleep(0.05)
+
         limit_desc = f"{timeout_s:.0f}s" if timeout_s > 0 else f"{effective_timeout:.0f}s"
-        if has_clicked_at_least_once:
+        if saw_1and1:
             self._emit(
-                f"⚠️ 战后清理确认框：已达 {limit_desc} 上限，停止点击（1 AND 1 可能仍未消失）",
+                f"⚠️ 1 AND 1：已达 {limit_desc} 上限"
+                f"（已点 {confirm_click_count}/{min_clicks} 次，可能仍未消失）",
                 "WARN",
             )
         else:
-            if timeout_s <= 0:
-                self._emit(
-                    f"⚠️ 战后清理确认框：{limit_desc} 内未检测到 1 AND 1",
-                    "WARN",
-                )
-            else:
-                self._emit(f"⚠️ 超时：{timeout_s}s 内未检测到 1 AND 1", "WARN")
-    
-    def _check_probe_pair(self, key1: str, color1: Tuple[int, int, int], 
-                          key2: str, color2: Tuple[int, int, int], 
+            self._emit(f"⚠️ 超时：{limit_desc} 内未检测到 1 AND 1", "WARN")
+        return False
+
+    def _check_probe_pair(self, key1: str, color1: Tuple[int, int, int],
+                          key2: str, color2: Tuple[int, int, int],
                           tolerance: int = 5) -> Tuple[bool, bool]:
         """检查一对探针"""
         ok1 = self._check_color_strict(key1, color1, tolerance)
-        ok2 = self._check_color_strict(key2, color2, tolerance)
+        if key2 == self.KEY_NORMAL_CONFIRM_PROBE and color2 == self.COLOR_BIG_PROBE:
+            ok2 = self._is_dialog_blue_probe_rgb(self._mean_rgb(key2))
+        else:
+            ok2 = self._check_color_strict(key2, color2, tolerance)
         return ok1, ok2
-    
+
     def _detect_battery_status(self, use_foreground: bool = False) -> Optional[int]:
         """
         检测电池状态
         - 红色 #FF0000 -> 返回 1
         - 黑色 #000000 -> 返回 0
         - 其他或检测失败 -> 返回 None
-        
+
         Returns:
             1: 红色（有电）
             0: 黑色（无电）
@@ -1807,23 +1993,23 @@ class UnifiedBattleFramework:
             if not battery_reg:
                 self._emit("⚠️ 电池区域不存在", "WARN")
                 return None
-            
+
             # 获取区域图像
             gx1, gy1, gx2, gy2 = battery_reg.outer_bbox()
             img = window_manager.grab_game_bbox(gx1, gy1, gx2, gy2)
             if img is None:
                 return None
-            
+
             # 计算平均RGB
             pixels = list(img.getdata())
             if not pixels:
                 return None
-            
+
             r = int(round(sum(p[0] for p in pixels) / len(pixels)))
             g = int(round(sum(p[1] for p in pixels) / len(pixels)))
             b = int(round(sum(p[2] for p in pixels) / len(pixels)))
             mean_rgb = (r, g, b)
-            
+
             # 规则：R 通道 >= 64 判定为 1，否则判定为 0
             if r >= 64:
                 self._emit(f"🔋 电池状态检测：R>=64 (RGB={mean_rgb}) -> 1", "INFO")
@@ -1833,38 +2019,38 @@ class UnifiedBattleFramework:
         except Exception as e:
             self._emit(f"❌ 电池状态检测异常: {e}", "ERROR")
             return None
-    
+
     def stage4_post_battle(self, config: BattleConfig, is_training_room: bool = False, is_hero_tower: bool = False) -> bool:
         """
         Stage 4: 战斗结束处理
-        
+
         ✅ 新的对战结束逻辑（所有模式统一）：
         - 检测对战结束只需要 map 就可以开始
         - 胜利（SKILL）：黄色探针 -> 胜利确认 -> 1 AND 1直到消失
         - 逃跑或捕捉成功（ESCAPE/CAPSULE）：1 AND 1（必须出现过一次1 AND 1且直到消失）
-        
+
         返回: True=成功处理，False=失败
         """
         self._emit("🎬 Stage 4: 战斗结束处理", "INFO")
-        
+
         # ✅ 根据上一回合动作类型选择流程
         if self._last_action == LastActionType.SKILL:
             # 技能动作：需要检测黄色探针
             self._emit("🏆 检测到技能动作，进入胜利检测流程", "INFO")
-            
+
             # 1. 等待黄色探针（胜利探针）
             victory_timeout = 8.0
             t0 = time.time()
             victory_detected = False
-            
+
             self._emit("🟡 等待胜利黄色探针出现...", "INFO")
-            
+
             while (time.time() - t0) < victory_timeout:
                 if config.abort_check and config.abort_check():
                     return False
                 if self.bot and hasattr(self.bot, "stop_current") and self.bot.stop_current:
                     return False
-                
+
                 # 检测黄色探针（从PostBattleCleaner复用逻辑）
                 try:
                     from core.post_battle_cleaner import PostBattleCleaner
@@ -1875,40 +2061,40 @@ class UnifiedBattleFramework:
                         tol=10,
                         ratio_th=0.75
                     )
-                    
+
                     if got_yellow:
                         victory_detected = True
                         self._emit(f"✅ 检测到胜利黄色探针 (score={score:.3f}, rgb={rgb})", "SUCCESS")
                         break
                 except Exception as e:
                     self._emit(f"⚠️ 检测黄色探针失败: {e}", "WARN")
-                
+
                 time.sleep(0.08)
-            
+
             # ✅ 必须检测到黄色探针后才能继续执行后续步骤
             if not victory_detected:
                 self._emit("❌ 未检测到胜利黄色探针（超时），无法执行后续流程", "ERROR")
                 return False
-            
+
             # 第二步：持续点击胜利确认（0.3s频率），直到黄色探针消失
             last_click_time = 0.0
             click_interval = 0.3  # 0.3秒点击一次
             yellow_disappear_timeout = 10.0  # 黄色探针消失超时时间
             t1 = time.time()
             yellow_disappeared = False
-            
+
             self._emit("🟡 持续点击胜利确认，等待黄色探针消失...", "INFO")
-            
+
             try:
                 from core.post_battle_cleaner import PostBattleCleaner
                 cleaner = PostBattleCleaner(self.bot, self.regions, self.template_root)
-                
+
                 while (time.time() - t1) < yellow_disappear_timeout:
                     if config.abort_check and config.abort_check():
                         return False
                     if self.bot and hasattr(self.bot, "stop_current") and self.bot.stop_current:
                         return False
-                    
+
                     # 高频检测黄色探针是否消失（每次循环都检测）
                     try:
                         got_yellow, score, rgb = cleaner.detect_victory_probe_yellow(
@@ -1916,14 +2102,14 @@ class UnifiedBattleFramework:
                             tol=10,
                             ratio_th=0.75
                         )
-                        
+
                         if not got_yellow:
                             yellow_disappeared = True
                             self._emit("✅ 黄色探针已消失，停止点击胜利确认", "SUCCESS")
                             break
                     except Exception as e:
                         pass  # 检测失败时继续点击
-                    
+
                     # 每0.3秒点击一次胜利确认
                     now = time.time()
                     if now - last_click_time >= click_interval:
@@ -1933,14 +2119,14 @@ class UnifiedBattleFramework:
                         except KeyError:
                             self._emit("⚠️ 胜利确认按钮不存在", "WARN")
                             break
-                    
+
                     time.sleep(0.05)  # 高频检测循环（50ms）
-                
+
                 if not yellow_disappeared:
                     self._emit("⚠️ 黄色探针未消失（超时），继续后续流程", "WARN")
             except Exception as e:
                 self._emit(f"⚠️ 点击胜利确认过程异常: {e}", "WARN")
-            
+
             # 2. 训练室模式（非勇者之塔）：升级确认 + 技能替换取消（都双击）
             if is_training_room and not is_hero_tower:
                 try:
@@ -1953,14 +2139,18 @@ class UnifiedBattleFramework:
                     self._emit("✅ 训练室模式：已点击升级确认和技能替换取消", "SUCCESS")
                 except KeyError:
                     self._emit("⚠️ 升级确认或技能替换取消按钮不存在", "WARN")
-            
+
+            if config.skip_post_victory_1and1:
+                self._emit("⏭️ 超时战胜：胜利确认完成，跳过 1AND1 清理", "INFO")
+                return True
+
             # ✅ 3. 等待通用探针白色+普通确认探针蓝色 1 AND 1直到消失（整段最长 POST_BATTLE_CONFIRM_DIALOG_TIMEOUT_SEC）
             self._wait_for_confirm_probes(
                 config,
                 timeout_s=self.POST_BATTLE_CONFIRM_DIALOG_TIMEOUT_SEC,
                 is_training_room=is_training_room,
             )
-            
+
             # 4. 训练室模式：1AND1结束后点击关闭资料
             if is_training_room and not is_hero_tower:
                 try:
@@ -1969,11 +2159,11 @@ class UnifiedBattleFramework:
                     self._emit("✅ 训练室模式：已点击关闭资料（1AND1结束后）", "INFO")
                 except KeyError:
                     self._emit("⚠️ 训练室.关闭资料区域不存在", "WARN")
-                
+
                 # 训练室模式：1AND1+关闭资料结束后等待1.5s（如果不需要恢复，这个等待后直接开始下一轮）
                 self._emit("⏳ 等待1.5s（1AND1+关闭资料后）", "INFO")
                 time.sleep(1.5)
-            
+
         elif self._last_action == LastActionType.CAPSULE:
             # ✅ 胶囊动作（捕捉）：1 AND 1（必须出现过一次1 AND 1且直到消失）
             self._emit("🎣 检测到胶囊动作（捕捉），等待1 AND 1出现并直到消失", "INFO")
@@ -1981,7 +2171,7 @@ class UnifiedBattleFramework:
                 config,
                 timeout_s=self.POST_BATTLE_CONFIRM_DIALOG_TIMEOUT_SEC,
             )
-            
+
         elif self._last_action == LastActionType.ESCAPE:
             # ✅ 逃跑动作：1 AND 1（必须出现过一次1 AND 1且直到消失）
             self._emit("🏃 检测到逃跑动作，等待1 AND 1出现并直到消失", "INFO")
@@ -1996,45 +2186,45 @@ class UnifiedBattleFramework:
                 config,
                 timeout_s=self.POST_BATTLE_CONFIRM_DIALOG_TIMEOUT_SEC,
             )
-        
+
         # ✅ 已禁用：战后电池检测触发刷新重连（按需求完全关闭）
-        
+
         return True
-    
+
     # ================================
     # 校准测试（纯屏幕检测）
     # ================================
-    
+
     def run_calibration_test(self, use_foreground: bool = False) -> bool:
         """
         校准测试：纯屏幕检测，不依赖日志
-        
+
         执行流程：
-        1. 检测校准探针（大探针=2FA7EE AND 小探针=FFFFFF）
+        1. 检测校准探针（大探针=橙/青/紫任意有色 AND 小探针=FFFFFF）
         2. 如果检测到，计算X1-X4值
         3. 分析分布，找到目标组
         4. 点击对应组的中点
-        
+
         返回: True=成功，False=失败
         """
         self._emit("🔧 开始校准测试（纯屏幕检测）", "INFO")
-        
+
         # 1. 检查校准探针
         if not self._check_calibration_probes():
-            self._emit("❌ 未检测到校准探针（大探针=2FA7EE AND 小探针=FFFFFF）", "WARN")
+            self._emit("❌ 未检测到校准探针（大探针=橙/青/紫任意有色 AND 小探针=FFFFFF）", "WARN")
             self._emit("💡 提示：请确保已触发校准状态", "INFO")
             return False
-        
-        self._emit("✅ 检测到校准探针（大=2FA7EE AND 小=FFFFFF）", "SUCCESS")
-        
+
+        self._emit("✅ 检测到校准探针（大=橙/青/紫任意有色 AND 小=FFFFFF）", "SUCCESS")
+
         # 2. 计算X1-X4
         x_values, regions_dict = self._calculate_x_values()
         self._emit(f"📊 X值: X1={x_values[0]}, X2={x_values[1]}, X3={x_values[2]}, X4={x_values[3]}", "INFO")
-        
+
         # 3. 分析分布
         distribution, target_idx = self._analyze_distribution(x_values)
         self._emit(f"📈 分布分析: {distribution}, 目标组: {target_idx}", "INFO")
-        
+
         # 4. 检查是否为异常分布
         if target_idx is None:
             self._emit(f"❌ 异常分布: {distribution}，无法确定目标组", "ERROR")
@@ -2045,33 +2235,33 @@ class UnifiedBattleFramework:
                 f"检测到异常分布: {distribution}\nX值: X1={x_values[0]}, X2={x_values[1]}, X3={x_values[2]}, X4={x_values[3]}"
             )
             return False
-        
+
         # 5. 点击目标组
         self._emit(f"🎯 准备点击目标组: {target_idx}", "INFO")
         success = self._calibrate_click_group(target_idx, use_foreground)
-        
+
         if success:
             self._emit(f"✅ 校准测试完成：已点击组{target_idx}", "SUCCESS")
             return True
         else:
             self._emit(f"❌ 校准测试失败：点击组{target_idx}失败", "ERROR")
             return False
-    
+
     # ================================
     # 主流程入口
     # ================================
-    
+
     def run_battle(self, config: BattleConfig, is_training_room: bool = False, is_hero_tower: bool = False) -> bool:
         """
         执行完整对战流程
-        
+
         Args:
             config: 对战配置
             is_training_room: 是否为训练室模式（影响Stage 4的流程）
             is_hero_tower: 是否为勇者之塔模式（影响Stage 4的流程）
-        
+
         返回: True=成功完成，False=失败或中止
-        
+
         失败时写入 self._last_run_battle_failure_stage，供训练室 Stage2 入战重试判断：
         stage2 | stage3 | stage4 | stage1 | exception
         """
@@ -2080,7 +2270,7 @@ class UnifiedBattleFramework:
             self._start_kernel_listen()
             self._last_action = None
             self._round_idx = 0
-            
+
             # Stage 1: 触发对战
             self._emit("🚀 Stage 1: 触发对战", "INFO")
             if config.trigger_callback:
@@ -2090,7 +2280,7 @@ class UnifiedBattleFramework:
                 self._emit("❌ Stage 1: 未提供trigger_callback", "ERROR")
                 self._last_run_battle_failure_stage = "stage1"
                 return False
-            
+
             # Stage 2: 校准和PetItem检测（传入trigger_callback以便重新触发，传入config以便检测到PetItem时执行第一回合）
             success, calib_result = self.stage2_calibration_and_petitem(
                 config.trigger_callback,
@@ -2099,30 +2289,30 @@ class UnifiedBattleFramework:
                 skip_stage1=False,  # 固定模式需要Stage 1
                 config=config  # 传递config以便检测到PetItem时执行第一回合动作
             )
-            
+
             if not success:
                 self._emit("❌ Stage 2 失败，跳过本次对战", "WARN")
                 self._last_run_battle_failure_stage = "stage2"
                 return False
-            
+
             # Stage 3: 战斗循环
             battle_success = self.stage3_battle_loop(config)
             if not battle_success:
                 self._emit("❌ Stage 3 中止或失败", "WARN")
                 self._last_run_battle_failure_stage = "stage3"
                 return False
-            
+
             # Stage 4: 战斗结束处理（内部已包含训练室模式的3s等待）
             post_success = self.stage4_post_battle(config, is_training_room=is_training_room, is_hero_tower=is_hero_tower)
             if not post_success:
                 self._emit("❌ Stage 4 处理失败", "WARN")
                 self._last_run_battle_failure_stage = "stage4"
                 return False
-            
+
             self._emit(f"✅ 对战完成（总回合数: {self._round_idx}）", "SUCCESS")
             self._last_run_battle_failure_stage = None
             return True
-            
+
         except Exception as e:
             self._emit(f"💥 对战流程异常: {e}", "ERROR")
             import traceback

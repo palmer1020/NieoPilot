@@ -1,0 +1,31 @@
+{
+    "key": "贝壳精华一.1",
+    "category": "贝壳精华一",
+    "name": "1",
+    "shape": "polygon",
+    "points": [
+        [
+            783,
+            560
+        ],
+        [
+            785,
+            560
+        ],
+        [
+            785,
+            562
+        ],
+        [
+            783,
+            562
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-19 11:57:46",
+        "desc": "map_recorder order=1"
+    }
+}

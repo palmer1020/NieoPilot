@@ -1,0 +1,31 @@
+{
+    "key": "nono.融合开始确认",
+    "category": "nono",
+    "name": "融合开始确认",
+    "shape": "polygon",
+    "points": [
+        [
+            526,
+            516
+        ],
+        [
+            528,
+            516
+        ],
+        [
+            528,
+            518
+        ],
+        [
+            526,
+            518
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-11 00:00:00",
+        "desc": "manual"
+    }
+}

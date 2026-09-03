@@ -1,0 +1,62 @@
+{
+    "name": "to熔岩晶体",
+    "create_time": "2026-06-12 11:41:21",
+    "steps": [
+        {
+            "action": "click",
+            "x": 222,
+            "y": 380,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 609,
+            "y": 460,
+            "delay": 1.33,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 453,
+            "y": 495,
+            "delay": 1.03,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 486,
+            "y": 393,
+            "delay": 1.07,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 825,
+            "y": 262,
+            "delay": 1.23,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 557,
+            "y": 198,
+            "delay": 1.48,
+            "desc": "Step 6"
+        },
+        {
+            "action": "click",
+            "x": 752,
+            "y": 531,
+            "delay": 1.55,
+            "desc": "Step 7"
+        },
+        {
+            "action": "click",
+            "x": 94,
+            "y": 277,
+            "delay": 5.68,
+            "desc": "Step 8"
+        }
+    ]
+}

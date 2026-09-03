@@ -1,0 +1,251 @@
+{
+    "name": "to沃特",
+    "create_time": "2026-06-10 12:00:00",
+    "steps": [
+        {
+            "action": "click",
+            "x": 46,
+            "y": 645,
+            "delay": 1.0,
+            "desc": "Step 1 地图"
+        },
+        {
+            "action": "click",
+            "x": 617,
+            "y": 263,
+            "delay": 2.0,
+            "desc": "Step 2 第三星系"
+        },
+        {
+            "action": "move_start",
+            "x": 200,
+            "y": 300,
+            "delay": 5.0,
+            "desc": "Step 3 move start"
+        },
+        {
+            "action": "move_end",
+            "x": 1050,
+            "y": 300,
+            "duration": 1,
+            "desc": "Step 3 move end"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 2,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 165,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 289,
+            "y": 319,
+            "delay": 8.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 404,
+            "y": 324,
+            "delay": 1.92,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 368,
+            "y": 299,
+            "delay": 1.42,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 325,
+            "y": 298,
+            "delay": 2.02,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 789,
+            "y": 392,
+            "delay": 3.6,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 290,
+            "y": 449,
+            "delay": 8,
+            "desc": "Step 6"
+        }
+    ]
+}

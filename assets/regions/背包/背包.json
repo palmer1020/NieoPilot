@@ -1,0 +1,10 @@
+{
+  "key": "背包.背包",
+  "category": "背包",
+  "name": "背包",
+  "shape": "polygon",
+  "points": [[788,653],[790,653],[790,655],[788,655]],
+  "click": {"random": false},
+  "meta": {"desc": "Nono white reconnect: open bag"}
+}
+

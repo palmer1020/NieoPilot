@@ -1,0 +1,31 @@
+{
+    "key": "融合.副探针",
+    "category": "融合",
+    "name": "副探针",
+    "shape": "polygon",
+    "points": [
+        [
+            1001,
+            81
+        ],
+        [
+            1003,
+            81
+        ],
+        [
+            1003,
+            83
+        ],
+        [
+            1001,
+            83
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-21 10:52:34",
+        "desc": "region_viewer"
+    }
+}

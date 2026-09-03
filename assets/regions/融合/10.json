@@ -1,0 +1,31 @@
+{
+    "key": "融合.10",
+    "category": "融合",
+    "name": "10",
+    "shape": "polygon",
+    "points": [
+        [
+            721,
+            519
+        ],
+        [
+            723,
+            519
+        ],
+        [
+            723,
+            521
+        ],
+        [
+            721,
+            521
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-21 11:03:18",
+        "desc": "region_viewer"
+    }
+}

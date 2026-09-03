@@ -1,0 +1,31 @@
+{
+    "key": "大师杯.机械系",
+    "category": "大师杯",
+    "name": "机械系",
+    "shape": "polygon",
+    "points": [
+        [
+            540,
+            364
+        ],
+        [
+            542,
+            364
+        ],
+        [
+            542,
+            366
+        ],
+        [
+            540,
+            366
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-18 13:02:49",
+        "desc": "region_viewer"
+    }
+}

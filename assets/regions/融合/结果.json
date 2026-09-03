@@ -1,0 +1,31 @@
+{
+    "key": "融合.结果",
+    "category": "融合",
+    "name": "结果",
+    "shape": "polygon",
+    "points": [
+        [
+            510,
+            325
+        ],
+        [
+            512,
+            325
+        ],
+        [
+            512,
+            327
+        ],
+        [
+            510,
+            327
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-21 13:00:00",
+        "desc": "fusion result probe"
+    }
+}

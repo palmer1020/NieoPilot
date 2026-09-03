@@ -1,0 +1,90 @@
+{
+    "name": "80飞船",
+    "create_time": "2026-06-07 12:22:02",
+    "steps": [
+        {
+            "action": "click",
+            "x": 68,
+            "y": 655,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 232,
+            "y": 400,
+            "delay": 1,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 287,
+            "y": 557,
+            "delay": 5,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 579,
+            "y": 434,   
+            "delay": 2,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 52,
+            "y": 641,
+            "delay": 1,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 409,
+            "y": 531,
+            "delay": 1,
+            "desc": "Step 6"
+        },
+        {
+            "action": "click",
+            "x": 972,
+            "y": 549,
+            "delay": 5,
+            "desc": "Step 7"
+        },
+        {
+            "action": "click",
+            "x": 584,
+            "y": 428,
+            "delay": 2,
+            "desc": "Step 8"
+        },
+        {
+            "action": "click",
+            "x": 77,
+            "y": 642,
+            "delay": 1,
+            "desc": "Step 9"
+        },
+        {
+            "action": "click",
+            "x": 344,
+            "y": 471,
+            "delay": 1,
+            "desc": "Step 10"
+        },
+        {
+            "action": "click",
+            "x": 1025,
+            "y": 482,
+            "delay": 5,
+            "desc": "Step 11"
+        },
+        {
+            "action": "click",
+            "x": 608,
+            "y": 433,
+            "delay": 6,
+            "desc": "Step 12"
+        }
+    ]
+}

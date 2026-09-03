@@ -1,0 +1,17 @@
+{
+    "key": "地图.实验室",
+    "category": "地图",
+    "name": "实验室",
+    "shape": "polygon",
+    "points": [[176, 460], [178, 460], [178, 462], [176, 462]],
+    "click": {
+        "random": false
+    },
+    "meta": {
+        "created_at": "2026-07-16 00:00:00",
+        "desc": "地图网格：实验室",
+        "map_id": 5,
+        "newnpc_multi": 3,
+        "gate_strategy": "nieo_white_probe"
+    }
+}

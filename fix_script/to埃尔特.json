@@ -7,27 +7,440 @@
             "x": 46,
             "y": 645,
             "delay": 1.0,
-            "desc": "Step 1"
+            "desc": "Step 1 地图"
         },
         {
             "action": "click",
             "x": 617,
             "y": 263,
             "delay": 1.72,
-            "desc": "Step 2"
+            "desc": "Step 2 第三星系"
         },
         {
             "action": "click",
             "x": 237,
             "y": 270,
-            "delay": 2.45,
-            "desc": "Step 3"
+            "delay": 0.45,
+            "desc": "Step 3 埃尔特星"
         },
         {
             "action": "click",
             "x": 237,
             "y": 270,
-            "delay": 0.22,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 237,
+            "y": 270,
+            "delay": 0.01,
             "desc": "Step 4"
         },
         {

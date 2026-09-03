@@ -1,0 +1,31 @@
+{
+    "key": "荣誉兑换.关闭",
+    "category": "荣誉兑换",
+    "name": "关闭",
+    "shape": "polygon",
+    "points": [
+        [
+            1103,
+            70
+        ],
+        [
+            1105,
+            70
+        ],
+        [
+            1105,
+            72
+        ],
+        [
+            1103,
+            72
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-13 05:10:34",
+        "desc": "region_viewer"
+    }
+}

@@ -1,0 +1,31 @@
+{
+    "key": "德普.6",
+    "category": "德普",
+    "name": "6",
+    "shape": "polygon",
+    "points": [
+        [
+            161,
+            385
+        ],
+        [
+            163,
+            385
+        ],
+        [
+            163,
+            387
+        ],
+        [
+            161,
+            387
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-10 13:09:53",
+        "desc": "map_recorder order=6"
+    }
+}

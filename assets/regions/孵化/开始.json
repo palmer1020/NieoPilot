@@ -1,0 +1,31 @@
+{
+    "key": "孵化.开始",
+    "category": "孵化",
+    "name": "开始",
+    "shape": "polygon",
+    "points": [
+        [
+            601,
+            513
+        ],
+        [
+            603,
+            513
+        ],
+        [
+            603,
+            515
+        ],
+        [
+            601,
+            515
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-15 11:32:57",
+        "desc": "generated grid center=(602,514)"
+    }
+}

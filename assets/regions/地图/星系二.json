@@ -1,0 +1,31 @@
+{
+    "key": "地图.星系二",
+    "category": "地图",
+    "name": "星系二",
+    "shape": "polygon",
+    "points": [
+        [
+            465,
+            315
+        ],
+        [
+            467,
+            315
+        ],
+        [
+            467,
+            317
+        ],
+        [
+            465,
+            317
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-18 03:13:09",
+        "desc": "region_viewer"
+    }
+}

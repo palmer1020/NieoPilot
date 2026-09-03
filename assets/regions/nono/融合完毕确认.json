@@ -1,0 +1,31 @@
+{
+    "key": "nono.融合完毕确认",
+    "category": "nono",
+    "name": "融合完毕确认",
+    "shape": "polygon",
+    "points": [
+        [
+            532,
+            522
+        ],
+        [
+            534,
+            522
+        ],
+        [
+            534,
+            524
+        ],
+        [
+            532,
+            524
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-30 13:19:04",
+        "desc": "region_viewer"
+    }
+}

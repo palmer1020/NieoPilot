@@ -1,0 +1,31 @@
+{
+    "key": "露西之核二.AtoB",
+    "category": "露西之核二",
+    "name": "AtoB",
+    "shape": "polygon",
+    "points": [
+        [
+            801,
+            93
+        ],
+        [
+            803,
+            93
+        ],
+        [
+            803,
+            95
+        ],
+        [
+            801,
+            95
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-14 01:30:00",
+        "desc": "来自 地图/54to55.json（A→B）"
+    }
+}

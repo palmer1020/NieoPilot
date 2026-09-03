@@ -1,0 +1,31 @@
+{
+    "key": "大师杯.水系",
+    "category": "大师杯",
+    "name": "水系",
+    "shape": "polygon",
+    "points": [
+        [
+            387,
+            270
+        ],
+        [
+            389,
+            270
+        ],
+        [
+            389,
+            272
+        ],
+        [
+            387,
+            272
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-18 13:01:12",
+        "desc": "region_viewer"
+    }
+}

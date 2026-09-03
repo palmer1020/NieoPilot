@@ -1,0 +1,31 @@
+{
+    "key": "海洋能量一.Z",
+    "category": "海洋能量一",
+    "name": "Z",
+    "shape": "polygon",
+    "points": [
+        [
+            511,
+            418
+        ],
+        [
+            513,
+            418
+        ],
+        [
+            513,
+            420
+        ],
+        [
+            511,
+            420
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-11 12:44:43",
+        "desc": "map_recorder order=10"
+    }
+}

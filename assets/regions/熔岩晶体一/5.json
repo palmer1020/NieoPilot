@@ -1,0 +1,31 @@
+{
+    "key": "熔岩晶体一.5",
+    "category": "熔岩晶体一",
+    "name": "5",
+    "shape": "polygon",
+    "points": [
+        [
+            630,
+            233
+        ],
+        [
+            632,
+            233
+        ],
+        [
+            632,
+            235
+        ],
+        [
+            630,
+            235
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-12 11:46:02",
+        "desc": "map_recorder order=5"
+    }
+}

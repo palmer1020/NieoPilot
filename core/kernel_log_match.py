@@ -77,11 +77,45 @@ RE_LOGIN_SWF_LINE = re.compile(
     r"/login/Login\.swf|login[\\/]Login\.swf|path=\S*Login\.swf",
     re.IGNORECASE,
 )
+RE_MONKEY_KUNGFU_TASK_SWF = re.compile(
+    r"module[\\/]com[\\/]robot[\\/]module[\\/]task[\\/]MonkeyKongfu\.swf",
+    re.IGNORECASE,
+)
+RE_NPC_IRIS_SWF = re.compile(
+    r"(?:/resource/npc/iris\.swf|resource[\\/]npc[\\/]iris\.swf|^npc[\\/]iris\.swf|\biris\.swf\b)",
+    re.IGNORECASE,
+)
+RE_NPC_NONO_SWF = re.compile(
+    r"(?:/resource/npc/nono\.swf|resource[\\/]npc[\\/]nono\.swf|^npc[\\/]nono\.swf|\bnono\.swf\b)",
+    re.IGNORECASE,
+)
+RE_NONO_SUPER_ACTION_PATH = re.compile(r"action[\\/]", re.IGNORECASE)
+RE_MAP_SOUND_BGM_MP3 = re.compile(
+    r"(?:resource[\\/]map[\\/]sound[\\/]|^map[\\/]sound[\\/])BGM_(\d+)\.mp3",
+    re.IGNORECASE,
+)
+RE_ITEM_DOODLE_ICON_3 = re.compile(
+    r"(?:resource[\\/]item[\\/]doodle[\\/]icon[\\/]|^item[\\/]doodle[\\/]icon[\\/])3\.swf",
+    re.IGNORECASE,
+)
+RE_ITEM_PETITEM_ICON_300012 = re.compile(
+    r"(?:resource[\\/]item[\\/]petItem[\\/]icon[\\/]|^item[\\/]petItem[\\/]icon[\\/])300012\.swf",
+    re.IGNORECASE,
+)
+RE_ITEM_DOODLE_ICON_1 = re.compile(
+    r"(?:resource[\\/]item[\\/]doodle[\\/]icon[\\/]|^item[\\/]doodle[\\/]icon[\\/])1\.swf",
+    re.IGNORECASE,
+)
 
 # 带捕获数字 id（finditer）
 RE_FIGHT_PET_ID = re.compile(
     r"(?:(?:/resource/fightResource/pet/swf/|resource[\\/]fightResource[\\/]pet[\\/]swf[\\/])"
     r"|^fightResource[\\/]pet[\\/]swf[\\/])(\d+)\.swf",
+    re.IGNORECASE,
+)
+RE_GROUP_FIGHT_PET_ID = re.compile(
+    r"(?:(?:/resource/groupFightResource/pet/|resource[\\/]groupFightResource[\\/]pet[\\/])"
+    r"|^groupFightResource[\\/]pet[\\/])(\d+)\.swf",
     re.IGNORECASE,
 )
 RE_PET_ID_CALIB = re.compile(
@@ -185,6 +219,18 @@ def re_map_swf_exact_id(map_id: int) -> Pattern:
     )
 
 
+def line_has_target_map_bgm_id(line: str, bgm_id: int) -> bool:
+    """map/sound/BGM_{id}.mp3（含 path= 反斜杠片段）。"""
+    want = int(bgm_id)
+    for m in finditer_kernel_line(RE_MAP_SOUND_BGM_MP3, line):
+        try:
+            if int(m.group(1)) == want:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def first_pet_swf_id_in_line(line: str) -> Optional[int]:
     for seg in kernel_line_search_segments(line):
         m = RE_PET_ID_CALIB.search(seg)
@@ -220,8 +266,16 @@ def iter_lines_map_ids(lines: Iterable[str]) -> List[int]:
     return ids
 
 
-# 刷新重连后：若屏蔽→回基地之间内核 fightResource/pet/swf 恰为这三只，可跳过放回仓库+取精灵
-ROTATION_PARTY_FIGHT_PET_SWF_IDS: frozenset[int] = frozenset({12, 1337, 1459})
+# 刷新重连后：两 map 之间至少加载标准 Pick 六宠时可跳过放回仓库+取精灵。
+ROTATION_PARTY_FIGHT_PET_SWF_IDS: frozenset[int] = frozenset({67, 166, 197, 606, 1337, 1459})
+
+def rotation_party_fight_swf_ids_for_flight_pet(flight_pet_id: int) -> frozenset[int]:
+    """
+    Pick 六宠在内核中的 fightResource/pet/swf id 集合（顺序无关、包含即可）。
+    ``flight_pet_id`` 保留给旧调用兼容；当前统一六宠不再按单飞行宠替换。
+    """
+    _ = int(flight_pet_id)
+    return ROTATION_PARTY_FIGHT_PET_SWF_IDS
 
 
 def iter_fight_pet_swf_ids_in_line(line: str) -> Iterator[int]:
@@ -236,7 +290,7 @@ def iter_fight_pet_swf_ids_in_line(line: str) -> Iterator[int]:
 def iter_party_pet_swf_ids_in_line(line: str) -> Iterator[int]:
     """fightResource/pet/swf 与 resource/pet/swf（校准路径）并集。"""
     seen: set[int] = set()
-    for pat in (RE_FIGHT_PET_ID, RE_PET_ID_CALIB):
+    for pat in (RE_FIGHT_PET_ID, RE_GROUP_FIGHT_PET_ID, RE_PET_ID_CALIB):
         for m in finditer_kernel_line(pat, line):
             try:
                 pid = int(m.group(1))
@@ -254,7 +308,7 @@ def collect_fight_pet_swf_ids_between_latest_two_maps(
     自下而上定位最新两条 map 行，在两者之间（不含 map 行）统计 pet/swf id 集合
     （含 fightResource/pet/swf 与 resource/pet/swf）。
 
-    典型：进图 map(8) → 加载 012/1337/1459 → 回基地 map(500001)；中间段恰为三宠时可跳过取宠。
+    典型：进图 map(8) → 加载标准六宠 → 回基地 map(500001)；中间段包含期望六宠时可跳过取宠。
     若不足两条 map，返回空集与 None（调用方不得跳过）。
     """
     seq = [str(ln) for ln in lines]
@@ -283,8 +337,8 @@ def collect_fight_pet_swf_ids_between_latest_two_maps(
 
 
 def rotation_party_ready_from_kernel_lines(lines: Iterable[str]) -> bool:
-    """屏蔽后日志段内，两 map 之间 fight pet/swf 集合是否恰好为 {12, 1337, 1459}。"""
+    """屏蔽后日志段内，两 map 之间 fight pet/swf 集合是否包含标准六宠。"""
     ids, bounds = collect_fight_pet_swf_ids_between_latest_two_maps(lines)
     if bounds is None:
         return False
-    return ids == ROTATION_PARTY_FIGHT_PET_SWF_IDS
+    return ROTATION_PARTY_FIGHT_PET_SWF_IDS.issubset(ids)

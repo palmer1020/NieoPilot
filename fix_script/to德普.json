@@ -1,0 +1,216 @@
+{
+    "name": "to德普",
+    "create_time": "2026-06-10 12:00:00",
+    "steps": [
+        {
+            "action": "click",
+            "x": 46,
+            "y": 645,
+            "delay": 1.0,
+            "desc": "Step 1 地图"
+        },
+        {
+            "action": "click",
+            "x": 617,
+            "y": 263,
+            "delay": 2.0,
+            "desc": "Step 2 第三星系"
+        },
+        {
+            "action": "move_start",
+            "x": 200,
+            "y": 300,
+            "delay": 5.0,
+            "desc": "Step 3 move start"
+        },
+        {
+            "action": "move_end",
+            "x": 1050,
+            "y": 300,
+            "duration": 1,
+            "desc": "Step 3 move end"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 2,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 380,
+            "y": 315,
+            "delay": 8.0,
+            "desc": "Step 1"
+        }
+    ]
+}

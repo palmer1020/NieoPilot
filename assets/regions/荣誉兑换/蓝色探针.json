@@ -1,0 +1,31 @@
+{
+    "key": "荣誉兑换.蓝色探针",
+    "category": "荣誉兑换",
+    "name": "蓝色探针",
+    "shape": "polygon",
+    "points": [
+        [
+            409,
+            196
+        ],
+        [
+            411,
+            196
+        ],
+        [
+            411,
+            198
+        ],
+        [
+            409,
+            198
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-13 05:10:14",
+        "desc": "region_viewer"
+    }
+}

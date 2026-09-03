@@ -1,0 +1,31 @@
+{
+    "key": "水生海草.Z",
+    "category": "水生海草",
+    "name": "Z",
+    "shape": "polygon",
+    "points": [
+        [
+            264,
+            569
+        ],
+        [
+            266,
+            569
+        ],
+        [
+            266,
+            571
+        ],
+        [
+            264,
+            571
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-19 13:47:20",
+        "desc": "region_viewer"
+    }
+}

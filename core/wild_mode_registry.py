@@ -15,6 +15,12 @@ WILD_MODES_DIR = os.path.join("assets", "wild_modes")
 _cache: Optional[Dict[str, WildCaptureProfile]] = None
 _manifest_cache: Optional[Dict[str, Dict[str, Any]]] = None
 
+# 历史任务可能仍保存旧的乌索312方案键。统一迁移到唯一的乌索528方案，
+# 使 312 走击败逻辑、528 走稀有捕捉逻辑。
+_LEGACY_PROFILE_ALIASES = {
+    "wusuo_312": "乌索",
+}
+
 
 def slugify(name: str) -> str:
     s = (name or "").strip().lower()
@@ -125,7 +131,9 @@ def list_modes(project_root: str) -> List[Tuple[str, WildCaptureProfile]]:
 
 
 def get_profile(project_root: str, slug: str) -> Optional[WildCaptureProfile]:
-    return load_all_wild_modes(project_root).get(slug)
+    key = (slug or "").strip()
+    canonical_key = _LEGACY_PROFILE_ALIASES.get(key.lower(), key)
+    return load_all_wild_modes(project_root).get(canonical_key)
 
 
 def build_manifest(
@@ -185,7 +193,6 @@ _BUILTIN_RARE_KEYS: Tuple[str, ...] = (
     "埃尔特",
 )
 
-
 def wild_mode_select_label(pf: WildCaptureProfile) -> str:
     """野外/轮换下拉统一显示：嘟拉(618)（map=429）"""
     return f"{pf.name}（map={pf.map_swf_id}）"
@@ -221,6 +228,8 @@ def resolve_wild_capture_profile(project_root: str, profile_name: str) -> WildCa
     )
 
     key = (profile_name or "mantis").strip()
+    key_lower = key.lower()
+    key = _LEGACY_PROFILE_ALIASES.get(key_lower, key)
     key_lower = key.lower()
     _builtin = {
         "mantis": DEFAULT_PROFILE_MANTIS,

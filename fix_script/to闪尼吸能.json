@@ -1,0 +1,209 @@
+{
+    "name": "to闪尼吸能",
+    "create_time": "2026-07-18 04:09:40",
+    "steps": [
+        {
+            "action": "click",
+            "x": 222,
+            "y": 380,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 590,
+            "y": 432,
+            "delay": 1.47,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 429,
+            "y": 504,
+            "delay": 1.12,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 519,
+            "y": 405,
+            "delay": 1.08,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 2.0,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.2,
+            "desc": "Step 6"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.22,
+            "desc": "Step 7"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.2,
+            "desc": "Step 8"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.18,
+            "desc": "Step 9"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.17,
+            "desc": "Step 10"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.18,
+            "desc": "Step 11"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.17,
+            "desc": "Step 12"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.18,
+            "desc": "Step 13"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.18,
+            "desc": "Step 14"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.2,
+            "desc": "Step 15"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.17,
+            "desc": "Step 16"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.18,
+            "desc": "Step 17"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.18,
+            "desc": "Step 18"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.17,
+            "desc": "Step 19"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.17,
+            "desc": "Step 20"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.18,
+            "desc": "Step 21"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.18,
+            "desc": "Step 22"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.15,
+            "desc": "Step 23"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.17,
+            "desc": "Step 24"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.17,
+            "desc": "Step 25"
+        },
+        {
+            "action": "click",
+            "x": 1011,
+            "y": 450,
+            "delay": 0.17,
+            "desc": "Step 26"
+        },
+        {
+            "action": "click",
+            "x": 924,
+            "y": 247,
+            "delay": 1.32,
+            "desc": "Step 27"
+        },
+        {
+            "action": "click",
+            "x": 316,
+            "y": 179,
+            "delay": 2.05,
+            "desc": "Step 28"
+        },
+        {
+            "action": "click",
+            "x": 770,
+            "y": 488,
+            "delay": 1.95,
+            "desc": "Step 29"
+        }
+    ]
+}

@@ -1,0 +1,31 @@
+{
+    "key": "海洋能量一.BtoA",
+    "category": "海洋能量一",
+    "name": "BtoA",
+    "shape": "polygon",
+    "points": [
+        [
+            959,
+            179
+        ],
+        [
+            961,
+            179
+        ],
+        [
+            961,
+            181
+        ],
+        [
+            959,
+            181
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-11 12:57:49",
+        "desc": "海洋能量 B21 to A20"
+    }
+}

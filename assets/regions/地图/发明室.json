@@ -1,0 +1,17 @@
+{
+    "key": "地图.发明室",
+    "category": "地图",
+    "name": "发明室",
+    "shape": "polygon",
+    "points": [[456, 520], [458, 520], [458, 522], [456, 522]],
+    "click": {
+        "random": false
+    },
+    "meta": {
+        "created_at": "2026-07-16 00:00:00",
+        "desc": "地图网格：发明室",
+        "map_id": 107,
+        "newnpc_multi": 6,
+        "gate_strategy": "nieo_white_probe"
+    }
+}

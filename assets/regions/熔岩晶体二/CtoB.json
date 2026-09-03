@@ -1,0 +1,31 @@
+{
+    "key": "熔岩晶体二.CtoB",
+    "category": "熔岩晶体二",
+    "name": "CtoB",
+    "shape": "polygon",
+    "points": [
+        [
+            1075,
+            156
+        ],
+        [
+            1077,
+            156
+        ],
+        [
+            1077,
+            158
+        ],
+        [
+            1075,
+            158
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-12 11:56:51",
+        "desc": "复制自 AtoB（A/C 同图）"
+    }
+}

@@ -1,0 +1,48 @@
+{
+    "name": "乌索",
+    "create_time": "2026-06-23 10:30:00",
+    "steps": [
+        {
+            "action": "move_start",
+            "x": 850,
+            "y": 421,
+            "delay": 1.0,
+            "desc": "A drag start"
+        },
+        {
+            "action": "move_end",
+            "x": 482,
+            "y": 534,
+            "duration": 2.0,
+            "desc": "A drag to B"
+        },
+        {
+            "action": "move_start",
+            "x": 362,
+            "y": 418,
+            "delay": 0.2,
+            "desc": "C drag start"
+        },
+        {
+            "action": "move_end",
+            "x": 721,
+            "y": 576,
+            "duration": 2.0,
+            "desc": "C drag to D"
+        },
+        {
+            "action": "move_start",
+            "x": 1065,
+            "y": 319,
+            "delay": 0.2,
+            "desc": "E drag start"
+        },
+        {
+            "action": "move_end",
+            "x": 900,
+            "y": 421,
+            "duration": 2.0,
+            "desc": "E drag to F"
+        }
+    ]
+}

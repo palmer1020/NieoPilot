@@ -888,7 +888,7 @@
             "action": "click",
             "x": 847,
             "y": 109,
-            "delay": 2.33,
+            "delay": 1,
             "desc": "Step 118"
         },
         {
@@ -952,7 +952,7 @@
             "x": 68,
             "y": 654,
             "delay": 1.53,
-            "desc": "Step 127"
+            "desc": "Step 127　地图"
         },
         {
             "action": "click",

@@ -1,0 +1,31 @@
+{
+    "key": "露西之核.Z",
+    "category": "露西之核",
+    "name": "Z",
+    "shape": "polygon",
+    "points": [
+        [
+            929,
+            450
+        ],
+        [
+            931,
+            450
+        ],
+        [
+            931,
+            452
+        ],
+        [
+            929,
+            452
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-14 00:15:20",
+        "desc": "region_viewer"
+    }
+}

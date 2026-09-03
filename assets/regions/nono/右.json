@@ -1,0 +1,31 @@
+{
+    "key": "nono.右",
+    "category": "nono",
+    "name": "右",
+    "shape": "polygon",
+    "points": [
+        [
+            644,
+            453
+        ],
+        [
+            646,
+            453
+        ],
+        [
+            646,
+            455
+        ],
+        [
+            644,
+            455
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-30 13:20:49",
+        "desc": "region_viewer"
+    }
+}

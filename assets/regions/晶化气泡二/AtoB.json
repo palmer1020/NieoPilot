@@ -1,0 +1,31 @@
+{
+    "key": "晶化气泡二.AtoB",
+    "category": "晶化气泡二",
+    "name": "AtoB",
+    "shape": "polygon",
+    "points": [
+        [
+            837,
+            560
+        ],
+        [
+            839,
+            560
+        ],
+        [
+            839,
+            562
+        ],
+        [
+            837,
+            562
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-19 13:04:54",
+        "desc": "A==C（map55），复制自 CtoB"
+    }
+}

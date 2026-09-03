@@ -1,0 +1,31 @@
+{
+    "key": "光螳螂.2",
+    "category": "光螳螂",
+    "name": "2",
+    "shape": "polygon",
+    "points": [
+        [
+            405,
+            532
+        ],
+        [
+            407,
+            532
+        ],
+        [
+            407,
+            534
+        ],
+        [
+            405,
+            534
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-12 12:45:56",
+        "desc": "region_viewer"
+    }
+}

@@ -100,10 +100,6 @@ def main():
         print("❌ 未找到游戏窗口，请先手动打开游戏并显示窗口后再运行")
         return
 
-    # 可选：刷新边界
-    window_manager.content_padding = None
-    window_manager.scan_boundaries()
-
     # 不再创建状态文件夹，直接在模板目录下创建文件
     out_dir = template_root / rel.replace(".json", "")
     out_dir.mkdir(parents=True, exist_ok=True)

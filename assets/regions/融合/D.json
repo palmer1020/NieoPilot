@@ -1,0 +1,31 @@
+{
+    "key": "融合.D",
+    "category": "融合",
+    "name": "D",
+    "shape": "polygon",
+    "points": [
+        [
+            643,
+            428
+        ],
+        [
+            645,
+            428
+        ],
+        [
+            645,
+            430
+        ],
+        [
+            643,
+            430
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-21 11:02:21",
+        "desc": "region_viewer"
+    }
+}

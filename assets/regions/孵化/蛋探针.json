@@ -1,0 +1,31 @@
+{
+    "key": "孵化.蛋探针",
+    "category": "孵化",
+    "name": "蛋探针",
+    "shape": "polygon",
+    "points": [
+        [
+            431,
+            483
+        ],
+        [
+            433,
+            483
+        ],
+        [
+            433,
+            485
+        ],
+        [
+            431,
+            485
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-15 13:00:00",
+        "desc": "generated center=(432,484)"
+    }
+}

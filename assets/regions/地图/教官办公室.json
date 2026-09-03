@@ -1,0 +1,17 @@
+{
+    "key": "地图.教官办公室",
+    "category": "地图",
+    "name": "教官办公室",
+    "shape": "polygon",
+    "points": [[386, 520], [388, 520], [388, 522], [386, 522]],
+    "click": {
+        "random": false
+    },
+    "meta": {
+        "created_at": "2026-07-16 00:00:00",
+        "desc": "地图网格：教官办公室",
+        "map_id": 101,
+        "newnpc_multi": 5,
+        "gate_strategy": "nieo_white_probe"
+    }
+}

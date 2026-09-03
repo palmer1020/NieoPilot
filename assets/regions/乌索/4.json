@@ -1,0 +1,31 @@
+{
+    "key": "乌索.4",
+    "category": "乌索",
+    "name": "4",
+    "shape": "polygon",
+    "points": [
+        [
+            298,
+            290
+        ],
+        [
+            300,
+            290
+        ],
+        [
+            300,
+            292
+        ],
+        [
+            298,
+            292
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-23 11:09:29",
+        "desc": "map_recorder order=4"
+    }
+}

@@ -1,0 +1,31 @@
+{
+    "key": "融合.蓝色探针",
+    "category": "融合",
+    "name": "蓝色探针",
+    "shape": "polygon",
+    "points": [
+        [
+            487,
+            241
+        ],
+        [
+            489,
+            241
+        ],
+        [
+            489,
+            243
+        ],
+        [
+            487,
+            243
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-21 11:06:52",
+        "desc": "region_viewer"
+    }
+}

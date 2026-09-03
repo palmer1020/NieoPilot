@@ -1,0 +1,31 @@
+{
+    "key": "孵化.选中三",
+    "category": "孵化",
+    "name": "选中三",
+    "shape": "polygon",
+    "points": [
+        [
+            593,
+            333
+        ],
+        [
+            595,
+            333
+        ],
+        [
+            595,
+            335
+        ],
+        [
+            593,
+            335
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-15 11:54:16",
+        "desc": "generated grid center=(594,334)"
+    }
+}

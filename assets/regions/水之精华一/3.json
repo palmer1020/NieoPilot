@@ -1,0 +1,31 @@
+{
+    "key": "水之精华一.3",
+    "category": "水之精华一",
+    "name": "3",
+    "shape": "polygon",
+    "points": [
+        [
+            933,
+            452
+        ],
+        [
+            935,
+            452
+        ],
+        [
+            935,
+            454
+        ],
+        [
+            933,
+            454
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-18 05:53:31",
+        "desc": "map_recorder order=3"
+    }
+}

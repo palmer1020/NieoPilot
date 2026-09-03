@@ -1,0 +1,41 @@
+{
+    "name": "to贝壳精华",
+    "create_time": "2026-07-19 11:44:46",
+    "steps": [
+        {
+            "action": "click",
+            "x": 82,
+            "y": 649,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 354,
+            "y": 518,
+            "delay": 3.02,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 485,
+            "y": 356,
+            "delay": 3.27,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 870,
+            "y": 140,
+            "delay": 5.27,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 122,
+            "y": 444,
+            "delay": 3.3,
+            "desc": "Step 5"
+        }
+    ]
+}

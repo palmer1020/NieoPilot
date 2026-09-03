@@ -1,0 +1,31 @@
+{
+    "key": "德普.7",
+    "category": "德普",
+    "name": "7",
+    "shape": "polygon",
+    "points": [
+        [
+            237,
+            459
+        ],
+        [
+            239,
+            459
+        ],
+        [
+            239,
+            461
+        ],
+        [
+            237,
+            461
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-10 13:09:53",
+        "desc": "map_recorder order=7"
+    }
+}

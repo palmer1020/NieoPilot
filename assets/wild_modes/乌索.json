@@ -1,0 +1,23 @@
+{
+    "schema": "nieopilot_wild_mode_v1",
+    "slug": "乌索",
+    "name": "乌索(528)",
+    "route_hint": "乌索",
+    "to_script": "to乌索",
+    "map_a_id": 325,
+    "map_b_id": 327,
+    "map_entry_stem": "325to326",
+    "target_pet_ids": [
+        528
+    ],
+    "target_mp3_ids": [
+        528,
+        312
+    ],
+    "delete_swf_ids": [
+        278,
+        280
+    ],
+    "import_from": null,
+    "create_time": "2026-06-23 11:09:29"
+}

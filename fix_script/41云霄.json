@@ -1,0 +1,27 @@
+{
+    "name": "41云霄",
+    "create_time": "2026-06-06 13:23:20",
+    "steps": [
+        {
+            "action": "click",
+            "x": 915,
+            "y": 102,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 763,
+            "y": 184,
+            "delay": 1,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 1153,
+            "y": 221,
+            "delay": 4,
+            "desc": "Step 3"
+        }
+    ]
+}

@@ -1,0 +1,31 @@
+{
+    "key": "苏克兑换.白色探针",
+    "category": "苏克兑换",
+    "name": "白色探针",
+    "shape": "polygon",
+    "points": [
+        [
+            279,
+            508
+        ],
+        [
+            281,
+            508
+        ],
+        [
+            281,
+            510
+        ],
+        [
+            279,
+            510
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-25 03:31:10",
+        "desc": "region_viewer"
+    }
+}

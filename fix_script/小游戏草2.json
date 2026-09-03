@@ -1,0 +1,34 @@
+{
+    "name": "小游戏草2",
+    "create_time": "2026-07-16 11:22:27",
+    "steps": [
+        {
+            "action": "click",
+            "x": 853,
+            "y": 156,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 660,
+            "y": 190,
+            "delay": 4.85,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 315,
+            "y": 183,
+            "delay": 4.98,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 78,
+            "y": 153,
+            "delay": 4.73,
+            "desc": "Step 4"
+        }
+    ]
+}

@@ -191,10 +191,6 @@ def _record_map_transition_click(map_a: int, map_b: int) -> Optional[str]:
     if not window_manager.find_window():
         print("❌ 未找到游戏窗口")
         return None
-    try:
-        window_manager.scan_boundaries()
-    except Exception:
-        pass
 
     clicked: List[Tuple[int, int]] = []
     done = {"cancel": False}

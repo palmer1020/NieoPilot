@@ -1,0 +1,31 @@
+{
+    "key": "沃特.9",
+    "category": "沃特",
+    "name": "9",
+    "shape": "polygon",
+    "points": [
+        [
+            500,
+            557
+        ],
+        [
+            502,
+            557
+        ],
+        [
+            502,
+            559
+        ],
+        [
+            500,
+            559
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-10 12:38:23",
+        "desc": "map_recorder order=9"
+    }
+}

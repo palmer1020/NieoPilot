@@ -1,0 +1,31 @@
+{
+    "key": "商店.商店",
+    "category": "商店",
+    "name": "商店",
+    "shape": "polygon",
+    "points": [
+        [
+            1094,
+            444
+        ],
+        [
+            1096,
+            444
+        ],
+        [
+            1096,
+            446
+        ],
+        [
+            1094,
+            446
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-18 02:56:32",
+        "desc": "region_viewer"
+    }
+}

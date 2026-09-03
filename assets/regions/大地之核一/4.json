@@ -1,0 +1,31 @@
+{
+    "key": "大地之核一.4",
+    "category": "大地之核一",
+    "name": "4",
+    "shape": "polygon",
+    "points": [
+        [
+            104,
+            424
+        ],
+        [
+            106,
+            424
+        ],
+        [
+            106,
+            426
+        ],
+        [
+            104,
+            426
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-11 10:30:04",
+        "desc": "map_recorder order=4"
+    }
+}

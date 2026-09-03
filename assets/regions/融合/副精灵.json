@@ -1,0 +1,31 @@
+{
+    "key": "融合.副精灵",
+    "category": "融合",
+    "name": "副精灵",
+    "shape": "polygon",
+    "points": [
+        [
+            685,
+            243
+        ],
+        [
+            687,
+            243
+        ],
+        [
+            687,
+            245
+        ],
+        [
+            685,
+            245
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-21 10:52:20",
+        "desc": "region_viewer"
+    }
+}

@@ -1,0 +1,31 @@
+{
+    "key": "荣誉兑换.芯片",
+    "category": "荣誉兑换",
+    "name": "芯片",
+    "shape": "polygon",
+    "points": [
+        [
+            493,
+            203
+        ],
+        [
+            495,
+            203
+        ],
+        [
+            495,
+            205
+        ],
+        [
+            493,
+            205
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-13 05:09:17",
+        "desc": "region_viewer"
+    }
+}

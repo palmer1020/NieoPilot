@@ -1,0 +1,31 @@
+{
+    "key": "沃特.4",
+    "category": "沃特",
+    "name": "4",
+    "shape": "polygon",
+    "points": [
+        [
+            133,
+            450
+        ],
+        [
+            135,
+            450
+        ],
+        [
+            135,
+            452
+        ],
+        [
+            133,
+            452
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-10 12:38:23",
+        "desc": "map_recorder order=4"
+    }
+}

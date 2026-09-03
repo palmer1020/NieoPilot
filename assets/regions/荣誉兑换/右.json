@@ -1,0 +1,31 @@
+{
+    "key": "荣誉兑换.右",
+    "category": "荣誉兑换",
+    "name": "右",
+    "shape": "polygon",
+    "points": [
+        [
+            495,
+            637
+        ],
+        [
+            497,
+            637
+        ],
+        [
+            497,
+            639
+        ],
+        [
+            495,
+            639
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-13 05:09:00",
+        "desc": "region_viewer"
+    }
+}

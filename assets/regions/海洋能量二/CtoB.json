@@ -1,0 +1,31 @@
+{
+    "key": "海洋能量二.CtoB",
+    "category": "海洋能量二",
+    "name": "CtoB",
+    "shape": "polygon",
+    "points": [
+        [
+            211,
+            16
+        ],
+        [
+            213,
+            16
+        ],
+        [
+            213,
+            18
+        ],
+        [
+            211,
+            18
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-11 12:41:07",
+        "desc": "来自 地图/22to21.json"
+    }
+}

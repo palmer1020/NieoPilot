@@ -1,0 +1,31 @@
+{
+    "key": "乌索.6",
+    "category": "乌索",
+    "name": "6",
+    "shape": "polygon",
+    "points": [
+        [
+            505,
+            514
+        ],
+        [
+            507,
+            514
+        ],
+        [
+            507,
+            516
+        ],
+        [
+            505,
+            516
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-23 11:09:29",
+        "desc": "map_recorder order=6"
+    }
+}

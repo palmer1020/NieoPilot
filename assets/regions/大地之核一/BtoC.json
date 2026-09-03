@@ -1,0 +1,31 @@
+{
+    "key": "大地之核一.BtoC",
+    "category": "大地之核一",
+    "name": "BtoC",
+    "shape": "polygon",
+    "points": [
+        [
+            74,
+            440
+        ],
+        [
+            76,
+            440
+        ],
+        [
+            76,
+            442
+        ],
+        [
+            74,
+            442
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-13 06:46:16",
+        "desc": "来自 地图/49to46.json（A==C==46，BtoC同传送点）"
+    }
+}

@@ -1,0 +1,31 @@
+{
+    "key": "荣誉兑换.打开",
+    "category": "荣誉兑换",
+    "name": "打开",
+    "shape": "polygon",
+    "points": [
+        [
+            911,
+            53
+        ],
+        [
+            913,
+            53
+        ],
+        [
+            913,
+            55
+        ],
+        [
+            911,
+            55
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-13 05:05:28",
+        "desc": "region_viewer"
+    }
+}

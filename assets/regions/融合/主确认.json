@@ -1,0 +1,31 @@
+{
+    "key": "融合.主确认",
+    "category": "融合",
+    "name": "主确认",
+    "shape": "polygon",
+    "points": [
+        [
+            968,
+            513
+        ],
+        [
+            970,
+            513
+        ],
+        [
+            970,
+            515
+        ],
+        [
+            968,
+            515
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-21 10:48:57",
+        "desc": "region_viewer"
+    }
+}

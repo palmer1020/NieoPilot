@@ -1,0 +1,31 @@
+{
+    "key": "贝壳精华一.7",
+    "category": "贝壳精华一",
+    "name": "7",
+    "shape": "polygon",
+    "points": [
+        [
+            570,
+            530
+        ],
+        [
+            572,
+            530
+        ],
+        [
+            572,
+            532
+        ],
+        [
+            570,
+            532
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-19 11:57:46",
+        "desc": "map_recorder order=7"
+    }
+}

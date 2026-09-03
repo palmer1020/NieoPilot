@@ -1,0 +1,31 @@
+{
+    "key": "水生海草.9",
+    "category": "水生海草",
+    "name": "9",
+    "shape": "polygon",
+    "points": [
+        [
+            905,
+            510
+        ],
+        [
+            907,
+            510
+        ],
+        [
+            907,
+            512
+        ],
+        [
+            905,
+            512
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-19 13:46:50",
+        "desc": "region_viewer"
+    }
+}

@@ -1,0 +1,31 @@
+{
+    "key": "沃特.5",
+    "category": "沃特",
+    "name": "5",
+    "shape": "polygon",
+    "points": [
+        [
+            220,
+            254
+        ],
+        [
+            222,
+            254
+        ],
+        [
+            222,
+            256
+        ],
+        [
+            220,
+            256
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-10 12:38:23",
+        "desc": "map_recorder order=5"
+    }
+}

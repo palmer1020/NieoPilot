@@ -4,6 +4,7 @@ import re
 import sys
 import time
 import json
+import threading
 from pynput import mouse, keyboard
 
 # =========================================================
@@ -86,23 +87,21 @@ class ScriptRecorder:
         self.last_action_time = None
         self.is_recording = True
         self._saved = False
+        self._save_lock = threading.RLock()
+        self._console_handler = None
 
         if not self.filename:
             print("❌ 脚本名字无效（为空或仅含非法字符）")
             self.is_recording = False
             return
 
+        self._install_console_close_handler()
+
         print("🔍 正在锁定游戏窗口...")
         if not window_manager.launch_game():
             print("❌ 无法找到或启动游戏窗口！请先在 Dashboard 启动游戏。")
             self.is_recording = False
             return
-
-        try:
-            window_manager.scan_boundaries()
-            print("✅ 已自动扫边（校准视口）。")
-        except Exception as e:
-            print(f"⚠ 自动扫边失败（{e}），将使用整段客户区推算坐标。")
 
         vp = window_manager.get_current_viewport()
         if vp:
@@ -182,44 +181,68 @@ class ScriptRecorder:
         if save:
             self.save()
 
-    def save(self) -> bool:
-        if self._saved:
-            return True
-
-        if not self.steps:
-            print("❌ 未录制任何有效步骤，无法保存。")
-            print("   常见原因：")
-            print("   1) 左键点在了游戏画面外（控制台/桌面）")
-            print("   2) 未先在 Dashboard【校准屏幕】或游戏未启动")
-            print("   3) 按了保存键但控制台里没有出现「✅ [步骤 N] 捕获」")
-            print(f"   请重新录制；保存路径应为: {os.path.join(SCRIPT_DIR, self.filename + '.json')}")
-            return False
-
-        safe_filename = self.filename + ".json"
-        full_path = os.path.join(SCRIPT_DIR, safe_filename)
-
-        data = {
-            "name": self.filename,
-            "create_time": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "steps": self.steps,
-        }
-
+    def _install_console_close_handler(self) -> None:
+        if os.name != "nt":
+            return
         try:
-            if os.path.exists(full_path):
-                print(f"ℹ️ 将覆盖已有文件: {full_path}")
-            with open(full_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
-        except OSError as e:
-            print(f"❌ 写入失败: {e}")
-            print(f"   目标路径: {full_path}")
-            return False
+            import ctypes
 
-        self._saved = True
-        print("\n" + "=" * 40)
-        print(f"💾 脚本已保存至: {full_path}")
-        print(f"📊 有效步骤数: {len(self.steps)}")
-        print("=" * 40)
-        return True
+            close_events = {2, 5, 6}  # CTRL_CLOSE_EVENT / LOGOFF / SHUTDOWN
+            handler_type = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_uint)
+
+            def handler(ctrl_type):
+                if ctrl_type not in close_events:
+                    return False
+                if self.is_recording and not self._saved:
+                    print("\n⏹ 控制台正在关闭，尝试保存录制内容...")
+                    self._finish(save=True)
+                    time.sleep(0.2)
+                return True
+
+            self._console_handler = handler_type(handler)
+            ctypes.windll.kernel32.SetConsoleCtrlHandler(self._console_handler, True)
+        except Exception as e:
+            print(f"⚠️ 控制台关闭保存保护启用失败: {e}")
+
+    def save(self) -> bool:
+        with self._save_lock:
+            if self._saved:
+                return True
+
+            if not self.steps:
+                print("❌ 未录制任何有效步骤，无法保存。")
+                print("   常见原因：")
+                print("   1) 左键点在了游戏画面外（控制台/桌面）")
+                print("   2) 未先在 Dashboard【校准屏幕】或游戏未启动")
+                print("   3) 按了保存键但控制台里没有出现「✅ [步骤 N] 捕获」")
+                print(f"   请重新录制；保存路径应为: {os.path.join(SCRIPT_DIR, self.filename + '.json')}")
+                return False
+
+            safe_filename = self.filename + ".json"
+            full_path = os.path.join(SCRIPT_DIR, safe_filename)
+
+            data = {
+                "name": self.filename,
+                "create_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "steps": self.steps,
+            }
+
+            try:
+                if os.path.exists(full_path):
+                    print(f"ℹ️ 将覆盖已有文件: {full_path}")
+                with open(full_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=4, ensure_ascii=False)
+            except OSError as e:
+                print(f"❌ 写入失败: {e}")
+                print(f"   目标路径: {full_path}")
+                return False
+
+            self._saved = True
+            print("\n" + "=" * 40)
+            print(f"💾 脚本已保存至: {full_path}")
+            print(f"📊 有效步骤数: {len(self.steps)}")
+            print("=" * 40)
+            return True
 
     def start(self):
         if not self.is_recording:

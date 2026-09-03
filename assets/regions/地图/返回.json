@@ -1,0 +1,31 @@
+{
+    "key": "地图.返回",
+    "category": "地图",
+    "name": "返回",
+    "shape": "polygon",
+    "points": [
+        [
+            960,
+            165
+        ],
+        [
+            962,
+            165
+        ],
+        [
+            962,
+            167
+        ],
+        [
+            960,
+            167
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-18 03:13:35",
+        "desc": "region_viewer"
+    }
+}

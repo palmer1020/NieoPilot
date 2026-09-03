@@ -1,0 +1,17 @@
+{
+    "key": "地图.瞭望露台",
+    "category": "地图",
+    "name": "瞭望露台",
+    "shape": "polygon",
+    "points": [[386, 460], [388, 460], [388, 462], [386, 462]],
+    "click": {
+        "random": false
+    },
+    "meta": {
+        "created_at": "2026-07-16 00:00:00",
+        "desc": "地图网格：瞭望露台",
+        "map_id": 103,
+        "newnpc_multi": 9,
+        "gate_strategy": "nieo_white_probe"
+    }
+}

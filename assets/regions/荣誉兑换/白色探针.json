@@ -1,0 +1,31 @@
+{
+    "key": "荣誉兑换.白色探针",
+    "category": "荣誉兑换",
+    "name": "白色探针",
+    "shape": "polygon",
+    "points": [
+        [
+            413,
+            239
+        ],
+        [
+            415,
+            239
+        ],
+        [
+            415,
+            241
+        ],
+        [
+            413,
+            241
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-13 05:10:07",
+        "desc": "region_viewer"
+    }
+}

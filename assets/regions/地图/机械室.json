@@ -1,0 +1,17 @@
+{
+    "key": "地图.机械室",
+    "category": "地图",
+    "name": "机械室",
+    "shape": "polygon",
+    "points": [[316, 520], [318, 520], [318, 522], [316, 522]],
+    "click": {
+        "random": false
+    },
+    "meta": {
+        "created_at": "2026-07-16 00:00:00",
+        "desc": "地图网格：机械室",
+        "map_id": 8,
+        "newnpc_multi": 2,
+        "gate_strategy": "nieo_white_probe"
+    }
+}

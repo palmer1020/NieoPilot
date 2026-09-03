@@ -1,0 +1,31 @@
+{
+    "key": "经验.3",
+    "category": "经验",
+    "name": "3",
+    "shape": "polygon",
+    "points": [
+        [
+            697,
+            279
+        ],
+        [
+            699,
+            279
+        ],
+        [
+            699,
+            281
+        ],
+        [
+            697,
+            281
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-19 11:46:43",
+        "desc": "region_viewer"
+    }
+}

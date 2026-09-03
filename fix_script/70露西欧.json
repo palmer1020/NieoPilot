@@ -1,0 +1,62 @@
+{
+    "name": "70露西欧",
+    "create_time": "2026-06-07 12:04:02",
+    "steps": [
+        {
+            "action": "click",
+            "x": 219,
+            "y": 383,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 609,
+            "y": 463,
+            "delay": 1,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 468,
+            "y": 515,
+            "delay": 1,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 515,
+            "y": 407,
+            "delay": 1,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 799,
+            "y": 446,
+            "delay": 1,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 339,
+            "y": 189,
+            "delay": 1,
+            "desc": "Step 6"
+        },
+        {
+            "action": "click",
+            "x": 789,
+            "y": 485,
+            "delay": 1,
+            "desc": "Step 7"
+        },
+        {
+            "action": "click",
+            "x": 740,
+            "y": 552,
+            "delay": 5,
+            "desc": "Step 8"
+        }
+    ]
+}

@@ -1,0 +1,31 @@
+{
+    "key": "融合.主精灵",
+    "category": "融合",
+    "name": "主精灵",
+    "shape": "polygon",
+    "points": [
+        [
+            494,
+            233
+        ],
+        [
+            496,
+            233
+        ],
+        [
+            496,
+            235
+        ],
+        [
+            494,
+            235
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-21 10:28:14",
+        "desc": "region_viewer"
+    }
+}

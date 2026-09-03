@@ -1,0 +1,17 @@
+{
+    "key": "地图.荣誉大厅",
+    "category": "地图",
+    "name": "荣誉大厅",
+    "shape": "polygon",
+    "points": [[456, 460], [458, 460], [458, 462], [456, 462]],
+    "click": {
+        "random": false
+    },
+    "meta": {
+        "created_at": "2026-07-16 00:00:00",
+        "desc": "地图网格：荣誉大厅",
+        "map_id": 332,
+        "newnpc_multi": 0,
+        "gate_strategy": "newnpc"
+    }
+}

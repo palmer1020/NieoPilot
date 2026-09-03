@@ -1,0 +1,31 @@
+{
+    "key": "沃特.2",
+    "category": "沃特",
+    "name": "2",
+    "shape": "polygon",
+    "points": [
+        [
+            241,
+            449
+        ],
+        [
+            243,
+            449
+        ],
+        [
+            243,
+            451
+        ],
+        [
+            241,
+            451
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-10 12:38:23",
+        "desc": "map_recorder order=2"
+    }
+}

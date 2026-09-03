@@ -1,0 +1,31 @@
+{
+    "key": "nono.融合关闭",
+    "category": "nono",
+    "name": "融合关闭",
+    "shape": "polygon",
+    "points": [
+        [
+            885,
+            140
+        ],
+        [
+            887,
+            140
+        ],
+        [
+            887,
+            142
+        ],
+        [
+            885,
+            142
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-30 13:19:17",
+        "desc": "region_viewer"
+    }
+}

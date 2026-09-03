@@ -1,0 +1,31 @@
+{
+    "key": "nono.融合探针一",
+    "category": "nono",
+    "name": "融合探针一",
+    "shape": "polygon",
+    "points": [
+        [
+            291,
+            327
+        ],
+        [
+            293,
+            327
+        ],
+        [
+            293,
+            329
+        ],
+        [
+            291,
+            329
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-11 00:00:00",
+        "desc": "manual"
+    }
+}

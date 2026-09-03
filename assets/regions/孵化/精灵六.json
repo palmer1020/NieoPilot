@@ -1,0 +1,12 @@
+{
+    "key": "孵化.精灵六",
+    "category": "孵化",
+    "name": "精灵六",
+    "shape": "polygon",
+    "points": [[650, 448], [652, 448], [652, 450], [650, 450]],
+    "click": {"random": true},
+    "meta": {
+        "created_at": "2026-07-15 11:54:16",
+        "desc": "generated grid center=(651,449)"
+    }
+}

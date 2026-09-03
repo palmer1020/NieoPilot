@@ -1,0 +1,31 @@
+{
+    "key": "露西之核.BtoA",
+    "category": "露西之核",
+    "name": "BtoA",
+    "shape": "polygon",
+    "points": [
+        [
+            837,
+            560
+        ],
+        [
+            839,
+            560
+        ],
+        [
+            839,
+            562
+        ],
+        [
+            837,
+            562
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-14 01:30:00",
+        "desc": "来自 地图/55to54.json（B→A）"
+    }
+}

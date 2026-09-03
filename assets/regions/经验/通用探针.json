@@ -1,0 +1,31 @@
+{
+    "key": "经验.通用探针",
+    "category": "经验",
+    "name": "通用探针",
+    "shape": "polygon",
+    "points": [
+        [
+            540,
+            303
+        ],
+        [
+            542,
+            303
+        ],
+        [
+            542,
+            305
+        ],
+        [
+            540,
+            305
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-21 00:00:00",
+        "desc": "psychic exp general probe"
+    }
+}

@@ -1,0 +1,31 @@
+{
+    "key": "精灵背包.3",
+    "category": "精灵背包",
+    "name": "3",
+    "shape": "polygon",
+    "points": [
+        [
+            301,
+            364
+        ],
+        [
+            303,
+            364
+        ],
+        [
+            303,
+            366
+        ],
+        [
+            301,
+            366
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-25 11:56:09",
+        "desc": "region_viewer"
+    }
+}

@@ -1,0 +1,31 @@
+{
+    "key": "经验.5",
+    "category": "经验",
+    "name": "5",
+    "shape": "polygon",
+    "points": [
+        [
+            602,
+            374
+        ],
+        [
+            604,
+            374
+        ],
+        [
+            604,
+            376
+        ],
+        [
+            602,
+            376
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-19 11:46:53",
+        "desc": "region_viewer"
+    }
+}

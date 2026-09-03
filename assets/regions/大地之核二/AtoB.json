@@ -1,0 +1,31 @@
+{
+    "key": "大地之核二.AtoB",
+    "category": "大地之核二",
+    "name": "AtoB",
+    "shape": "polygon",
+    "points": [
+        [
+            1042,
+            163
+        ],
+        [
+            1044,
+            163
+        ],
+        [
+            1044,
+            165
+        ],
+        [
+            1042,
+            165
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-13 06:46:32",
+        "desc": "来自 地图/46to49.json（A==C==46，AtoB同传送点）"
+    }
+}

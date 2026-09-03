@@ -1,0 +1,31 @@
+{
+    "key": "旧大地之核一.2",
+    "category": "旧大地之核一",
+    "name": "2",
+    "shape": "polygon",
+    "points": [
+        [
+            743,
+            434
+        ],
+        [
+            745,
+            434
+        ],
+        [
+            745,
+            436
+        ],
+        [
+            743,
+            436
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-11 10:30:04",
+        "desc": "map_recorder order=2"
+    }
+}

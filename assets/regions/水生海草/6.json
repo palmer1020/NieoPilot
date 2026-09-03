@@ -1,0 +1,31 @@
+{
+    "key": "水生海草.6",
+    "category": "水生海草",
+    "name": "6",
+    "shape": "polygon",
+    "points": [
+        [
+            608,
+            398
+        ],
+        [
+            610,
+            398
+        ],
+        [
+            610,
+            400
+        ],
+        [
+            608,
+            400
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-19 13:46:33",
+        "desc": "region_viewer"
+    }
+}

@@ -1,0 +1,9 @@
+{
+  "key": "日常.小游戏草.3",
+  "category": "日常",
+  "name": "小游戏草.3",
+  "shape": "polygon",
+  "points": [[582, 127], [584, 127], [584, 129], [582, 129]],
+  "click": {"random": true},
+  "meta": {"created_at": "2026-07-16 11:30:00", "desc": "取自 fix_script/小游戏草.json 第3步 (583,128)"}
+}

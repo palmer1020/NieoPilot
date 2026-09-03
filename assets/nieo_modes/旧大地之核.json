@@ -1,0 +1,32 @@
+{
+  "schema": "nieopilot_nieo_mode_v1",
+  "slug": "旧大地之核",
+  "name": "旧大地之核",
+  "route_hint": "旧大地之核",
+  "to_script": "to旧大地之核",
+  "map_a_id": 501,
+  "map_b_id": 49,
+  "map_c_id": 47,
+  "entry_stem": "501to49",
+  "transition_b_to_c": "49to47",
+  "transition_c_to_b": "47to49",
+  "prefix_b": "旧大地之核一",
+  "prefix_c": "旧大地之核二",
+  "prefix_a": "旧大地之核二",
+  "action_b": "defeat",
+  "action_c": "skip",
+  "action_a": "skip",
+  "transition_b_to_a": "49to501",
+  "transition_a_to_b": "501to49",
+  "import_from_b": null,
+  "import_from_c": null,
+  "create_time": "2026-06-11 10:30:11",
+  "skip_route_points_b": [
+    "4",
+    "5"
+  ],
+  "skip_route_points_c": [],
+  "maintenance_every_battles": 25,
+  "maintenance_external_map": "a",
+  "nie_capture_switch": "aisifeige"
+}

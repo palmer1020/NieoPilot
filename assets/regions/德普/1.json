@@ -1,0 +1,31 @@
+{
+    "key": "德普.1",
+    "category": "德普",
+    "name": "1",
+    "shape": "polygon",
+    "points": [
+        [
+            91,
+            517
+        ],
+        [
+            93,
+            517
+        ],
+        [
+            93,
+            519
+        ],
+        [
+            91,
+            519
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-10 13:09:53",
+        "desc": "map_recorder order=1"
+    }
+}

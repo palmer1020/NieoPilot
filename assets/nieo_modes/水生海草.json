@@ -1,0 +1,52 @@
+{
+    "schema": "nieopilot_nieo_mode_v1",
+    "slug": "水生海草",
+    "name": "水生海草",
+    "route_hint": "水生海草",
+    "to_script": "to水生海草1",
+    "map_a_id": 55,
+    "map_b_id": 56,
+    "map_c_id": 55,
+    "entry_stem": "55to56",
+    "transition_b_to_c": "56to55",
+    "transition_c_to_b": "55to56",
+    "transition_b_to_a": "56to55",
+    "transition_a_to_b": "55to56",
+    "prefix_b": "水生海草",
+    "prefix_c": "水生海草",
+    "prefix_a": "水生海草",
+    "action_b": "defeat",
+    "action_c": "skip",
+    "action_a": "skip",
+    "import_from_b": null,
+    "import_from_c": null,
+    "skip_route_points_b": [],
+    "skip_route_points_c": [],
+    "skip_z_click": false,
+    "rare_capture_pets_a": [],
+    "rare_capture_pets_b": [],
+    "rare_capture_pets_c": [],
+    "battle_pet_ids_a": [],
+    "battle_pet_ids_b": [
+        211
+    ],
+    "battle_pet_ids_c": [],
+    "delete_swf_ids": [
+        212
+    ],
+    "pet254_mode": "normal",
+    "b_no_spawn_giveup_s": 0.0,
+    "white_probe_key": "尼奥一.白色探针",
+    "white_probe_map_ids": [
+        55,
+        56
+    ],
+    "pre_entry_summon_until_action": true,
+    "post_recovery_to_script": "to水生海草2",
+    "stay_on_b_map": true,
+    "recovery_via_reconnect": true,
+    "skill3_recovery_uses": 10,
+    "skill4_recovery_uses": 30,
+    "sequential_skill_recovery": true,
+    "create_time": "2026-07-19 14:30:00"
+}

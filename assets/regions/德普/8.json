@@ -1,0 +1,31 @@
+{
+    "key": "德普.8",
+    "category": "德普",
+    "name": "8",
+    "shape": "polygon",
+    "points": [
+        [
+            715,
+            255
+        ],
+        [
+            717,
+            255
+        ],
+        [
+            717,
+            257
+        ],
+        [
+            715,
+            257
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-10 13:09:53",
+        "desc": "map_recorder order=8"
+    }
+}

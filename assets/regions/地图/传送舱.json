@@ -1,0 +1,17 @@
+{
+    "key": "地图.传送舱",
+    "category": "地图",
+    "name": "传送舱",
+    "shape": "polygon",
+    "points": [[246, 520], [248, 520], [248, 522], [246, 522]],
+    "click": {
+        "random": false
+    },
+    "meta": {
+        "created_at": "2026-07-16 00:00:00",
+        "desc": "地图网格：传送舱",
+        "map_id": 1,
+        "newnpc_multi": 0,
+        "gate_strategy": "newnpc"
+    }
+}

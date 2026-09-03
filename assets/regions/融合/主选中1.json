@@ -1,0 +1,31 @@
+{
+    "key": "融合.主选中1",
+    "category": "融合",
+    "name": "主选中1",
+    "shape": "polygon",
+    "points": [
+        [
+            997,
+            308
+        ],
+        [
+            999,
+            308
+        ],
+        [
+            999,
+            310
+        ],
+        [
+            997,
+            310
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-21 10:46:59",
+        "desc": "region_viewer"
+    }
+}

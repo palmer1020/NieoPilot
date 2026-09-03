@@ -1,0 +1,31 @@
+{
+    "key": "熔岩晶体一.BtoC",
+    "category": "熔岩晶体一",
+    "name": "BtoC",
+    "shape": "polygon",
+    "points": [
+        [
+            87,
+            296
+        ],
+        [
+            89,
+            296
+        ],
+        [
+            89,
+            298
+        ],
+        [
+            87,
+            298
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-12 11:59:13",
+        "desc": "复制自 BtoA（A/C 同图）"
+    }
+}

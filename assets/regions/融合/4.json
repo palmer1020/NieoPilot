@@ -1,0 +1,31 @@
+{
+    "key": "融合.4",
+    "category": "融合",
+    "name": "4",
+    "shape": "polygon",
+    "points": [
+        [
+            770,
+            377
+        ],
+        [
+            772,
+            377
+        ],
+        [
+            772,
+            379
+        ],
+        [
+            770,
+            379
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-21 11:02:51",
+        "desc": "region_viewer"
+    }
+}

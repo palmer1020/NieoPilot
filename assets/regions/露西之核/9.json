@@ -1,0 +1,31 @@
+{
+    "key": "露西之核.9",
+    "category": "露西之核",
+    "name": "9",
+    "shape": "polygon",
+    "points": [
+        [
+            100,
+            450
+        ],
+        [
+            102,
+            450
+        ],
+        [
+            102,
+            452
+        ],
+        [
+            100,
+            452
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-14 00:15:15",
+        "desc": "region_viewer"
+    }
+}

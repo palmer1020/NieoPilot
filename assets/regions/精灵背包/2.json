@@ -1,0 +1,31 @@
+{
+    "key": "精灵背包.2",
+    "category": "精灵背包",
+    "name": "2",
+    "shape": "polygon",
+    "points": [
+        [
+            462,
+            275
+        ],
+        [
+            464,
+            275
+        ],
+        [
+            464,
+            277
+        ],
+        [
+            462,
+            277
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-25 11:55:41",
+        "desc": "region_viewer"
+    }
+}

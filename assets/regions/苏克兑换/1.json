@@ -1,0 +1,31 @@
+{
+    "key": "苏克兑换.1",
+    "category": "苏克兑换",
+    "name": "1",
+    "shape": "polygon",
+    "points": [
+        [
+            380,
+            502
+        ],
+        [
+            382,
+            502
+        ],
+        [
+            382,
+            504
+        ],
+        [
+            380,
+            504
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-25 03:31:22",
+        "desc": "region_viewer"
+    }
+}

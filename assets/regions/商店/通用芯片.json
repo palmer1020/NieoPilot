@@ -1,0 +1,31 @@
+{
+    "key": "商店.通用芯片",
+    "category": "商店",
+    "name": "通用芯片",
+    "shape": "polygon",
+    "points": [
+        [
+            463,
+            374
+        ],
+        [
+            465,
+            374
+        ],
+        [
+            465,
+            376
+        ],
+        [
+            463,
+            376
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-18 02:57:07",
+        "desc": "region_viewer"
+    }
+}

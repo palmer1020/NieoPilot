@@ -1,0 +1,31 @@
+{
+    "key": "孵化.右探针",
+    "category": "孵化",
+    "name": "右探针",
+    "shape": "polygon",
+    "points": [
+        [
+            445,
+            328
+        ],
+        [
+            447,
+            328
+        ],
+        [
+            447,
+            330
+        ],
+        [
+            445,
+            330
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-15 11:48:11",
+        "desc": "region_viewer"
+    }
+}

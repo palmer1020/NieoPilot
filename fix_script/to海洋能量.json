@@ -1,0 +1,48 @@
+{
+    "name": "to海洋能量",
+    "create_time": "2026-06-11 12:39:33",
+    "steps": [
+        {
+            "action": "click",
+            "x": 51,
+            "y": 316,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 590,
+            "y": 204,
+            "delay": 7.62,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 576,
+            "y": 527,
+            "delay": 2.87,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 842,
+            "y": 547,
+            "delay": 2.57,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 514,
+            "y": 434,
+            "delay": 1.43,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 984,
+            "y": 173,
+            "delay": 8.4,
+            "desc": "Step 6"
+        }
+    ]
+}

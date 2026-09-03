@@ -2,7 +2,8 @@
 """
 尼奥模式建立器
 
-向导：模式名 / 三地图 A-B-C / 三条传送 / B·C 操作 / 点录入 → regions + nieo_modes manifest。
+向导：模式名 / 三地图 A-B-C / 五条传送（A→B, B→C, C→B, B→A, A→B回写）/
+B·C 操作 / 点录入 → regions + nieo_modes manifest。
 """
 from __future__ import annotations
 
@@ -26,6 +27,7 @@ from core.nieo_mode_registry import (
     build_nieo_manifest,
     copy_map_transition_to_prefix,
     copy_route_points_1_to_9,
+    duplicate_region_label,
     find_route_archives_for_map,
     save_nieo_manifest,
     write_region_point,
@@ -158,6 +160,53 @@ def _prompt_action(map_label: str) -> Optional[str]:
     return action
 
 
+def _parse_int_list(raw: str) -> Tuple[int, ...]:
+    values = set()
+    for part in str(raw or "").replace("，", ",").split(","):
+        text = part.strip()
+        if not text:
+            continue
+        try:
+            value = int(text)
+        except ValueError:
+            continue
+        if value > 0:
+            values.add(value)
+    return tuple(sorted(values))
+
+
+def _prompt_action_pet_ids(map_label: str, action: str) -> Optional[Tuple[int, ...]]:
+    if action == "skip":
+        return ()
+    action_label = "捕捉目标" if action == "capture" else "战胜目标"
+    raw = _prompt(
+        f"地图 {map_label} {action_label} pet ID",
+        f"输入地图 {map_label} 的{action_label} pet ID（多个用逗号分隔）：",
+    )
+    if raw is None:
+        return None
+    values = _parse_int_list(raw)
+    if not values:
+        print(f"❌ 地图 {map_label} {action_label} pet ID 无效")
+        return None
+    print(f"✅ 地图 {map_label} {action_label} pet ID：{values}")
+    return values
+
+
+def _prompt_skip_route_points(map_label: str) -> Tuple[str, ...]:
+    raw = _prompt(
+        f"地图 {map_label} 屏蔽刷新点",
+        f"地图 {map_label} 不参与扫描的区域编号（1-9，多个用逗号分隔；可留空）：",
+    ) or ""
+    points = []
+    for value in _parse_int_list(raw):
+        if 1 <= value <= 9:
+            points.append(str(value))
+    result = tuple(points)
+    print(f"ℹ 地图 {map_label} 屏蔽刷新点：{result or '无'}")
+    return result
+
+
 def _ensure_to_script(route_hint: str) -> Tuple[str, bool]:
     to_name = f"to{route_hint}"
     path = os.path.join(FIX_SCRIPT_DIR, f"{to_name}.json")
@@ -224,10 +273,6 @@ def _record_map_transition_click(
     if not window_manager.find_window():
         print("❌ 未找到游戏窗口")
         return None
-    try:
-        window_manager.scan_boundaries()
-    except Exception:
-        pass
 
     clicked: List[Tuple[int, int]] = []
     done = {"cancel": False}
@@ -283,10 +328,6 @@ def _record_z_point(prefix: str, map_id: int) -> bool:
     if not window_manager.find_window():
         print("❌ 未找到游戏窗口")
         return False
-    try:
-        window_manager.scan_boundaries()
-    except Exception:
-        pass
 
     clicked: List[Tuple[int, int]] = []
     done = {"cancel": False}
@@ -383,7 +424,7 @@ def main() -> None:
     _configure_console_utf8()
     print("=== NieoPilot 尼奥模式建立器 ===\n")
 
-    route_hint = _prompt("模式名称", "模式名称（如 自定义尼奥；同时作为 to 脚本名 to{Name}）：")
+    route_hint = _prompt("模式名称", "模式名称（如 大地之核；同时作为 to 脚本名 to{Name}）：")
     if not route_hint or not route_hint.strip():
         print("已取消。")
         return
@@ -403,50 +444,160 @@ def main() -> None:
         print("❌ 地图 ID 须为数字")
         return
 
+    same_bc_map = map_b == map_c
     prefix_b = f"{route_hint}一"
-    prefix_c = f"{route_hint}二"
+    prefix_c = prefix_b if same_bc_map else f"{route_hint}二"
+    prefix_a = (
+        prefix_b
+        if map_a == map_b
+        else f"{route_hint}二"
+        if same_bc_map
+        else prefix_c
+    )
 
     print(f"\n📋 模式：{route_hint} | A={map_a} B={map_b} C={map_c}")
-    print(f"   前缀 B={prefix_b} | 前缀 C={prefix_c}\n")
+    print(f"   前缀 B={prefix_b} | 前缀 C/A={prefix_c}\n")
+
+    delete_swf_raw = _prompt(
+        "删除 SWF ID",
+        "启动模式时要从 pet/swf 删除的精灵 ID（多个用逗号分隔；可留空）：",
+    ) or ""
+    delete_swf_ids = _parse_int_list(delete_swf_raw)
+    print(f"ℹ 删除 SWF ID：{delete_swf_ids or '无'}；PetSWF=普通")
+
+    no_spawn_raw = _prompt(
+        "B 图无刷新超时",
+        "B 图多少秒未检测到突变就放弃本轮并切回 A（0 或留空表示不启用）：",
+    ) or "0"
+    try:
+        b_no_spawn_giveup_s = max(0.0, float(no_spawn_raw.strip()))
+    except ValueError:
+        print(f"❌ 无刷新超时无效：{no_spawn_raw}")
+        return
+    b_entry_white_probe_key = (
+        _prompt(
+            "B 图入图白探针",
+            "B 图没有 newNPC 时使用的白探针区域 key（可留空，如 尼奥一.白色探针）：",
+        )
+        or ""
+    ).strip()
 
     _ensure_to_script(route_hint)
 
-    if _record_map_transition_click(map_a, map_b, "步骤 5：录入 A→B 传送点") is None:
+    # 步骤 5：录入 A→B 传送点
+    a_to_b_stem = f"{map_a}to{map_b}"
+    if _record_map_transition_click(map_a, map_b, f"步骤 5：录入 A→B（{a_to_b_stem}）") is None:
         cont = _prompt("继续？", "A→B 未保存。输入 y 仍继续，其它取消：")
         if (cont or "").strip().lower() != "y":
             print("已取消。")
             return
 
     b_to_c_stem = f"{map_b}to{map_c}"
-    if _record_map_transition_click(map_b, map_c, "步骤 6：录入 B→C 传送点") is None:
-        cont = _prompt("继续？", "B→C 未保存。输入 y 仍继续，其它取消：")
-        if (cont or "").strip().lower() != "y":
-            print("已取消。")
-            return
-
     c_to_b_stem = f"{map_c}to{map_b}"
-    if _record_map_transition_click(map_c, map_b, "步骤 7：录入 C→B 传送点") is None:
-        cont = _prompt("继续？", "C→B 未保存。输入 y 仍继续，其它取消：")
-        if (cont or "").strip().lower() != "y":
-            print("已取消。")
-            return
+    if same_bc_map:
+        print(
+            f"\nℹ B/C 同为 map{map_b}，按单挂机图处理，"
+            "跳过 B→C 与 C→B 传送点录入"
+        )
+    else:
+        # 步骤 6：录入 B→C 传送点
+        if _record_map_transition_click(map_b, map_c, f"步骤 6：录入 B→C（{b_to_c_stem}）") is None:
+            cont = _prompt("继续？", "B→C 未保存。输入 y 仍继续，其它取消：")
+            if (cont or "").strip().lower() != "y":
+                print("已取消。")
+                return
 
-    copy_map_transition_to_prefix(PROJECT_ROOT, b_to_c_stem, prefix_b, "toC")
-    copy_map_transition_to_prefix(PROJECT_ROOT, c_to_b_stem, prefix_c, "toB")
+        # 步骤 7：录入 C→B 传送点
+        if _record_map_transition_click(map_c, map_b, f"步骤 7：录入 C→B（{c_to_b_stem}）") is None:
+            cont = _prompt("继续？", "C→B 未保存。输入 y 仍继续，其它取消：")
+            if (cont or "").strip().lower() != "y":
+                print("已取消。")
+                return
 
+    # 步骤 8：录入 B→A 传送点（维护回图用）
+    b_to_a_stem = f"{map_b}to{map_a}"
+    if map_a == map_b:
+        print(f"\nℹ A/B 同为 map{map_a}，跳过 B→A 传送点录入")
+    elif map_a == map_c:
+        # A 与 C 是同一张图，B→A 与 B→C 同一传送点，直接复用
+        print(f"\nℹ A/C 同为 map{map_a}，B→A 传送点与 B→C 相同，跳过单独录入")
+    else:
+        if _record_map_transition_click(map_b, map_a, f"步骤 8：录入 B→A（{b_to_a_stem}）") is None:
+            cont = _prompt("继续？", "B→A 未保存。输入 y 仍继续，其它取消：")
+            if (cont or "").strip().lower() != "y":
+                print("已取消。")
+                return
+
+    # 将传送点坐标写入各 prefix 的 region 文件
+    if same_bc_map:
+        if map_a != map_b:
+            copy_map_transition_to_prefix(PROJECT_ROOT, b_to_a_stem, prefix_b, "BtoA")
+            copy_map_transition_to_prefix(PROJECT_ROOT, a_to_b_stem, prefix_a, "AtoB")
+            print(
+                f"   ✅ B/C 单图：{prefix_b}.BtoA（{b_to_a_stem}）/ "
+                f"{prefix_a}.AtoB（{a_to_b_stem}）已写入"
+            )
+    elif map_a == map_c:
+        copy_map_transition_to_prefix(PROJECT_ROOT, b_to_c_stem, prefix_b, "BtoC")
+        copy_map_transition_to_prefix(PROJECT_ROOT, c_to_b_stem, prefix_c, "CtoB")
+        # A==C：BtoA 复制自 BtoC，AtoB 复制自 CtoB
+        duplicate_region_label(
+            PROJECT_ROOT, prefix_b, "BtoC", "BtoA",
+            desc=f"A==C（map{map_a}），复制自 BtoC"
+        )
+        duplicate_region_label(
+            PROJECT_ROOT, prefix_c, "CtoB", "AtoB",
+            desc=f"A==C（map{map_a}），复制自 CtoB"
+        )
+        print(f"   ℹ A/C 同图：{prefix_b}.BtoA ← BtoC，{prefix_c}.AtoB ← CtoB")
+    else:
+        copy_map_transition_to_prefix(PROJECT_ROOT, b_to_c_stem, prefix_b, "BtoC")
+        copy_map_transition_to_prefix(PROJECT_ROOT, c_to_b_stem, prefix_c, "CtoB")
+        # A≠C：分别复制 BtoA 和 AtoB
+        copy_map_transition_to_prefix(PROJECT_ROOT, b_to_a_stem, prefix_b, "BtoA")
+        copy_map_transition_to_prefix(PROJECT_ROOT, a_to_b_stem, prefix_a, "AtoB")
+        print(f"   ✅ {prefix_b}.BtoA（{b_to_a_stem}）/ {prefix_a}.AtoB（{a_to_b_stem}）已写入")
+
+    # 操作 + 点录入
     action_b = _prompt_action("B")
     if not action_b:
         print("已取消。")
         return
-
-    import_from_b = _setup_map_points(map_b, prefix_b, action_b)
-
-    action_c = _prompt_action("C")
-    if not action_c:
+    action_pet_ids_b = _prompt_action_pet_ids("B", action_b)
+    if action_pet_ids_b is None:
         print("已取消。")
         return
 
-    import_from_c = _setup_map_points(map_c, prefix_c, action_c)
+    import_from_b = _setup_map_points(map_b, prefix_b, action_b)
+    skip_route_points_b = (
+        _prompt_skip_route_points("B") if action_b != "skip" else ()
+    )
+
+    if same_bc_map:
+        action_c = action_b
+        action_pet_ids_c = action_pet_ids_b
+        import_from_c = import_from_b
+        skip_route_points_c = skip_route_points_b
+        print(f"ℹ B/C 同图：C 复用 B 的动作与刷新点（{ACTION_LABELS[action_b]}）")
+    else:
+        action_c = _prompt_action("C")
+        if not action_c:
+            print("已取消。")
+            return
+        action_pet_ids_c = _prompt_action_pet_ids("C", action_c)
+        if action_pet_ids_c is None:
+            print("已取消。")
+            return
+
+        import_from_c = _setup_map_points(map_c, prefix_c, action_c)
+        skip_route_points_c = (
+            _prompt_skip_route_points("C") if action_c != "skip" else ()
+        )
+
+    rare_capture_pets_b = action_pet_ids_b if action_b == "capture" else ()
+    rare_capture_pets_c = action_pet_ids_c if action_c == "capture" else ()
+    battle_pet_ids_b = action_pet_ids_b if action_b == "defeat" else ()
+    battle_pet_ids_c = action_pet_ids_c if action_c == "defeat" else ()
 
     manifest = build_nieo_manifest(
         route_hint=route_hint,
@@ -457,17 +608,45 @@ def main() -> None:
         action_c=action_c,
         import_from_b=import_from_b,
         import_from_c=import_from_c,
+        skip_route_points_b=skip_route_points_b,
+        skip_route_points_c=skip_route_points_c,
+        prefix_b=prefix_b,
+        prefix_c=prefix_c,
+        prefix_a=prefix_a,
+        rare_capture_pets_b=rare_capture_pets_b,
+        rare_capture_pets_c=rare_capture_pets_c,
+        battle_pet_ids_b=battle_pet_ids_b,
+        battle_pet_ids_c=battle_pet_ids_c,
+        delete_swf_ids=delete_swf_ids,
+        pet254_mode="normal",
+        b_no_spawn_giveup_s=b_no_spawn_giveup_s,
+        b_entry_white_probe_key=b_entry_white_probe_key,
     )
     path = save_nieo_manifest(PROJECT_ROOT, manifest)
     print(f"\n✅ 尼奥模式 manifest 已保存: {path}")
     print(f"   slug={manifest['slug']} | 重启 Dashboard 后在尼奥下拉中选择")
+
+    if same_bc_map:
+        btoa_note = (
+            f"B==C 单挂机图（{map_b}）：只使用 {a_to_b_stem}/{b_to_a_stem}，"
+            "不创建 B↔C 传送点\n"
+        )
+    elif map_a == map_c:
+        btoa_note = f"A==C 同图（{map_a}）：BtoA/AtoB 复制自 BtoC/CtoB\n"
+    else:
+        btoa_note = (
+            f"传送点（含 BtoA/AtoB）：{a_to_b_stem}, {b_to_c_stem}, "
+            f"{c_to_b_stem}, {b_to_a_stem}\n"
+        )
     _info(
         "建立完成",
         f"尼奥模式「{route_hint}」已写入。\n\n"
         f"manifest: assets/nieo_modes/{manifest['slug']}.json\n"
         f"B 图 regions: assets/regions/{prefix_b}/\n"
         f"C 图 regions: assets/regions/{prefix_c}/\n"
-        f"传送: 地图/{map_a}to{map_b}.json, {b_to_c_stem}.json, {c_to_b_stem}.json\n\n"
+        f"{btoa_note}"
+        f"每 25 场在地图 A（{map_a}）恢复精灵一，再 AtoB 回 B 继续\n"
+        f"入战遇尼尔家族(77/310/416)：切艾斯菲格捕捉\n\n"
         "请重启 Dashboard，在尼奥下拉框中选择该模式并启动。",
     )
 

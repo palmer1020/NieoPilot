@@ -1,0 +1,31 @@
+{
+    "key": "乌索.9",
+    "category": "乌索",
+    "name": "9",
+    "shape": "polygon",
+    "points": [
+        [
+            698,
+            253
+        ],
+        [
+            700,
+            253
+        ],
+        [
+            700,
+            255
+        ],
+        [
+            698,
+            255
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-23 11:09:29",
+        "desc": "map_recorder order=9"
+    }
+}

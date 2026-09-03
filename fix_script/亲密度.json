@@ -1,0 +1,41 @@
+{
+    "name": "亲密度",
+    "create_time": "2026-07-15 13:06:26",
+    "steps": [
+        {
+            "action": "click",
+            "x": 442,
+            "y": 480,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 534,
+            "y": 495,
+            "delay": 3.93,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 636,
+            "y": 493,
+            "delay": 4.87,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 734,
+            "y": 488,
+            "delay": 4.25,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 874,
+            "y": 157,
+            "delay": 5.07,
+            "desc": "Step 5"
+        }
+    ]
+}

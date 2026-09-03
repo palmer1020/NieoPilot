@@ -1,0 +1,27 @@
+{
+    "name": "to日常1",
+    "create_time": "2026-07-16 00:00:00",
+    "steps": [
+        {
+            "action": "click",
+            "x": 81,
+            "y": 624,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 967,
+            "y": 170,
+            "delay": 1.93,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 253,
+            "y": 521,
+            "delay": 1.63,
+            "desc": "Step 3"
+        }
+    ]
+}

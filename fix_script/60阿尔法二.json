@@ -1,0 +1,27 @@
+{
+    "name": "60阿尔法二",
+    "create_time": "2026-06-07 11:06:02",
+    "steps": [
+        {
+            "action": "click",
+            "x": 855,
+            "y": 259,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 328,
+            "y": 181,
+            "delay": 1,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 771,
+            "y": 499,
+            "delay": 1,
+            "desc": "Step 3"
+        }
+    ]
+}

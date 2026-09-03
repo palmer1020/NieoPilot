@@ -1,0 +1,10 @@
+{
+  "key": "背包.元神珠",
+  "category": "背包",
+  "name": "元神珠",
+  "shape": "polygon",
+  "points": [[925,394],[927,394],[927,396],[925,396]],
+  "click": {"random": false},
+  "meta": {"desc": "Nono white reconnect: pearl"}
+}
+

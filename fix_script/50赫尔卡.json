@@ -1,0 +1,55 @@
+{
+    "name": "50赫尔卡",
+    "create_time": "2026-06-07 10:52:03",
+    "steps": [
+        {
+            "action": "click",
+            "x": 215,
+            "y": 386,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 602,
+            "y": 453,
+            "delay": 1,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 410,
+            "y": 521,
+            "delay": 1,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 490,
+            "y": 401,
+            "delay": 1,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 819,
+            "y": 440,
+            "delay": 1,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 537,
+            "y": 194,
+            "delay": 1,
+            "desc": "Step 6"
+        },
+        {
+            "action": "click",
+            "x": 727,
+            "y": 474,
+            "delay": 1,
+            "desc": "Step 7"
+        }
+    ]
+}

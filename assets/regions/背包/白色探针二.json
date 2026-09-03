@@ -1,0 +1,10 @@
+{
+  "key": "背包.白色探针二",
+  "category": "背包",
+  "name": "白色探针二",
+  "shape": "polygon",
+  "points": [[499,499],[501,499],[501,501],[499,501]],
+  "click": {"random": false},
+  "meta": {"desc": "Nono white reconnect: white probe 2"}
+}
+

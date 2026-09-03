@@ -1,0 +1,20 @@
+{
+    "name": "小游戏火",
+    "create_time": "2026-07-15 00:00:00",
+    "steps": [
+        {
+            "action": "click",
+            "x": 114,
+            "y": 514,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 114,
+            "y": 514,
+            "delay": 6.0,
+            "desc": "Step 2"
+        }
+    ]
+}

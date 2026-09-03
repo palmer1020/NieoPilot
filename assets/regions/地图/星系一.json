@@ -1,0 +1,31 @@
+{
+    "key": "地图.星系一",
+    "category": "地图",
+    "name": "星系一",
+    "shape": "polygon",
+    "points": [
+        [
+            268,
+            224
+        ],
+        [
+            270,
+            224
+        ],
+        [
+            270,
+            226
+        ],
+        [
+            268,
+            226
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-18 03:13:01",
+        "desc": "region_viewer"
+    }
+}

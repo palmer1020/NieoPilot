@@ -1,0 +1,31 @@
+{
+    "key": "孵化.红探针",
+    "category": "孵化",
+    "name": "红探针",
+    "shape": "polygon",
+    "points": [
+        [
+            437,
+            493
+        ],
+        [
+            439,
+            493
+        ],
+        [
+            439,
+            495
+        ],
+        [
+            437,
+            495
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-15 13:00:00",
+        "desc": "generated center=(438,494)"
+    }
+}

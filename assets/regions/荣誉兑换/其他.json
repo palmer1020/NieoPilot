@@ -1,0 +1,31 @@
+{
+    "key": "荣誉兑换.其他",
+    "category": "荣誉兑换",
+    "name": "其他",
+    "shape": "polygon",
+    "points": [
+        [
+            504,
+            141
+        ],
+        [
+            506,
+            141
+        ],
+        [
+            506,
+            143
+        ],
+        [
+            504,
+            143
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-13 05:05:58",
+        "desc": "region_viewer"
+    }
+}

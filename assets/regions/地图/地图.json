@@ -1,0 +1,31 @@
+{
+    "key": "地图.地图",
+    "category": "地图",
+    "name": "地图",
+    "shape": "polygon",
+    "points": [
+        [
+            55,
+            633
+        ],
+        [
+            57,
+            633
+        ],
+        [
+            57,
+            635
+        ],
+        [
+            55,
+            635
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-17 04:59:43",
+        "desc": "region_viewer"
+    }
+}

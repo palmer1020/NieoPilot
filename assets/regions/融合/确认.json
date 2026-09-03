@@ -1,0 +1,31 @@
+{
+    "key": "融合.确认",
+    "category": "融合",
+    "name": "确认",
+    "shape": "polygon",
+    "points": [
+        [
+            477,
+            434
+        ],
+        [
+            479,
+            434
+        ],
+        [
+            479,
+            436
+        ],
+        [
+            477,
+            436
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-21 11:06:33",
+        "desc": "region_viewer"
+    }
+}

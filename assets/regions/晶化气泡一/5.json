@@ -1,0 +1,31 @@
+{
+    "key": "晶化气泡一.5",
+    "category": "晶化气泡一",
+    "name": "5",
+    "shape": "polygon",
+    "points": [
+        [
+            659,
+            375
+        ],
+        [
+            661,
+            375
+        ],
+        [
+            661,
+            377
+        ],
+        [
+            659,
+            377
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-19 13:12:36",
+        "desc": "map_recorder order=5"
+    }
+}

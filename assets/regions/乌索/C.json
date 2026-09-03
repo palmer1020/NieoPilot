@@ -1,0 +1,31 @@
+{
+    "key": "乌索.C",
+    "category": "乌索",
+    "name": "C",
+    "shape": "polygon",
+    "points": [
+        [
+            361,
+            417
+        ],
+        [
+            363,
+            417
+        ],
+        [
+            363,
+            419
+        ],
+        [
+            361,
+            419
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-23 10:46:13",
+        "desc": "region_viewer"
+    }
+}

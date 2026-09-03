@@ -1,0 +1,31 @@
+{
+    "key": "经验.输入",
+    "category": "经验",
+    "name": "输入",
+    "shape": "polygon",
+    "points": [
+        [
+            579,
+            449
+        ],
+        [
+            581,
+            449
+        ],
+        [
+            581,
+            451
+        ],
+        [
+            579,
+            451
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-19 11:47:15",
+        "desc": "region_viewer"
+    }
+}

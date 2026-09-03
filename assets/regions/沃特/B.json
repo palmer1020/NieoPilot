@@ -1,0 +1,31 @@
+{
+    "key": "沃特.B",
+    "category": "沃特",
+    "name": "B",
+    "shape": "polygon",
+    "points": [
+        [
+            293,
+            612
+        ],
+        [
+            295,
+            612
+        ],
+        [
+            295,
+            614
+        ],
+        [
+            293,
+            614
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-10 12:38:23",
+        "desc": "map_recorder order=11"
+    }
+}

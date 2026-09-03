@@ -1,0 +1,31 @@
+{
+    "key": "商店.扭蛋牌",
+    "category": "商店",
+    "name": "扭蛋牌",
+    "shape": "polygon",
+    "points": [
+        [
+            723,
+            374
+        ],
+        [
+            725,
+            374
+        ],
+        [
+            725,
+            376
+        ],
+        [
+            723,
+            376
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-18 03:04:22",
+        "desc": "region_viewer"
+    }
+}

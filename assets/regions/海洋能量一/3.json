@@ -1,0 +1,31 @@
+{
+    "key": "海洋能量一.3",
+    "category": "海洋能量一",
+    "name": "3",
+    "shape": "polygon",
+    "points": [
+        [
+            878,
+            515
+        ],
+        [
+            880,
+            515
+        ],
+        [
+            880,
+            517
+        ],
+        [
+            878,
+            517
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-11 12:44:43",
+        "desc": "map_recorder order=3"
+    }
+}

@@ -86,8 +86,8 @@ class BattleRunner:
     KEY_SKILL4 = "对战.使用技能四"
     KEY_PROBE = "对战.回合探针"
 
-    # 与 UnifiedBattleFramework 默认一致：超→超→特
-    _CAPSULE_CYCLE_TIERS = ("super", "super", "special")
+    # 与 UnifiedBattleFramework 兜底默认一致：仅高级
+    _CAPSULE_CYCLE_TIERS = ("high",)
 
     # ---------- 人机验证 region key ----------
     KEY_HV_PANEL = "人机验证.人机验证"
@@ -1190,13 +1190,37 @@ class BattleRunner:
         t0 = time.time()
         last_retry_click = 0.0
         saw_any_output = False
+        battle_entry_seen = False
+
+        def drain_kernel_entry_signal() -> bool:
+            nonlocal cursor, saw_any_output, battle_entry_seen
+            cursor, lines = self._fetch_kernel_lines(cursor)
+            for ln in lines:
+                s = str(ln)
+                if line_matches(RE_PETITEM, s):
+                    return True
+                if line_matches(RE_FIGHT_PET, s):
+                    if not battle_entry_seen:
+                        self._emit(
+                            "✅ 检测到fightResource/pet/swf信号（已入战），跳过屏幕校准，仅等待PetItem",
+                            "INFO",
+                        )
+                    saw_any_output = True
+                    battle_entry_seen = True
+            return False
 
         while (time.time() - t0) < float(timeout_s):
             if abort():
                 return False
 
+            if drain_kernel_entry_signal():
+                return True
+            if battle_entry_seen:
+                time.sleep(0.02)
+                continue
+
             # 1) 校准探针：必须先检测到 11，然后持续校准直到 11 消失
-            if self._need_screen_calibration():
+            if (not battle_entry_seen) and self._need_screen_calibration():
                 self._emit("🧭 检测到屏幕校准探针(白+橙=11) -> 开始校准", "WARN")
                 
                 # ✅ 两次机会机制
@@ -1211,6 +1235,11 @@ class BattleRunner:
                     for round_num in range(1, 3):  # Round 1和Round 2
                         if abort():
                             return False
+
+                        if drain_kernel_entry_signal():
+                            return True
+                        if battle_entry_seen:
+                            break
                         
                         # 提前检查：如果已经不需要校准了，直接成功
                         if not self._need_screen_calibration():
@@ -1226,6 +1255,11 @@ class BattleRunner:
                         for attempt in range(30):
                             if abort():
                                 return False
+
+                            if drain_kernel_entry_signal():
+                                return True
+                            if battle_entry_seen:
+                                break
                             
                             if not self._need_screen_calibration():
                                 round_success = True
@@ -1243,6 +1277,8 @@ class BattleRunner:
                         if round_success:
                             self._emit(f"✅ 机会{chance_num} - Round {round_num}成功", "SUCCESS")
                             break
+                        if battle_entry_seen:
+                            break
                         
                         if round_num == 1:
                             if round_has_abnormal:
@@ -1254,7 +1290,7 @@ class BattleRunner:
                             self._emit(f"❌ 机会{chance_num} - Round 2失败", "WARN")
                     
                     # ✅ 机会1的特殊处理：即使Round 2都失败，仍可以随便点击一个有效点
-                    if not chance_success and chance_num == 1:
+                    if not chance_success and chance_num == 1 and not battle_entry_seen:
                         self._emit("⚠️ 机会1失败，尝试点击任意有效点", "WARN")
                         if self._click_any_valid_point(use_foreground):
                             time.sleep(0.1)  # 等待一下
@@ -1274,8 +1310,12 @@ class BattleRunner:
                     
                     if chance_success:
                         break
+                    if battle_entry_seen:
+                        break
 
                 # 校准结束后，快速再点一次触发点
+                if battle_entry_seen:
+                    continue
                 tx, ty = trigger_xy
                 if use_foreground:
                     window_manager.click(tx, ty)
@@ -1289,12 +1329,13 @@ class BattleRunner:
                 s = str(ln)
                 if line_matches(RE_PETITEM, s):
                     return True
-                if (not saw_any_output) and line_matches(RE_FIGHT_PET, s):
+                if line_matches(RE_FIGHT_PET, s):
                     saw_any_output = True
+                    battle_entry_seen = True
 
             # 3) 如果什么也没输出（且没触发校准），就每 0.1s 复点一次
             now = time.time()
-            if (not saw_any_output) and (not self._need_screen_calibration()):
+            if (not saw_any_output) and (not battle_entry_seen) and (not self._need_screen_calibration()):
                 if (now - last_retry_click) >= 0.1:
                     tx, ty = trigger_xy
                     if use_foreground:

@@ -168,10 +168,8 @@ class CalibrationTestRunner:
                 tol=self.cfg.tol_small,
                 min_ratio=self.cfg.min_ratio_small,
             )
-            big_ok = self._probe_match(
+            big_ok = self._probe_match_any_calibration_color(
                 reg_big,
-                target_rgb=self.cfg.big_rgb,
-                tol=self.cfg.tol_big,
                 min_ratio=self.cfg.min_ratio_big,
             )
             if small_ok and big_ok:
@@ -190,6 +188,29 @@ class CalibrationTestRunner:
         ok = 0
         for r, g, b in pixels:
             if abs(r - tr) <= tol and abs(g - tg) <= tol and abs(b - tb) <= tol:
+                ok += 1
+        return (ok / len(pixels)) >= float(min_ratio)
+
+    @staticmethod
+    def _is_calibration_colored_pixel(r: int, g: int, b: int) -> bool:
+        if r >= 200 and 70 <= g <= 190 and b <= 100:
+            return True
+        # 与运行时标定分类保持一致，兼容新显示器高亮青色的红通道偏移。
+        if b >= 145 and g >= 120 and r <= 205:
+            return True
+        if r >= 95 and b >= 120 and g <= 145 and (b - g) >= 25:
+            return True
+        return False
+
+    def _probe_match_any_calibration_color(self, reg: Region, min_ratio: float) -> bool:
+        gx1, gy1, gx2, gy2 = reg.outer_bbox()
+        img = window_manager.grab_game_bbox(gx1, gy1, gx2, gy2)
+        pixels = list(img.getdata())
+        if not pixels:
+            return False
+        ok = 0
+        for r, g, b in pixels:
+            if self._is_calibration_colored_pixel(int(r), int(g), int(b)):
                 ok += 1
         return (ok / len(pixels)) >= float(min_ratio)
 

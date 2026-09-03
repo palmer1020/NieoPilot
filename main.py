@@ -17,7 +17,27 @@ def _set_dpi_awareness():
         except Exception:
             pass  # 忽略 DPI 设置失败，不影响功能
 
+
+def _disable_console_quick_edit():
+    """Prevent an accidental CMD text selection from pausing the process."""
+    try:
+        import ctypes
+
+        std_input_handle = -10
+        enable_quick_edit_mode = 0x0040
+        enable_extended_flags = 0x0080
+        handle = ctypes.windll.kernel32.GetStdHandle(std_input_handle)
+        mode = ctypes.c_uint()
+        if handle and ctypes.windll.kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            safe_mode = (mode.value | enable_extended_flags) & ~enable_quick_edit_mode
+            ctypes.windll.kernel32.SetConsoleMode(handle, safe_mode)
+    except Exception:
+        # GUI-only launches may not have a console.
+        pass
+
+
 _set_dpi_awareness()
+_disable_console_quick_edit()
 
 import os
 
@@ -56,5 +76,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 

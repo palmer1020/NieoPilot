@@ -1,0 +1,31 @@
+{
+    "key": "商店.右",
+    "category": "商店",
+    "name": "右",
+    "shape": "polygon",
+    "points": [
+        [
+            929,
+            595
+        ],
+        [
+            931,
+            595
+        ],
+        [
+            931,
+            597
+        ],
+        [
+            929,
+            597
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-18 03:04:02",
+        "desc": "region_viewer"
+    }
+}

@@ -1,0 +1,69 @@
+{
+    "name": "小游戏草",
+    "create_time": "2026-07-15 04:46:03",
+    "steps": [
+        {
+            "action": "click",
+            "x": 270,
+            "y": 233,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 743,
+            "y": 250,
+            "delay": 7.0,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 853,
+            "y": 156,
+            "delay": 2.0,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 660,
+            "y": 190,
+            "delay": 5.0,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 583,
+            "y": 128,
+            "delay": 6.0,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 225,
+            "y": 145,
+            "delay": 5.0,
+            "desc": "Step 6"
+        },
+        {
+            "action": "click",
+            "x": 310,
+            "y": 175,
+            "delay": 3.0,
+            "desc": "Step 7"
+        },
+        {
+            "action": "click",
+            "x": 116,
+            "y": 102,
+            "delay": 3.0,
+            "desc": "Step 8"
+        },
+        {
+            "action": "click",
+            "x": 79,
+            "y": 160,
+            "delay": 5.0,
+            "desc": "Step 9"
+        }
+    ]
+}

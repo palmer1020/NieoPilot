@@ -1,0 +1,17 @@
+{
+    "key": "地图.资料室",
+    "category": "地图",
+    "name": "资料室",
+    "shape": "polygon",
+    "points": [[246, 460], [248, 460], [248, 462], [246, 462]],
+    "click": {
+        "random": false
+    },
+    "meta": {
+        "created_at": "2026-07-16 00:00:00",
+        "desc": "地图网格：资料室",
+        "map_id": 9,
+        "newnpc_multi": 100,
+        "gate_strategy": "nieo_white_probe"
+    }
+}

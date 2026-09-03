@@ -1,0 +1,55 @@
+{
+    "name": "小游戏水",
+    "create_time": "2026-09-01 10:02:44",
+    "steps": [
+        {
+            "action": "click",
+            "x": 444,
+            "y": 487,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 607,
+            "y": 590,
+            "delay": 2.58,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 741,
+            "y": 586,
+            "delay": 2.64,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 861,
+            "y": 594,
+            "delay": 2.55,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 868,
+            "y": 589,
+            "delay": 3.41,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 743,
+            "y": 593,
+            "delay": 2.44,
+            "desc": "Step 6"
+        },
+        {
+            "action": "click",
+            "x": 611,
+            "y": 588,
+            "delay": 3.34,
+            "desc": "Step 7"
+        }
+    ]
+}

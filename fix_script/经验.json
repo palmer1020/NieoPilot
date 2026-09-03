@@ -1,0 +1,27 @@
+{
+    "name": "经验",
+    "create_time": "2026-06-19 12:10:56",
+    "steps": [
+        {
+            "action": "click",
+            "x": 591,
+            "y": 437,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 640,
+            "y": 463,
+            "delay": 1.31,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 754,
+            "y": 506,
+            "delay": 1.27,
+            "desc": "Step 3"
+        }
+    ]
+}

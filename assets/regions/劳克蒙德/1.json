@@ -1,0 +1,31 @@
+{
+    "key": "劳克蒙德.1",
+    "category": "劳克蒙德",
+    "name": "1",
+    "shape": "polygon",
+    "points": [
+        [
+            331,
+            194
+        ],
+        [
+            333,
+            194
+        ],
+        [
+            333,
+            196
+        ],
+        [
+            331,
+            196
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-21 00:30:59",
+        "desc": "region_viewer"
+    }
+}

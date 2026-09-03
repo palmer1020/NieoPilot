@@ -1,0 +1,17 @@
+{
+    "key": "地图.瞭望舱",
+    "category": "地图",
+    "name": "瞭望舱",
+    "shape": "polygon",
+    "points": [[316, 460], [318, 460], [318, 462], [316, 462]],
+    "click": {
+        "random": false
+    },
+    "meta": {
+        "created_at": "2026-07-16 00:00:00",
+        "desc": "地图网格：瞭望舱",
+        "map_id": 7,
+        "newnpc_multi": 10,
+        "gate_strategy": "nieo_white_probe"
+    }
+}

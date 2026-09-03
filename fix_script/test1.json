@@ -1,0 +1,188 @@
+{
+    "name": "test1",
+    "create_time": "2026-06-10 12:07:15",
+    "steps": [
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 2,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 500,
+            "y": 300,
+            "delay": 0.01,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 380,
+            "y": 315,
+            "delay": 8.0,
+            "desc": "Step 1"
+        }
+    ]
+}

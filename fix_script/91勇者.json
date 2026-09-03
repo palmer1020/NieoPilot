@@ -1,0 +1,62 @@
+{
+    "name": "91勇者",
+    "create_time": "2026-06-08 00:54:59",
+    "steps": [
+        {
+            "action": "click",
+            "x": 227,
+            "y": 447,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 565,
+            "y": 123,
+            "delay": 6.0,
+            "desc": "Step 229"
+        },
+        {
+            "action": "click",
+            "x": 759,
+            "y": 388,
+            "delay": 3.13,
+            "desc": "Step 230"
+        },
+        {
+            "action": "click",
+            "x": 979,
+            "y": 325,
+            "delay": 1.3,
+            "desc": "Step 231"
+        },
+        {
+            "action": "click",
+            "x": 260,
+            "y": 539,
+            "delay": 2.77,
+            "desc": "Step 232"
+        },
+        {
+            "action": "click",
+            "x": 532,
+            "y": 517,
+            "delay": 2.5,
+            "desc": "Step 233"
+        },
+        {
+            "action": "click",
+            "x": 609,
+            "y": 442,
+            "delay": 1.2,
+            "desc": "Step 234"
+        },
+        {
+            "action": "click",
+            "x": 564,
+            "y": 173,
+            "delay": 1.3,
+            "desc": "Step 235"
+        }
+    ]
+}

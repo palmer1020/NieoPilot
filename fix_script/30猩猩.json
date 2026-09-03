@@ -1,0 +1,55 @@
+{
+    "name": "30猩猩",
+    "create_time": "2026-06-06 12:52:07",
+    "steps": [
+        {
+            "action": "click",
+            "x": 219,
+            "y": 389,
+            "delay": 1.0,
+            "desc": "Step 1"
+        },
+        {
+            "action": "click",
+            "x": 586,
+            "y": 453,
+            "delay": 1,
+            "desc": "Step 2"
+        },
+        {
+            "action": "click",
+            "x": 455,
+            "y": 477,
+            "delay": 1,
+            "desc": "Step 3"
+        },
+        {
+            "action": "click",
+            "x": 544,
+            "y": 415,
+            "delay": 1,
+            "desc": "Step 4"
+        },
+        {
+            "action": "click",
+            "x": 831,
+            "y": 249,
+            "delay": 1,
+            "desc": "Step 5"
+        },
+        {
+            "action": "click",
+            "x": 557,
+            "y": 191,
+            "delay": 1,
+            "desc": "Step 6"
+        },
+        {
+            "action": "click",
+            "x": 803,
+            "y": 485,
+            "delay": 1,
+            "desc": "Step 7"
+        }
+    ]
+}

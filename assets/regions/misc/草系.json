@@ -1,0 +1,31 @@
+{
+    "key": "misc.草系",
+    "category": "misc",
+    "name": "草系",
+    "shape": "polygon",
+    "points": [
+        [
+            593,
+            264
+        ],
+        [
+            595,
+            264
+        ],
+        [
+            595,
+            266
+        ],
+        [
+            593,
+            266
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-18 13:01:36",
+        "desc": "region_viewer"
+    }
+}

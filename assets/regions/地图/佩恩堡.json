@@ -1,0 +1,31 @@
+{
+    "key": "地图.佩恩堡",
+    "category": "地图",
+    "name": "佩恩堡",
+    "shape": "polygon",
+    "points": [
+        [
+            687,
+            470
+        ],
+        [
+            689,
+            470
+        ],
+        [
+            689,
+            472
+        ],
+        [
+            687,
+            472
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-17 05:00:20",
+        "desc": "region_viewer"
+    }
+}

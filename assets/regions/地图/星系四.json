@@ -1,0 +1,31 @@
+{
+    "key": "地图.星系四",
+    "category": "地图",
+    "name": "星系四",
+    "shape": "polygon",
+    "points": [
+        [
+            908,
+            298
+        ],
+        [
+            910,
+            298
+        ],
+        [
+            910,
+            300
+        ],
+        [
+            908,
+            300
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-18 03:13:28",
+        "desc": "region_viewer"
+    }
+}

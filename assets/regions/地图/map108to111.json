@@ -1,0 +1,31 @@
+{
+    "key": "地图.map108to111",
+    "category": "地图",
+    "name": "map108to111",
+    "shape": "polygon",
+    "points": [
+        [
+            287,
+            472
+        ],
+        [
+            289,
+            472
+        ],
+        [
+            289,
+            474
+        ],
+        [
+            287,
+            474
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-13 00:00:00",
+        "desc": "大师杯前置：map108 to map111"
+    }
+}

@@ -1,0 +1,31 @@
+{
+    "key": "乌索.8",
+    "category": "乌索",
+    "name": "8",
+    "shape": "polygon",
+    "points": [
+        [
+            238,
+            238
+        ],
+        [
+            240,
+            238
+        ],
+        [
+            240,
+            240
+        ],
+        [
+            238,
+            240
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-23 11:09:29",
+        "desc": "map_recorder order=8"
+    }
+}

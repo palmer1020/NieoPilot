@@ -1,0 +1,31 @@
+{
+    "key": "融合.主2",
+    "category": "融合",
+    "name": "主2",
+    "shape": "polygon",
+    "points": [
+        [
+            1083,
+            299
+        ],
+        [
+            1085,
+            299
+        ],
+        [
+            1085,
+            301
+        ],
+        [
+            1083,
+            301
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-21 10:28:59",
+        "desc": "region_viewer"
+    }
+}

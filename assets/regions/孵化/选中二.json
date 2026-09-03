@@ -1,0 +1,31 @@
+{
+    "key": "孵化.选中二",
+    "category": "孵化",
+    "name": "选中二",
+    "shape": "polygon",
+    "points": [
+        [
+            753,
+            243
+        ],
+        [
+            755,
+            243
+        ],
+        [
+            755,
+            245
+        ],
+        [
+            753,
+            245
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-15 11:54:16",
+        "desc": "generated grid center=(754,244)"
+    }
+}

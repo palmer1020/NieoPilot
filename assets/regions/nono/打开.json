@@ -1,0 +1,31 @@
+{
+    "key": "nono.打开",
+    "category": "nono",
+    "name": "打开",
+    "shape": "polygon",
+    "points": [
+        [
+            214,
+            375
+        ],
+        [
+            216,
+            375
+        ],
+        [
+            216,
+            377
+        ],
+        [
+            214,
+            377
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-06-30 13:20:33",
+        "desc": "region_viewer"
+    }
+}

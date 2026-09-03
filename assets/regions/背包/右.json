@@ -1,0 +1,10 @@
+{
+  "key": "背包.右",
+  "category": "背包",
+  "name": "右",
+  "shape": "polygon",
+  "points": [[820,545],[822,545],[822,547],[820,547]],
+  "click": {"random": false},
+  "meta": {"desc": "Nono white reconnect: fast right"}
+}
+

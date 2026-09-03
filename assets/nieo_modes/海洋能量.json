@@ -1,0 +1,37 @@
+{
+    "schema": "nieopilot_nieo_mode_v1",
+    "slug": "海洋能量",
+    "name": "海洋能量",
+    "route_hint": "海洋能量",
+    "to_script": "to海洋能量",
+    "map_a_id": 20,
+    "map_b_id": 21,
+    "map_c_id": 22,
+    "entry_stem": "20to21",
+    "transition_b_to_c": "21to22",
+    "transition_c_to_b": "22to21",
+    "transition_b_to_a": "21to20",
+    "transition_a_to_b": "20to21",
+    "prefix_b": "海洋能量一",
+    "prefix_c": "海洋能量二",
+    "prefix_a": "海洋能量二",
+    "action_b": "defeat",
+    "action_c": "skip",
+    "action_a": "skip",
+    "import_from_b": null,
+    "import_from_c": null,
+    "skip_route_points_b": [
+        "1",
+        "4"
+    ],
+    "skip_route_points_c": [],
+    "maintenance_every_battles": 25,
+    "maintenance_external_map": "a",
+    "nie_capture_switch": "aisifeige",
+    "rare_capture_pets_a": [],
+    "rare_capture_pets_b": [
+        108
+    ],
+    "rare_capture_pets_c": [],
+    "create_time": "2026-06-11 12:46:05"
+}

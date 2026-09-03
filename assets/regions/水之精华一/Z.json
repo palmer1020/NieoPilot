@@ -1,0 +1,31 @@
+{
+    "key": "水之精华一.Z",
+    "category": "水之精华一",
+    "name": "Z",
+    "shape": "polygon",
+    "points": [
+        [
+            584,
+            483
+        ],
+        [
+            586,
+            483
+        ],
+        [
+            586,
+            485
+        ],
+        [
+            584,
+            485
+        ]
+    ],
+    "click": {
+        "random": true
+    },
+    "meta": {
+        "created_at": "2026-07-18 05:53:32",
+        "desc": "map_recorder order=10"
+    }
+}
